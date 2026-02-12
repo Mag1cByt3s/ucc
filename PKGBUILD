@@ -49,8 +49,19 @@ package() {
 
   # Install GUI executable
   install -Dm755 build/ucc-gui/ucc-gui "${pkgdir}/usr/bin/ucc-gui"
+  install -Dm644 ucc-gui/ucc-gui.desktop "${pkgdir}/usr/share/applications/ucc-gui.desktop"
 
   # Install tray executable and desktop file
   install -Dm755 build/ucc-tray/ucc-tray "${pkgdir}/usr/bin/ucc-tray"
   install -Dm644 ucc-tray/ucc-tray.desktop "${pkgdir}/usr/share/applications/ucc-tray.desktop"
+
+  # Install icons (scalable SVG once + PNGs per size)
+  install -Dm644 icons/ucc-gui.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/ucc-gui.svg"
+  install -Dm644 icons/ucc-tray.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/ucc-tray.svg"
+  for size in 16 24 32 48 64 128; do
+    install -Dm644 icons/ucc-gui_${size}.png "${pkgdir}/usr/share/icons/hicolor/${size}x${size}/apps/ucc-gui.png"
+    install -Dm644 icons/ucc-tray_${size}.png "${pkgdir}/usr/share/icons/hicolor/${size}x${size}/apps/ucc-tray.png"
+  done
+  install -Dm644 icons/ucc-gui.svg "${pkgdir}/usr/share/pixmaps/ucc-gui.svg"
+  install -Dm644 icons/ucc-tray.svg "${pkgdir}/usr/share/pixmaps/ucc-tray.svg"
 }

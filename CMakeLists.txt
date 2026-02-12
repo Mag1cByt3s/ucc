@@ -1,3 +1,39 @@
+# Install SVG icons to /usr/share/pixmaps for legacy compatibility
+install(FILES icons/ucc-gui.svg DESTINATION share/pixmaps)
+install(FILES icons/ucc-tray.svg DESTINATION share/pixmaps)
+# Icon install (all sizes)
+install(FILES
+  icons/ucc-gui.svg
+  icons/ucc-gui_16.svg
+  icons/ucc-gui_24.svg
+  icons/ucc-gui_32.svg
+  icons/ucc-gui_48.svg
+  icons/ucc-gui_64.svg
+  icons/ucc-gui_128.svg
+  icons/ucc-tray.svg
+  icons/ucc-tray_16.svg
+  icons/ucc-tray_24.svg
+  icons/ucc-tray_32.svg
+  icons/ucc-tray_48.svg
+  icons/ucc-tray_64.svg
+  icons/ucc-tray_128.svg
+  DESTINATION share/icons/hicolor/scalable/apps
+)
+
+
+# Install PNGs to correct hicolor subdirectories
+install(FILES icons/ucc-gui_16.png   DESTINATION share/icons/hicolor/16x16/apps RENAME ucc-gui.png)
+install(FILES icons/ucc-gui_24.png   DESTINATION share/icons/hicolor/24x24/apps RENAME ucc-gui.png)
+install(FILES icons/ucc-gui_32.png   DESTINATION share/icons/hicolor/32x32/apps RENAME ucc-gui.png)
+install(FILES icons/ucc-gui_48.png   DESTINATION share/icons/hicolor/48x48/apps RENAME ucc-gui.png)
+install(FILES icons/ucc-gui_64.png   DESTINATION share/icons/hicolor/64x64/apps RENAME ucc-gui.png)
+install(FILES icons/ucc-gui_128.png  DESTINATION share/icons/hicolor/128x128/apps RENAME ucc-gui.png)
+install(FILES icons/ucc-tray_16.png  DESTINATION share/icons/hicolor/16x16/apps RENAME ucc-tray.png)
+install(FILES icons/ucc-tray_24.png  DESTINATION share/icons/hicolor/24x24/apps RENAME ucc-tray.png)
+install(FILES icons/ucc-tray_32.png  DESTINATION share/icons/hicolor/32x32/apps RENAME ucc-tray.png)
+install(FILES icons/ucc-tray_48.png  DESTINATION share/icons/hicolor/48x48/apps RENAME ucc-tray.png)
+install(FILES icons/ucc-tray_64.png  DESTINATION share/icons/hicolor/64x64/apps RENAME ucc-tray.png)
+install(FILES icons/ucc-tray_128.png DESTINATION share/icons/hicolor/128x128/apps RENAME ucc-tray.png)
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 cmake_minimum_required( VERSION 3.20 )

@@ -56,6 +56,35 @@ stdenv.mkDerivation rec {
     mkdir -p $out/lib/systemd/system
     cp uccd/uccd.service $out/lib/systemd/system/
     cp uccd/uccd-sleep.service $out/lib/systemd/system/
+
+    # Install desktop files and icons
+    mkdir -p $out/share/applications
+    cp ucc-gui/ucc-gui.desktop $out/share/applications/
+    cp ucc-tray/ucc-tray.desktop $out/share/applications/
+
+    mkdir -p $out/share/icons/hicolor/16x16/apps $out/share/icons/hicolor/24x24/apps \
+             $out/share/icons/hicolor/32x32/apps $out/share/icons/hicolor/48x48/apps \
+             $out/share/icons/hicolor/64x64/apps $out/share/icons/hicolor/128x128/apps \
+             $out/share/icons/hicolor/scalable/apps
+    cp icons/ucc-gui_16.png $out/share/icons/hicolor/16x16/apps/ucc-gui.png
+    cp icons/ucc-gui_24.png $out/share/icons/hicolor/24x24/apps/ucc-gui.png
+    cp icons/ucc-gui_32.png $out/share/icons/hicolor/32x32/apps/ucc-gui.png
+    cp icons/ucc-gui_48.png $out/share/icons/hicolor/48x48/apps/ucc-gui.png
+    cp icons/ucc-gui_64.png $out/share/icons/hicolor/64x64/apps/ucc-gui.png
+    cp icons/ucc-gui_128.png $out/share/icons/hicolor/128x128/apps/ucc-gui.png
+    cp icons/ucc-gui.svg $out/share/icons/hicolor/scalable/apps/ucc-gui.svg
+
+    cp icons/ucc-tray_16.png $out/share/icons/hicolor/16x16/apps/ucc-tray.png
+    cp icons/ucc-tray_24.png $out/share/icons/hicolor/24x24/apps/ucc-tray.png
+    cp icons/ucc-tray_32.png $out/share/icons/hicolor/32x32/apps/ucc-tray.png
+    cp icons/ucc-tray_48.png $out/share/icons/hicolor/48x48/apps/ucc-tray.png
+    cp icons/ucc-tray_64.png $out/share/icons/hicolor/64x64/apps/ucc-tray.png
+    cp icons/ucc-tray_128.png $out/share/icons/hicolor/128x128/apps/ucc-tray.png
+    cp icons/ucc-tray.svg $out/share/icons/hicolor/scalable/apps/ucc-tray.svg
+
+    mkdir -p $out/share/pixmaps
+    cp icons/ucc-gui.svg $out/share/pixmaps/ucc-gui.svg
+    cp icons/ucc-tray.svg $out/share/pixmaps/ucc-tray.svg
   '';
 
   postFixup = ''

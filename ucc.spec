@@ -88,5 +88,35 @@ systemctl daemon-reload > /dev/null 2>&1 || true
 %{_unitdir}/uccd-sleep.service
 %{_datadir}/dbus-1/system-services/com.uniwill.uccd.service
 %dir %{_sysconfdir}/ucc
+%{_datadir}/applications/ucc-gui.desktop
 %{_datadir}/applications/ucc-tray.desktop
 %{_datadir}/plasma/plasmoids/org.uniwill.ucc.*/
+# Icons (SVG and PNG, all sizes)
+%{_datadir}/icons/hicolor/scalable/apps/ucc-gui.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-gui_16.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-gui_24.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-gui_32.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-gui_48.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-gui_64.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-gui_128.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-tray.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-tray_16.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-tray_24.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-tray_32.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-tray_48.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-tray_64.svg
+%{_datadir}/icons/hicolor/scalable/apps/ucc-tray_128.svg
+%{_datadir}/icons/hicolor/16x16/apps/ucc-gui.png
+%{_datadir}/icons/hicolor/24x24/apps/ucc-gui.png
+%{_datadir}/icons/hicolor/32x32/apps/ucc-gui.png
+%{_datadir}/icons/hicolor/48x48/apps/ucc-gui.png
+%{_datadir}/icons/hicolor/64x64/apps/ucc-gui.png
+%{_datadir}/icons/hicolor/128x128/apps/ucc-gui.png
+%{_datadir}/icons/hicolor/16x16/apps/ucc-tray.png
+%{_datadir}/icons/hicolor/24x24/apps/ucc-tray.png
+%{_datadir}/icons/hicolor/32x32/apps/ucc-tray.png
+%{_datadir}/icons/hicolor/48x48/apps/ucc-tray.png
+%{_datadir}/icons/hicolor/64x64/apps/ucc-tray.png
+%{_datadir}/icons/hicolor/128x128/apps/ucc-tray.png
+%{_datadir}/pixmaps/ucc-gui.svg
+%{_datadir}/pixmaps/ucc-tray.svg

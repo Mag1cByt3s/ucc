@@ -88,6 +88,10 @@ target_compile_options( ucc-gui PRIVATE
 install( TARGETS ucc-gui
   RUNTIME DESTINATION bin
 )
+
+# Install desktop file so packaging systems and desktop environments pick it up
+install( FILES ucc-gui.desktop DESTINATION share/applications )
+
 # Custom run target
 add_custom_target( run
   COMMAND ${CMAKE_CURRENT_BINARY_DIR}/ucc-gui

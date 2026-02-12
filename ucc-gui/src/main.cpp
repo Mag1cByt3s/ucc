@@ -75,6 +75,9 @@ int main( int argc, char *argv[] )
   app.setApplicationName( "ucc-gui" );
   app.setApplicationVersion( "0.1.0" );
 
+  // ensure window decorations and the application use the theme icon we installed
+  app.setWindowIcon( QIcon::fromTheme( "ucc-gui" ) );
+
   ucc::MainWindow window;
   window.show();
 
