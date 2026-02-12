@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <rect width="24" height="24" rx="3" fill="#0B1220"/>
+  <text x="12" y="11" font-family="Inter, sans-serif" font-weight="900" font-size="7" fill="#FFD166" text-anchor="middle">UCC</text>
+  <g>
+    <rect x="6" y="15" width="12" height="1.5" rx="0.75" fill="#202430"/>
+    <circle cx="7.5" cy="14.5" r="1" fill="#FF6B6B"/>
+    <circle cx="12" cy="16.5" r="1" fill="#FFD166"/>
+    <circle cx="16.5" cy="14.5" r="1" fill="#4EE9A1"/>
+  </g>
+</svg>

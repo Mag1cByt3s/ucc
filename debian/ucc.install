@@ -1,0 +1,7 @@
+usr/bin/uccd
+usr/lib/libucc-dbus.so*
+usr/lib/systemd/system/uccd.service
+usr/lib/systemd/system/uccd-sleep.service
+usr/share/dbus-1/system-services/com.uniwill.uccd.service
+usr/share/plasma/plasmoids/*
+etc/ucc

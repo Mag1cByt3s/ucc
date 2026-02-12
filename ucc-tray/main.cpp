@@ -96,7 +96,8 @@ private:
   void createTrayIcon()
   {
     m_trayIcon = new QSystemTrayIcon( this );
-    m_trayIcon->setIcon( QIcon::fromTheme( "preferences-system" ) );
+    // use the application-specific tray icon from the icon theme
+    m_trayIcon->setIcon( QIcon::fromTheme( "ucc-tray" ) );
     m_trayIcon->setToolTip( tr( "Uniwill Control Center" ) );
 
     // Create context menu
