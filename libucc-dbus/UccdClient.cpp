@@ -835,7 +835,8 @@ std::optional< int > readFanDataValue( QDBusInterface *iface, const QString &met
     qint64 ts = innerMap.value( "timestamp" ).toLongLong();
     if ( ts == 0 )
     {
-      qDebug() << "[UccdClient] readFanDataValue: key" << key << "has timestamp 0 - treating as missing";
+      // Silently treat as missing data - this is normal during startup
+      // before fan monitoring worker has collected initial readings
       return std::nullopt;
     }
   }
