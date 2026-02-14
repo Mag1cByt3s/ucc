@@ -646,8 +646,8 @@ void ProfileManager::saveCustomProfilesToSettings()
 {
   QJsonDocument doc(m_customProfilesData);
   QString jsonStr = doc.toJson(QJsonDocument::Compact);
-  qDebug() << "Saving custom profiles to settings file:" << m_settings->fileName();
-  qDebug() << "JSON:" << jsonStr;
+  //qDebug() << "Saving custom profiles to settings file:" << m_settings->fileName();
+  //qDebug() << "JSON:" << jsonStr;
   m_settings->setValue("customProfiles", jsonStr);
   
   // Save stateMap
@@ -658,7 +658,6 @@ void ProfileManager::saveCustomProfilesToSettings()
   
   m_settings->sync();
   qDebug() << "QSettings sync completed";
-  
   qDebug() << "Saved" << m_customProfilesData.size() << "custom profiles to local storage";
 }
 

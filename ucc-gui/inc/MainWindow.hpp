@@ -108,7 +108,7 @@ namespace ucc
         int temp;
         int speed;
     };
-    
+
     void setupUI();
     void setupDashboardPage();
     void setupProfilesPage();
@@ -157,7 +157,7 @@ namespace ucc
     QPushButton *m_mainsButton = nullptr;
     QPushButton *m_batteryButton = nullptr;
     QPushButton *m_waterCoolerButton = nullptr;
-    
+
     constexpr bool profileTopWidgetsAvailable() const
     { return m_applyButton && m_saveButton && m_copyProfileButton && m_removeProfileButton && m_profileCombo; }
 
@@ -171,7 +171,7 @@ namespace ucc
     QComboBox *m_profileChargingProfileCombo = nullptr;
     QComboBox *m_profileChargingPriorityCombo = nullptr;
     QComboBox *m_profileChargeLimitCombo = nullptr;
-    
+
     // Fan control widgets (profile page)
     QSlider *m_offsetFanSpeedSlider = nullptr;
     QLabel *m_offsetFanSpeedValue = nullptr;
@@ -184,7 +184,7 @@ namespace ucc
 
     // Fan control tab (owns editors, combo, buttons, water cooler hw controls)
     FanControlTab *m_fanControlTab = nullptr;
-    
+
     // CPU frequency control widgets
     QSlider *m_cpuCoresSlider = nullptr;
     QLabel *m_cpuCoresValue = nullptr;
@@ -193,7 +193,16 @@ namespace ucc
     QLabel *m_minFrequencyValue = nullptr;
     QSlider *m_maxFrequencySlider = nullptr;
     QLabel *m_maxFrequencyValue = nullptr;
-    
+    QVector< int > m_availableFrequenciesMHz;  // Available CPU frequencies in MHz
+
+    /**
+     * @brief Snap a frequency value to the closest available hardware frequency.
+     *
+     * If the available-frequencies list is empty the input value is returned
+     * unchanged so the caller can always use the result directly.
+     */
+    int snapToAvailableFrequency( int valueMHz ) const;
+
     // ODM Power Limit (TDP) widgets
     QSlider *m_odmPowerLimit1Slider = nullptr;
     QLabel *m_odmPowerLimit1Value = nullptr;
@@ -201,27 +210,27 @@ namespace ucc
     QLabel *m_odmPowerLimit2Value = nullptr;
     QSlider *m_odmPowerLimit3Slider = nullptr;
     QLabel *m_odmPowerLimit3Value = nullptr;
-    
+
     // GPU power control
     QSlider *m_gpuPowerSlider = nullptr;
     QLabel *m_gpuPowerValue = nullptr;
-    
+
     // Keyboard backlight widgets
     QSlider *m_keyboardBrightnessSlider = nullptr;
     QLabel *m_keyboardBrightnessValueLabel = nullptr;
     QPushButton *m_keyboardColorButton = nullptr;
     KeyboardVisualizerWidget *m_keyboardVisualizer = nullptr;
-    
+
     // Keyboard profile widgets
     QComboBox *m_keyboardProfileCombo = nullptr;
     QPushButton *m_addKeyboardProfileButton = nullptr;
     QPushButton *m_copyKeyboardProfileButton = nullptr;
     QPushButton *m_saveKeyboardProfileButton = nullptr;
     QPushButton *m_removeKeyboardProfileButton = nullptr;
-    
+
     // Keyboard color widgets
     QLabel *m_keyboardColorLabel = nullptr;
-    
+
     // Change tracking
     bool m_profileChanged = false;
     QString m_currentLoadedProfile;

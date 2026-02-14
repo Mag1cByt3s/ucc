@@ -388,14 +388,14 @@ const std::map< UniwillDeviceID, std::vector< UccProfile > > deviceProfiles =
   { UniwillDeviceID::STEPOL1XA04, { maxEnergySave, silent, office, highPerformance } },
   { UniwillDeviceID::STELLARIS1XA05, { maxEnergySave, silent, office, highPerformance } },
 
-  { UniwillDeviceID::STELLARIS16I06, { maxEnergySave, silent, office, highPerformance } },
+  { UniwillDeviceID::STELLARIS16I06, { silent, office, highPerformance } },
   { UniwillDeviceID::STELLARIS17I06, { maxEnergySave, silent, office, highPerformance } },
 
-  { UniwillDeviceID::XNE16E25, { maxEnergySave, silent, office, highPerformance } },
+  { UniwillDeviceID::XNE16E25, { silent, office, highPerformance } },
   { UniwillDeviceID::XNE16A25, { maxEnergySave, silent, office, highPerformance } },
 
+  { UniwillDeviceID::STELLARIS16I07, { silent, office, highPerformance } },
   { UniwillDeviceID::STELLARIS16A07, { maxEnergySave, silent, office, highPerformance } },
-  { UniwillDeviceID::STELLARIS16I07, { maxEnergySave, silent, office, highPerformance } },
 };
 
 // device-specific custom profile defaults

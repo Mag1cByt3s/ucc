@@ -119,6 +119,16 @@ static int32_t getCpuMaxFrequency()
   return readSysFsInt( "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", -1 );
 }
 
+static std::vector< int32_t > getCpuAvailableFrequencies()
+{
+  // Use SysfsNode to read available frequencies
+  SysfsNode< std::vector< int32_t > > availableFreqsNode(
+    "/sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies", " " );
+  
+  auto frequencies = availableFreqsNode.read();
+  return frequencies.has_value() ? *frequencies : std::vector< int32_t >();
+}
+
 static int32_t optionalValueOr( const std::optional< int32_t > &value, int32_t fallback )
 {
   return value.has_value() ? value.value() : fallback;
@@ -712,9 +722,25 @@ QString UccDBusInterfaceAdaptor::GetCpuFrequencyLimitsJSON()
 {
   const int32_t minFreq = getCpuMinFrequency();
   const int32_t maxFreq = getCpuMaxFrequency();
+  const auto availableFreqs = getCpuAvailableFrequencies();
   
   std::ostringstream json;
-  json << "{\"min\":" << minFreq << ",\"max\":" << maxFreq << "}";
+  json << "{\"min\":" << minFreq << ",\"max\":" << maxFreq;
+  
+  // Include available frequencies array if present
+  if ( !availableFreqs.empty() )
+  {
+    json << ",\"available\":[";
+    for ( size_t i = 0; i < availableFreqs.size(); ++i )
+    {
+      if ( i > 0 )
+        json << ",";
+      json << availableFreqs[ i ];
+    }
+    json << "]";
+  }
+  
+  json << "}";
   return QString::fromStdString( json.str() );
 }
 
@@ -2063,7 +2089,10 @@ void UccDBusService::onWork()
     if ( newState != m_currentState )
     {
       m_currentState = newState;
-      m_currentStateProfileId = m_settings.stateMap[stateKey];
+
+      // Update m_currentStateProfileId only if the state is mapped
+      auto it = m_settings.stateMap.find( stateKey );
+      m_currentStateProfileId = ( it != m_settings.stateMap.end() ) ? it->second : std::string();
       
       std::cout << "[State] Power state changed to " << stateKey << std::endl;
       
@@ -2961,18 +2990,9 @@ void UccDBusService::loadSettings()
     // This prevents the empty file overwrite bug on daemon restart.
     m_settings = TccSettings();
     
-    // Set both AC, battery and water cooler to the default custom profile (in memory only)
-    auto allProfiles = getAllProfiles();
-    if ( !allProfiles.empty() )
-    {
-      m_settings.stateMap["power_ac"] = allProfiles[0].id;
-      m_settings.stateMap["power_bat"] = allProfiles[0].id;
-      m_settings.stateMap["power_wc"] = allProfiles[0].id;
-    }
-    
-    // DO NOT call writeSettings() here - wait until profiles are actually saved
-    // This prevents creating an empty file on first start
-    std::cout << "[Settings] Using in-memory defaults (settings file will be created on first save)" << std::endl;
+    // No settings file – stateMap stays empty.
+    // uccd will not apply any profile until ucc-gui explicitly assigns one.
+    std::cout << "[Settings] No settings file found. Waiting for ucc-gui to assign profiles." << std::endl;
     updateDBusSettingsData();
   }
   
@@ -3003,18 +3023,11 @@ void UccDBusService::loadSettings()
   
   for ( const auto &stateKey : { "power_ac", "power_bat", "power_wc" } )
   {
-    // check if state key exists in map
+    // check if state key exists in map – if not, leave it unassigned
     if ( m_settings.stateMap.find( stateKey ) == m_settings.stateMap.end() )
     {
-      std::cout << "[Settings] Missing state id assignment for '" 
-                << stateKey << "' default to first profile" << std::endl;
-
-      if ( not allProfiles.empty() )
-      {
-        m_settings.stateMap[stateKey] = allProfiles[0].id;
-        settingsChanged = true;
-      }
-
+      std::cout << "[Settings] No profile assigned to state '"
+                << stateKey << "', waiting for ucc-gui" << std::endl;
       continue;
     }
 
@@ -3056,13 +3069,9 @@ void UccDBusService::loadSettings()
     if ( not profileExists )
     {
       std::cout << "[Settings] Profile ID '" << profileId << "' for state '" 
-                << stateKey << "' not found, resetting to default" << std::endl;
-      
-      if ( not allProfiles.empty() )
-      {
-        profileId = allProfiles[0].id;
-        settingsChanged = true;
-      }
+                << stateKey << "' not found, removing assignment" << std::endl;
+      m_settings.stateMap.erase( stateKey );
+      settingsChanged = true;
     }
   }
   
