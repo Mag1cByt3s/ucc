@@ -194,8 +194,6 @@ void MainWindow::connectFanControlTab()
            this, &MainWindow::onApplyFanProfilesClicked );
   connect( m_fanControlTab, &FanControlTab::saveRequested,
            this, &MainWindow::onSaveFanProfilesClicked );
-  connect( m_fanControlTab, &FanControlTab::addRequested,
-           this, &MainWindow::onAddFanProfileClicked );
   connect( m_fanControlTab, &FanControlTab::copyRequested,
            this, &MainWindow::onCopyFanProfileClicked );
 
@@ -968,6 +966,10 @@ void MainWindow::connectSignals()
 
   connectKeyboardBacklightPageWidgets();
 
+  // Sync profile page keyboard combo (auto-created "Current" may have been
+  // added before the customKeyboardProfilesChanged signal was connected)
+  onCustomKeyboardProfilesChanged();
+
   // Initial load of fan profiles (may be empty if service not yet available)
   reloadFanProfiles();
 
@@ -1003,14 +1005,30 @@ void MainWindow::onTabChanged( int index )
     {
       if ( auto states = m_UccdClient->getKeyboardBacklightStates() )
       {
+        // Block visualizer signals to prevent hardware write during state refresh
+        m_keyboardVisualizer->blockSignals( true );
         m_keyboardVisualizer->loadCurrentStates( *states );
-        qDebug() << "Loaded current keyboard backlight states";
-      }
 
-      // Apply current brightness to visualizer
-      if ( m_keyboardBrightnessSlider )
-      {
+        // Read brightness from hardware states and sync slider
+        QJsonDocument statesDoc = QJsonDocument::fromJson( QString::fromStdString( *states ).toUtf8() );
+        if ( statesDoc.isArray() && !statesDoc.array().isEmpty() )
+        {
+          int hwBrightness = statesDoc.array()[0].toObject()["brightness"].toInt( -1 );
+          qDebug() << "[KBD TAB] hw brightness:" << hwBrightness
+                   << "slider current:" << m_keyboardBrightnessSlider->value()
+                   << "slider max:" << m_keyboardBrightnessSlider->maximum();
+          if ( hwBrightness >= 0 && m_keyboardBrightnessSlider )
+          {
+            m_keyboardBrightnessSlider->blockSignals( true );
+            m_keyboardBrightnessSlider->setValue( hwBrightness );
+            m_keyboardBrightnessSlider->blockSignals( false );
+            m_keyboardBrightnessValueLabel->setText( QString::number( hwBrightness ) );
+          }
+        }
+
+        // ALWAYS override per-zone brightness with slider value to guarantee sync
         m_keyboardVisualizer->setGlobalBrightness( m_keyboardBrightnessSlider->value() );
+        m_keyboardVisualizer->blockSignals( false );
       }
     }
 
@@ -1608,24 +1626,10 @@ void MainWindow::loadProfileDetails( const QString &profileId )
     }
   }
 
-  // Load keyboard profile colors and brightness
-  if ( obj.contains( "keyboard" ) && obj["keyboard"].isObject() )
-  {
-    QJsonObject keyboardObj = obj["keyboard"].toObject();
-
-    // Load brightness if present
-    if ( keyboardObj.contains( "brightness" ) && m_keyboardBrightnessSlider )
-    {
-      int brightness = keyboardObj["brightness"].toInt( m_keyboardBrightnessSlider->maximum() / 2 );
-      m_keyboardBrightnessSlider->setValue( brightness );
-    }
-
-    // Load key colors if present
-    if ( keyboardObj.contains( "states" ) && keyboardObj["states"].isArray() && m_keyboardVisualizer )
-    {
-      m_keyboardVisualizer->updateFromJSON( keyboardObj["states"].toArray() );
-    }
-  }
+  // Keyboard brightness and colors are managed by the keyboard profile system
+  // (via selectedKeyboardProfile), not directly from system profile data.
+  // Legacy "keyboard" object in profiles is ignored to avoid overriding
+  // the hardware brightness with stale saved values.
 
   // Load power state activation settings
   QString settingsJson = m_profileManager->getSettingsJSON();
@@ -2025,6 +2029,10 @@ void MainWindow::onCopyProfileClicked()
 {
   QString current = m_profileCombo->currentText();
 
+  // Strip " [Built-in]" suffix if present (built-in profiles shouldn't keep this marker when copied)
+  if ( current.endsWith( " [Built-in]" ) )
+    current = current.left( current.size() - 11 ); // 11 is length of " [Built-in]"
+
   // Allow copying any profile (built-in or custom)
   QString profileId = m_profileCombo->currentData().toString();
   QString json = m_profileManager->getProfileDetails(profileId);
@@ -2044,24 +2052,14 @@ void MainWindow::onCopyProfileClicked()
   // Generate a new unique ID for the copied profile
   obj["id"] = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
-  // Generate new name by incrementing number
-  QString baseName = current;
-  int number = 0;
-  int lastSpace = current.lastIndexOf(' ');
-  if (lastSpace > 0) {
-    QString after = current.mid(lastSpace + 1);
-    bool ok;
-    int num = after.toInt(&ok);
-    if (ok) {
-      baseName = current.left(lastSpace);
-      number = num;
-    }
+  // Generate new name: "New {name}" with optional incrementing number
+  QString baseName = QString("New %1").arg(current);
+  QString newName = baseName;
+  int counter = 1;
+  while (m_profileManager->allProfiles().contains(newName)) {
+    newName = QString("%1 %2").arg(baseName).arg(counter);
+    counter++;
   }
-  QString newName;
-  do {
-    number++;
-    newName = QString("%1 %2").arg(baseName).arg(number);
-  } while (m_profileManager->allProfiles().contains(newName));
 
   // Set new name
   obj["name"] = newName;
@@ -2185,25 +2183,6 @@ void MainWindow::onKeyboardProfileComboRenamed()
     m_keyboardProfileCombo->setEditText( oldName );
     statusBar()->showMessage( "Failed to rename keyboard profile", 3000 );
   }
-}
-
-void MainWindow::onAddFanProfileClicked()
-{
-  // Generate a unique fan profile name
-  QString baseName = "Custom Fan Profile";
-  QString profileName;
-  int counter = 1;
-
-  do {
-    profileName = QString("%1 %2").arg(baseName).arg(counter);
-    counter++;
-  } while (m_fanControlTab->fanProfileCombo()->findText(profileName) != -1);
-
-  // Add to combo with generated ID
-  QString newId = QUuid::createUuid().toString( QUuid::WithoutBraces );
-  m_fanControlTab->fanProfileCombo()->addItem(profileName, newId);
-  m_fanControlTab->fanProfileCombo()->setCurrentText(profileName);
-  statusBar()->showMessage( QString("Fan profile '%1' created").arg(profileName) );
 }
 
 void MainWindow::onRemoveFanProfileClicked()
@@ -2330,7 +2309,7 @@ void MainWindow::onFanProfileChanged(const QString& fanProfileId)
   m_profileFanProfileCombo->blockSignals(false);
 
   // Set editors editable only for custom profiles (those not in built-ins)
-  bool isEditable = !m_fanControlTab->builtinFanProfiles().contains( m_profileFanProfileCombo->currentText() );
+  bool isEditable = !m_fanControlTab->builtinFanProfiles().contains( fanProfileId );
   m_fanControlTab->setEditorsEditable( isEditable );
 
   // Update button states
@@ -2406,7 +2385,15 @@ void MainWindow::onPumpPointsChanged(const QVector<PumpCurveEditorWidget::Point>
 void MainWindow::onCopyFanProfileClicked()
 {
   QString currentProfileId = m_fanControlTab->fanProfileCombo()->currentData().toString();
-  if ( currentProfileId.isEmpty() ) return;
+
+  if ( currentProfileId.isEmpty() )
+    return;
+
+  // Get the current profile name and strip " [Built-in]" suffix if present
+  QString currentName = m_fanControlTab->fanProfileCombo()->currentText(); 
+
+  if ( currentName.endsWith(" [Built-in]") )
+    currentName = currentName.left( currentName.size() - 11 ); // 11 is length of " [Built-in]" 
 
   // Get the current profile data
   QString json = m_profileManager->getFanProfile( currentProfileId );
@@ -2415,14 +2402,14 @@ void MainWindow::onCopyFanProfileClicked()
     return;
   }
 
-  // Generate a unique custom fan profile name
-  QString baseName = "Custom Fan Profile";
-  QString profileName;
+  // Generate new name: "New {name}" with optional incrementing number
+  QString baseName = QString("New %1").arg(currentName);
+  QString profileName = baseName;
   int counter = 1;
-  do {
+  while ( m_fanControlTab->fanProfileCombo()->findText( profileName ) != -1 ) {
     profileName = QString("%1 %2").arg(baseName).arg(counter);
     counter++;
-  } while ( m_fanControlTab->fanProfileCombo()->findText( profileName ) != -1 );
+  }
 
   // Save it under the new name with a new ID
   QString newId = QUuid::createUuid().toString( QUuid::WithoutBraces );
@@ -2430,7 +2417,10 @@ void MainWindow::onCopyFanProfileClicked()
     m_fanControlTab->fanProfileCombo()->addItem( profileName, newId );
     if ( m_profileFanProfileCombo && m_profileFanProfileCombo->findText( profileName ) == -1 )
       m_profileFanProfileCombo->addItem( profileName, newId );
-    m_fanControlTab->fanProfileCombo()->setCurrentText( profileName );
+    // Select by index so currentIndexChanged fires and editability is updated
+    int newIdx = m_fanControlTab->fanProfileCombo()->findData( newId );
+    if ( newIdx >= 0 )
+      m_fanControlTab->fanProfileCombo()->setCurrentIndex( newIdx );
     statusBar()->showMessage( QString("Copied fan profile to '%1'").arg(profileName) );
   }
   else {
@@ -2676,7 +2666,7 @@ void MainWindow::saveFanPoints()
     return;
   }
 
-  if ( m_fanControlTab->builtinFanProfiles().contains( currentName ) ) {
+  if ( m_fanControlTab->builtinFanProfiles().contains( currentId ) ) {
     QMessageBox::warning(this, "Save Failed", "Cannot overwrite built-in fan profile. Copy it to a custom profile first.");
     return;
   }
