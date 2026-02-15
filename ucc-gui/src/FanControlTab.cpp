@@ -106,9 +106,6 @@ void FanControlTab::setupUI()
   m_saveFanProfilesButton->setMaximumWidth( 80 );
   m_saveFanProfilesButton->setEnabled( false );
 
-  m_addFanProfileButton = new QPushButton( "Add" );
-  m_addFanProfileButton->setMaximumWidth( 60 );
-
   m_copyFanProfileButton = new QPushButton( "Copy" );
   m_copyFanProfileButton->setMaximumWidth( 60 );
   m_copyFanProfileButton->setEnabled( false );
@@ -120,7 +117,6 @@ void FanControlTab::setupUI()
   selectLayout->addWidget( m_fanProfileCombo, 1 );
   selectLayout->addWidget( m_applyFanProfilesButton );
   selectLayout->addWidget( m_saveFanProfilesButton );
-  selectLayout->addWidget( m_addFanProfileButton );
   selectLayout->addWidget( m_copyFanProfileButton );
   selectLayout->addWidget( m_removeFanProfileButton );
   mainLayout->addLayout( selectLayout );
@@ -299,8 +295,6 @@ void FanControlTab::connectSignals()
            this, &FanControlTab::applyRequested );
   connect( m_saveFanProfilesButton, &QPushButton::clicked,
            this, &FanControlTab::saveRequested );
-  connect( m_addFanProfileButton, &QPushButton::clicked,
-           this, &FanControlTab::addRequested );
   connect( m_copyFanProfileButton, &QPushButton::clicked,
            this, &FanControlTab::copyRequested );
   connect( m_removeFanProfileButton, &QPushButton::clicked,

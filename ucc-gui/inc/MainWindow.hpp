@@ -80,7 +80,6 @@ namespace ucc
     void onAddProfileClicked();
     void onCopyProfileClicked();
     void onRemoveProfileClicked();
-    void onAddFanProfileClicked();
     void onRemoveFanProfileClicked();
     void onCpuFanPointsChanged(const QVector<FanCurveEditorWidget::Point>& points);
     void onGpuFanPointsChanged(const QVector<FanCurveEditorWidget::Point>& points);
@@ -95,7 +94,6 @@ namespace ucc
     void onKeyboardColorClicked();
     void onKeyboardVisualizerColorsChanged();
     void onKeyboardProfileChanged(const QString& profileId);
-    void onAddKeyboardProfileClicked();
     void onCopyKeyboardProfileClicked();
     void onSaveKeyboardProfileClicked();
     void onRemoveKeyboardProfileClicked();
@@ -223,7 +221,6 @@ namespace ucc
 
     // Keyboard profile widgets
     QComboBox *m_keyboardProfileCombo = nullptr;
-    QPushButton *m_addKeyboardProfileButton = nullptr;
     QPushButton *m_copyKeyboardProfileButton = nullptr;
     QPushButton *m_saveKeyboardProfileButton = nullptr;
     QPushButton *m_removeKeyboardProfileButton = nullptr;

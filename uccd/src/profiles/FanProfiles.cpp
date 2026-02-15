@@ -59,7 +59,7 @@ const std::vector< FanProfile > defaultFanProfiles = {
   // Silent profile
   FanProfile(
     DefaultFanProfileIDs::Silent,
-    "Silent",
+    "Silent [Built-in]",
     {
       { 20, 0 }, { 25, 0 }, { 30, 0 }, { 35, 0 }, { 40, 0 }, { 45, 0 },
       { 50, 0 }, { 55, 0 }, { 60, 0 }, { 65, 20 }, { 70, 28 }, { 75, 40 },
@@ -84,7 +84,7 @@ const std::vector< FanProfile > defaultFanProfiles = {
   // Quiet profile
   FanProfile(
     DefaultFanProfileIDs::Quiet,
-    "Quiet",
+    "Quiet [Built-in]",
     {
       { 20, 0 }, { 25, 0 }, { 30, 0 }, { 35, 0 }, { 40, 0 }, { 45, 0 },
       { 50, 0 }, { 55, 10 }, { 60, 20 }, { 65, 24 }, { 70, 33 }, { 75, 46 },
@@ -109,7 +109,7 @@ const std::vector< FanProfile > defaultFanProfiles = {
   // Balanced profile
   FanProfile(
     DefaultFanProfileIDs::Balanced,
-    "Balanced",
+    "Balanced [Built-in]",
     {
       { 20, 0 }, { 25, 0 }, { 30, 0 }, { 35, 0 }, { 40, 0 }, { 45, 0 },
       { 50, 17 }, { 55, 25 }, { 60, 31 }, { 65, 38 }, { 70, 50 }, { 75, 55 },
@@ -134,7 +134,7 @@ const std::vector< FanProfile > defaultFanProfiles = {
   // Cool profile
   FanProfile(
     DefaultFanProfileIDs::Cool,
-    "Cool",
+    "Cool [Built-in]",
     {
       { 20, 0 }, { 25, 0 }, { 30, 0 }, { 35, 0 }, { 40, 3 }, { 45, 20 },
       { 50, 25 }, { 55, 29 }, { 60, 35 }, { 65, 43 }, { 70, 50 }, { 75, 58 },
@@ -159,7 +159,7 @@ const std::vector< FanProfile > defaultFanProfiles = {
   // Freezy profile
   FanProfile(
     DefaultFanProfileIDs::Freezy,
-    "Freezy",
+    "Freezy [Built-in]",
     {
       { 20, 20 }, { 25, 20 }, { 30, 21 }, { 35, 23 }, { 40, 26 }, { 45, 30 },
       { 50, 40 }, { 55, 40 }, { 60, 45 }, { 65, 50 }, { 70, 55 }, { 75, 60 },
