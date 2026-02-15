@@ -5,6 +5,19 @@ let
   cfg = config.services.uccd;
   extraArgsString =
     lib.concatStringsSep " " (map lib.escapeShellArg cfg.extraArgs);
+  videoDrivers = config.services.xserver.videoDrivers or [ ];
+  nvidiaPackage = lib.attrByPath [ "hardware" "nvidia" "package" ] null config;
+  nvidiaBinPath =
+    lib.optionalString (nvidiaPackage != null && lib.elem "nvidia" videoDrivers)
+      ":${lib.makeBinPath [ nvidiaPackage ]}";
+  uccdToolsPath = lib.makeBinPath [
+    pkgs.coreutils
+    pkgs.gawk
+    pkgs.gnugrep
+    pkgs.procps
+    pkgs.util-linux
+    pkgs.which
+  ];
 in
 {
   options.services.uccd = {
@@ -55,6 +68,9 @@ in
         ExecStart =
           "${cfg.package}/bin/uccd --start"
           + lib.optionalString (cfg.extraArgs != [ ]) " ${extraArgsString}";
+        Environment = [
+          "PATH=/run/wrappers/bin:/run/current-system/sw/bin:${uccdToolsPath}${nvidiaBinPath}"
+        ];
         Restart = "on-failure";
         RestartSec = "5s";
         TimeoutStopSec = "10s";
