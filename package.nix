@@ -1,8 +1,12 @@
 { lib
 , cmake
+, coreutils
 , extra-cmake-modules
+, gawk
 , kdePackages
 , kf6 ? null
+, gnugrep
+, procps
 , stdenv
 , nlohmann_json
 , pkg-config
@@ -57,6 +61,8 @@ stdenv.mkDerivation {
       --set QT_QPA_PLATFORM_PLUGIN_PATH "${kdePackages.qtbase}/lib/qt-6/plugins"
     wrapProgram $out/bin/ucc-tray \
       --set QT_QPA_PLATFORM_PLUGIN_PATH "${kdePackages.qtbase}/lib/qt-6/plugins"
+    wrapProgram $out/bin/uccd \
+      --prefix PATH : "${lib.makeBinPath [ coreutils gawk gnugrep procps ]}"
 
     # The upstream unit/DBus activation files use /usr/bin paths which do not
     # exist on NixOS. Keep the files installed by CMake, but patch paths to the

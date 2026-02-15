@@ -50,6 +50,13 @@ in
       requires = [ "dbus.service" ];
       wantedBy = [ "multi-user.target" ];
 
+      path = [
+        pkgs.coreutils
+        pkgs.gawk
+        pkgs.gnugrep
+        pkgs.procps
+      ];
+
       serviceConfig = {
         Type = "simple";
         ExecStart =
