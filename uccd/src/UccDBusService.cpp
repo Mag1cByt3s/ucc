@@ -121,16 +121,6 @@ static int32_t getCpuMaxFrequency()
   return readSysFsInt( "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", -1 );
 }
 
-static std::vector< int32_t > getCpuAvailableFrequencies()
-{
-  // Use SysfsNode to read available frequencies
-  SysfsNode< std::vector< int32_t > > availableFreqsNode(
-    "/sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies", " " );
-  
-  auto frequencies = availableFreqsNode.read();
-  return frequencies.has_value() ? *frequencies : std::vector< int32_t >();
-}
-
 static int32_t optionalValueOr( const std::optional< int32_t > &value, int32_t fallback )
 {
   return value.has_value() ? value.value() : fallback;
@@ -724,25 +714,9 @@ QString UccDBusInterfaceAdaptor::GetCpuFrequencyLimitsJSON()
 {
   const int32_t minFreq = getCpuMinFrequency();
   const int32_t maxFreq = getCpuMaxFrequency();
-  const auto availableFreqs = getCpuAvailableFrequencies();
   
   std::ostringstream json;
-  json << "{\"min\":" << minFreq << ",\"max\":" << maxFreq;
-  
-  // Include available frequencies array if present
-  if ( !availableFreqs.empty() )
-  {
-    json << ",\"available\":[";
-    for ( size_t i = 0; i < availableFreqs.size(); ++i )
-    {
-      if ( i > 0 )
-        json << ",";
-      json << availableFreqs[ i ];
-    }
-    json << "]";
-  }
-  
-  json << "}";
+  json << "{\"min\":" << minFreq << ",\"max\":" << maxFreq << "}";
   return QString::fromStdString( json.str() );
 }
 

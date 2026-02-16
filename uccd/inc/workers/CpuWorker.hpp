@@ -139,6 +139,7 @@ private:
   std::optional< std::string > m_defaultGovernor;
 
   static constexpr int maxReapplyAttempts = 3;
+  static constexpr int freqToleranceKHz = 1000;  // allow ±1 MHz for hardware frequency snapping
 
   const std::vector< std::string > m_preferredAcpiFreqGovernors = {
     "ondemand", "schedutil", "conservative"
@@ -282,12 +283,13 @@ private:
       {
         if ( core.coreIndex == 0 or core.online.read().value_or( false ) )
         {
-          // check minimum frequency
+          // check minimum frequency (allow tolerance — daemon snaps to nearest available)
           if ( profile.cpu.scalingMinFrequency.has_value() )
           {
             auto currentMin = core.scalingMinFreq.read();
 
-            if ( currentMin.has_value() and *currentMin != *profile.cpu.scalingMinFrequency )
+            if ( currentMin.has_value()
+                 and std::abs( static_cast< int >( *currentMin ) - static_cast< int >( *profile.cpu.scalingMinFrequency ) ) > freqToleranceKHz )
             {
               logLine( "CpuWorker: Unexpected value core" + std::to_string( core.coreIndex )
                        + " minimum scaling frequency " + std::to_string( *currentMin )
@@ -296,12 +298,13 @@ private:
             }
           }
 
-          // check maximum frequency
+          // check maximum frequency (allow tolerance — daemon snaps to nearest available)
           if ( profile.cpu.scalingMaxFrequency.has_value() )
           {
             auto currentMax = core.scalingMaxFreq.read();
 
-            if ( currentMax.has_value() and *currentMax != *profile.cpu.scalingMaxFrequency )
+            if ( currentMax.has_value()
+                 and std::abs( static_cast< int >( *currentMax ) - static_cast< int >( *profile.cpu.scalingMaxFrequency ) ) > freqToleranceKHz )
             {
               logLine( "CpuWorker: Unexpected value core" + std::to_string( core.coreIndex )
                        + " maximum scaling frequency " + std::to_string( *currentMax )

@@ -30,6 +30,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <algorithm>
 
 // Helper widget for rotated y-axis label
 class RotatedLabel : public QLabel
@@ -647,30 +648,30 @@ void MainWindow::setupProfilesPage()
   QLabel *minFreqLabel = new QLabel( "Minimum frequency" );
   QHBoxLayout *minFreqLayout = new QHBoxLayout();
   m_minFrequencySlider = new QSlider( Qt::Horizontal );
-  m_minFrequencySlider->setSingleStep( 100 ); // 100 MHz steps
+  m_minFrequencySlider->setSingleStep( 100000 ); // 100 MHz steps (in kHz)
 
   // Get hardware frequency limits and initialize slider with actual values
-  int minFreqMHz = 400;  // fallback
-  int maxFreqMHz = 6000; // fallback
+  int minFreqKHz = 400000;  // fallback
+  int maxFreqKHz = 6000000; // fallback
   if ( auto limitsJson = m_UccdClient->getCpuFrequencyLimitsJSON() )
   {
     QJsonDocument doc = QJsonDocument::fromJson( limitsJson->c_str() );
     if ( doc.isObject() )
     {
       QJsonObject limitsObj = doc.object();
-      int minFreqKHz = limitsObj["min"].toInt( 400000 );
-      int maxFreqKHz = limitsObj["max"].toInt( 6000000 );
-      minFreqMHz = minFreqKHz / 1000;
-      maxFreqMHz = maxFreqKHz / 1000;
+      minFreqKHz = limitsObj["min"].toInt( 400000 );
+      maxFreqKHz = limitsObj["max"].toInt( 6000000 );
+      m_cpuMinFreqKHz = minFreqKHz;
+      m_cpuMaxFreqKHz = maxFreqKHz;
     }
   }
-  m_minFrequencySlider->setMinimum( minFreqMHz );
-  m_minFrequencySlider->setMaximum( maxFreqMHz );
-  m_minFrequencySlider->setValue( minFreqMHz );
+  m_minFrequencySlider->setMinimum( minFreqKHz );
+  m_minFrequencySlider->setMaximum( maxFreqKHz );
+  m_minFrequencySlider->setValue( minFreqKHz );
 
   m_minFrequencyValue = new QLabel();
   m_minFrequencyValue->setMinimumWidth( 60 );
-  double freqGHz = minFreqMHz / 1000.0;
+  double freqGHz = minFreqKHz / 1000000.0;
   m_minFrequencyValue->setText( QString::number( freqGHz, 'f', 2 ) + " GHz" );
 
   minFreqLayout->addWidget( m_minFrequencySlider, 1 );
@@ -682,14 +683,14 @@ void MainWindow::setupProfilesPage()
   QLabel *maxFreqLabel = new QLabel( "Maximum frequency" );
   QHBoxLayout *maxFreqLayout = new QHBoxLayout();
   m_maxFrequencySlider = new QSlider( Qt::Horizontal );
-  m_maxFrequencySlider->setSingleStep( 100 ); // 100 MHz steps
-  m_maxFrequencySlider->setMinimum( minFreqMHz );
-  m_maxFrequencySlider->setMaximum( maxFreqMHz );
-  m_maxFrequencySlider->setValue( maxFreqMHz );
+  m_maxFrequencySlider->setSingleStep( 100000 ); // 100 MHz steps (in kHz)
+  m_maxFrequencySlider->setMinimum( minFreqKHz );
+  m_maxFrequencySlider->setMaximum( maxFreqKHz );
+  m_maxFrequencySlider->setValue( maxFreqKHz );
 
   m_maxFrequencyValue = new QLabel();
   m_maxFrequencyValue->setMinimumWidth( 60 );
-  freqGHz = maxFreqMHz / 1000.0;
+  freqGHz = maxFreqKHz / 1000000.0;
   m_maxFrequencyValue->setText( QString::number( freqGHz, 'f', 2 ) + " GHz" );
   maxFreqLayout->addWidget( m_maxFrequencySlider, 1 );
   maxFreqLayout->addWidget( m_maxFrequencyValue );
@@ -794,23 +795,8 @@ void MainWindow::connectSignals()
 
   connect( m_minFrequencySlider, &QSlider::valueChanged,
            this, [this]( int value ) {
-    double freqGHz = value / 1000.0;  // Convert MHz to GHz for display
+    double freqGHz = value / 1000000.0;  // Convert kHz to GHz for display
     m_minFrequencyValue->setText( QString::number( freqGHz, 'f', 2 ) + " GHz" );
-  } );
-
-  // Snap to nearest available frequency when user releases slider
-  connect( m_minFrequencySlider, &QSlider::sliderReleased,
-           this, [this]() {
-    int currentValue = m_minFrequencySlider->value();
-    if ( int snapped = snapToAvailableFrequency( currentValue ); snapped != currentValue )
-      m_minFrequencySlider->setValue( snapped );
-  } );
-
-  connect( m_maxFrequencySlider, &QSlider::sliderReleased,
-           this, [this]() {
-    int currentValue = m_maxFrequencySlider->value();
-    if ( int snapped = snapToAvailableFrequency( currentValue ); snapped != currentValue )
-      m_maxFrequencySlider->setValue( snapped );
   } );
 
   // Enforce min <= max for frequency sliders
@@ -1201,29 +1187,8 @@ void MainWindow::onCpuCoresChanged( int value )
 
 void MainWindow::onMaxFrequencyChanged( int value )
 {
-  double freqGHz = value / 1000.0;  // Convert MHz to GHz for display
+  double freqGHz = value / 1000000.0;  // Convert kHz to GHz for display
   m_maxFrequencyValue->setText( QString::number( freqGHz, 'f', 2 ) + " GHz" );
-}
-
-int MainWindow::snapToAvailableFrequency( int valueMHz ) const
-{
-  if ( m_availableFrequenciesMHz.isEmpty() )
-    return valueMHz;
-
-  int closestMHz = m_availableFrequenciesMHz.first();
-  int minDiff = std::abs( valueMHz - closestMHz );
-
-  for ( int availMHz : m_availableFrequenciesMHz )
-  {
-    int diff = std::abs( valueMHz - availMHz );
-    if ( diff < minDiff )
-    {
-      minDiff = diff;
-      closestMHz = availMHz;
-    }
-  }
-
-  return closestMHz;
 }
 
 void MainWindow::onODMPowerLimit1Changed( int value )
@@ -1402,45 +1367,26 @@ void MainWindow::loadProfileDetails( const QString &profileId )
         int minFreqKHz = limitsObj["min"].toInt( 400000 );   // hardware min frequency in kHz
         int maxFreqKHz = limitsObj["max"].toInt( 6000000 );  // hardware max frequency in kHz
 
-        // Convert kHz to MHz for slider range
-        int minFreqMHz = minFreqKHz / 1000;
-        int maxFreqMHz = maxFreqKHz / 1000;
-
-        m_minFrequencySlider->setMinimum( minFreqMHz );
-        m_minFrequencySlider->setMaximum( maxFreqMHz );
-        m_maxFrequencySlider->setMinimum( minFreqMHz );
-        m_maxFrequencySlider->setMaximum( maxFreqMHz );
-
-        // Parse and store available frequencies (kHz -> MHz)
-        m_availableFrequenciesMHz.clear();
-        if ( limitsObj.contains( "available" ) && limitsObj["available"].isArray() )
-        {
-          QJsonArray availableArray = limitsObj["available"].toArray();
-          for ( const auto &freqValue : availableArray )
-          {
-            int freqKHz = freqValue.toInt();
-            int freqMHz = freqKHz / 1000;
-            if ( freqMHz >= minFreqMHz && freqMHz <= maxFreqMHz )
-            {
-              m_availableFrequenciesMHz.append( freqMHz );
-            }
-          }
-        }
+        m_cpuMinFreqKHz = minFreqKHz;
+        m_cpuMaxFreqKHz = maxFreqKHz;
+        m_minFrequencySlider->setMinimum( minFreqKHz );
+        m_minFrequencySlider->setMaximum( maxFreqKHz );
+        m_maxFrequencySlider->setMinimum( minFreqKHz );
+        m_maxFrequencySlider->setMaximum( maxFreqKHz );
       }
     }
 
     // Load frequency values in MHz (convert from kHz stored in profile)
-    // Snap to closest available frequency if we have the list
     if ( cpuObj.contains( "scalingMinFrequency" ) )
     {
-      int requestedMHz = cpuObj["scalingMinFrequency"].toInt( 1000000 ) / 1000;
-      m_minFrequencySlider->setValue( snapToAvailableFrequency( requestedMHz ) );
+      int requestedKHz = cpuObj["scalingMinFrequency"].toInt( 1000000 );
+      m_minFrequencySlider->setValue( requestedKHz );
     }
 
     if ( cpuObj.contains( "scalingMaxFrequency" ) )
     {
-      int requestedMHz = cpuObj["scalingMaxFrequency"].toInt( 5000000 ) / 1000;
-      m_maxFrequencySlider->setValue( snapToAvailableFrequency( requestedMHz ) );
+      int requestedKHz = cpuObj["scalingMaxFrequency"].toInt( 5000000 );
+      m_maxFrequencySlider->setValue( requestedKHz );
     }
   }
   else
@@ -1454,12 +1400,10 @@ void MainWindow::loadProfileDetails( const QString &profileId )
         QJsonObject limitsObj = doc.object();
         int minFreqKHz = limitsObj["min"].toInt( 400000 );
         int maxFreqKHz = limitsObj["max"].toInt( 6000000 );
-        int minFreqMHz = minFreqKHz / 1000;
-        int maxFreqMHz = maxFreqKHz / 1000;
-        m_minFrequencySlider->setMinimum( minFreqMHz );
-        m_minFrequencySlider->setMaximum( maxFreqMHz );
-        m_maxFrequencySlider->setMinimum( minFreqMHz );
-        m_maxFrequencySlider->setMaximum( maxFreqMHz );
+        m_minFrequencySlider->setMinimum( minFreqKHz );
+        m_minFrequencySlider->setMaximum( maxFreqKHz );
+        m_maxFrequencySlider->setMinimum( minFreqKHz );
+        m_maxFrequencySlider->setMaximum( maxFreqKHz );
       }
     }
   }
@@ -1862,8 +1806,8 @@ void MainWindow::onSaveClicked()
     QJsonObject cpuObj;
     cpuObj["onlineCores"] = m_cpuCoresSlider->value();
     cpuObj["governor"] = m_governorCombo->currentData().toString();
-    cpuObj["scalingMinFrequency"] = m_minFrequencySlider->value() * 1000;  // convert MHz to kHz
-    cpuObj["scalingMaxFrequency"] = m_maxFrequencySlider->value() * 1000;  // convert MHz to kHz
+    cpuObj["scalingMinFrequency"] = std::clamp( m_minFrequencySlider->value(), m_cpuMinFreqKHz, m_cpuMaxFreqKHz );
+    cpuObj["scalingMaxFrequency"] = std::clamp( m_maxFrequencySlider->value(), m_cpuMinFreqKHz, m_cpuMaxFreqKHz );
     profileObj["cpu"] = cpuObj;
 
   // ODM Power Limit (TDP) settings

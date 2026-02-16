@@ -191,16 +191,8 @@ namespace ucc
     QLabel *m_minFrequencyValue = nullptr;
     QSlider *m_maxFrequencySlider = nullptr;
     QLabel *m_maxFrequencyValue = nullptr;
-    QVector< int > m_availableFrequenciesMHz;  // Available CPU frequencies in MHz
-
-    /**
-     * @brief Snap a frequency value to the closest available hardware frequency.
-     *
-     * If the available-frequencies list is empty the input value is returned
-     * unchanged so the caller can always use the result directly.
-     */
-    int snapToAvailableFrequency( int valueMHz ) const;
-
+    int m_cpuMinFreqKHz = 400000;   // hardware min frequency in kHz
+    int m_cpuMaxFreqKHz = 6000000;  // hardware max frequency in kHz
     // ODM Power Limit (TDP) widgets
     QSlider *m_odmPowerLimit1Slider = nullptr;
     QLabel *m_odmPowerLimit1Value = nullptr;
