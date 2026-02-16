@@ -107,7 +107,7 @@ struct UccProfileFanControl
       offsetFanspeed( 0 ),
       sameSpeed( true ),
       autoControlWC( true ),
-      enableWaterCooler( WATER_COOLER_INITIAL_STATE )
+      enableWaterCooler( ucc::WATER_COOLER_INITIAL_STATE )
   {
   }
 

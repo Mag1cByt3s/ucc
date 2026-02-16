@@ -45,6 +45,7 @@ public:
     , m_getCpuSettingsEnabled( std::move( getCpuSettingsEnabled ) )
     , m_logFunction( std::move( logFunction ) )
     , m_cpuCtrl( std::make_unique< CpuController >() )
+    , m_defaultGovernor( findDefaultGovernor() )
   {
     // check for EPP write quirks for specific devices
     m_noEPPWriteQuirk = false; // todo: implement device detection if needed
@@ -55,9 +56,7 @@ public:
   void onStart() override
   {
     if ( m_getCpuSettingsEnabled() && !m_getActiveProfile().id.empty() )
-    {
       applyCpuProfile( m_getActiveProfile() );
-    }
   }
 
   void onWork() override
@@ -126,6 +125,9 @@ public:
     return m_cpuCtrl->cores[ 0 ].scalingAvailableGovernors.read();
   }
 
+  std::optional< std::string > getDefaultGovernor( void ) const
+  { return m_defaultGovernor; }
+
 private:
   std::function< UccProfile() > m_getActiveProfile;
   std::function< bool() > m_getCpuSettingsEnabled;
@@ -134,6 +136,7 @@ private:
   bool m_noEPPWriteQuirk;
   int m_validationFailureCount;
   bool m_reapplyGaveUp;
+  std::optional< std::string > m_defaultGovernor;
 
   static constexpr int maxReapplyAttempts = 3;
 
@@ -158,7 +161,7 @@ private:
   /**
    * @brief Find default governor for current system
    */
-  std::optional< std::string > findDefaultGovernor()
+  std::optional< std::string > findDefaultGovernor( void )
   {
     if ( m_cpuCtrl->cores.empty() )
       return std::nullopt;
@@ -172,9 +175,7 @@ private:
 
     // intel_pstate and amd-pstate-epp use fixed 'powersave' governor
     if ( driverEnum == ScalingDriver::intel_pstate or driverEnum == ScalingDriver::amd_pstate_epp )
-    {
       return "powersave";
-    }
 
     // for other drivers (acpi-cpufreq), prefer ondemand/schedutil/conservative
     auto availableGovernors = m_cpuCtrl->cores[ 0 ].scalingAvailableGovernors.read();
@@ -185,9 +186,7 @@ private:
     for ( const auto &preferred : m_preferredAcpiFreqGovernors )
     {
       if ( std::find( availableGovernors->begin(), availableGovernors->end(), preferred ) != availableGovernors->end() )
-      {
         return preferred;
-      }
     }
 
     return std::nullopt;
@@ -239,22 +238,10 @@ private:
     // reset everything to default before applying new settings
     setCpuDefaultConfig();
 
-    // Set the governor from profile
-    if ( !profile.cpu.governor.empty() )
-    {
-      m_cpuCtrl->setGovernor( profile.cpu.governor );
-    }
-    else
-    {
-      // fallback to default
-      auto governor = findDefaultGovernor();
-      m_cpuCtrl->setGovernor( governor );
-    }
+    m_cpuCtrl->setGovernor( not profile.cpu.governor.empty() ? profile.cpu.governor : getDefaultGovernor() );
 
     if ( not m_noEPPWriteQuirk )
-    {
       m_cpuCtrl->setEnergyPerformancePreference( profile.cpu.energyPerformancePreference );
-    }
 
     m_cpuCtrl->setGovernorScalingMinFrequency( profile.cpu.scalingMinFrequency );
     m_cpuCtrl->setGovernorScalingMaxFrequency( profile.cpu.scalingMaxFrequency );
@@ -264,9 +251,7 @@ private:
 
     // set no_turbo if available
     if ( m_cpuCtrl->intelPstateNoTurbo.isAvailable() )
-    {
       m_cpuCtrl->intelPstateNoTurbo.write( profile.cpu.noTurbo );
-    }
   }
 
   /**
@@ -277,17 +262,12 @@ private:
     m_cpuCtrl->useCores( std::nullopt ); // all cores
     m_cpuCtrl->setGovernorScalingMinFrequency( std::nullopt ); // min
     m_cpuCtrl->setGovernorScalingMaxFrequency( std::nullopt ); // max
-    m_cpuCtrl->setGovernor( findDefaultGovernor() );
 
     if ( not m_noEPPWriteQuirk )
-    {
       m_cpuCtrl->setEnergyPerformancePreference( "default" );
-    }
 
     if ( m_cpuCtrl->intelPstateNoTurbo.isAvailable() )
-    {
       m_cpuCtrl->intelPstateNoTurbo.write( false );
-    }
   }
 
   /**
@@ -330,17 +310,17 @@ private:
             }
           }
 
-          // check governor
-          auto defaultGovernor = findDefaultGovernor();
+          const auto &expectedGovernor = not profile.cpu.governor.empty() ? profile.cpu.governor
+                                                                : getDefaultGovernor().value_or( "" );
 
-          if ( defaultGovernor.has_value() )
+          if ( not expectedGovernor.empty() )
           {
             auto currentGovernor = core.scalingGovernor.read();
 
-            if ( currentGovernor.has_value() and *currentGovernor != *defaultGovernor )
+            if ( currentGovernor.has_value() and *currentGovernor != expectedGovernor )
             {
               logLine( "CpuWorker: Unexpected value core" + std::to_string( core.coreIndex )
-                       + " scaling governor '" + *currentGovernor + "' instead of '" + *defaultGovernor + "'", LOG_DEBUG );
+                       + " scaling governor '" + *currentGovernor + "' instead of '" + expectedGovernor + "'", LOG_DEBUG );
               return false;
             }
           }
