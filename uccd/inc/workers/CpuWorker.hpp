@@ -139,7 +139,6 @@ private:
   std::optional< std::string > m_defaultGovernor;
 
   static constexpr int maxReapplyAttempts = 3;
-  static constexpr int freqToleranceKHz = 1000;  // allow ±1 MHz for hardware frequency snapping
 
   const std::vector< std::string > m_preferredAcpiFreqGovernors = {
     "ondemand", "schedutil", "conservative"
@@ -283,13 +282,12 @@ private:
       {
         if ( core.coreIndex == 0 or core.online.read().value_or( false ) )
         {
-          // check minimum frequency (allow tolerance — daemon snaps to nearest available)
+          // check minimum frequency
           if ( profile.cpu.scalingMinFrequency.has_value() )
           {
             auto currentMin = core.scalingMinFreq.read();
 
-            if ( currentMin.has_value()
-                 and std::abs( static_cast< int >( *currentMin ) - static_cast< int >( *profile.cpu.scalingMinFrequency ) ) > freqToleranceKHz )
+            if ( currentMin.has_value() and *currentMin != *profile.cpu.scalingMinFrequency )
             {
               logLine( "CpuWorker: Unexpected value core" + std::to_string( core.coreIndex )
                        + " minimum scaling frequency " + std::to_string( *currentMin )
@@ -298,13 +296,12 @@ private:
             }
           }
 
-          // check maximum frequency (allow tolerance — daemon snaps to nearest available)
+          // check maximum frequency
           if ( profile.cpu.scalingMaxFrequency.has_value() )
           {
             auto currentMax = core.scalingMaxFreq.read();
 
-            if ( currentMax.has_value()
-                 and std::abs( static_cast< int >( *currentMax ) - static_cast< int >( *profile.cpu.scalingMaxFrequency ) ) > freqToleranceKHz )
+            if ( currentMax.has_value() and *currentMax != *profile.cpu.scalingMaxFrequency )
             {
               logLine( "CpuWorker: Unexpected value core" + std::to_string( core.coreIndex )
                        + " maximum scaling frequency " + std::to_string( *currentMax )
@@ -313,17 +310,16 @@ private:
             }
           }
 
-          const auto &expectedGovernor = not profile.cpu.governor.empty() ? profile.cpu.governor
-                                                                : getDefaultGovernor().value_or( "" );
-
-          if ( not expectedGovernor.empty() )
+          const auto expectedGovernor = not profile.cpu.governor.empty() ? std::optional< std::string >( profile.cpu.governor ) 
+                                                                         : getDefaultGovernor();
+          if ( expectedGovernor.has_value() )
           {
             auto currentGovernor = core.scalingGovernor.read();
 
-            if ( currentGovernor.has_value() and *currentGovernor != expectedGovernor )
+            if ( currentGovernor.has_value() and *currentGovernor != *expectedGovernor )
             {
               logLine( "CpuWorker: Unexpected value core" + std::to_string( core.coreIndex )
-                       + " scaling governor '" + *currentGovernor + "' instead of '" + expectedGovernor + "'", LOG_DEBUG );
+                       + " scaling governor '" + *currentGovernor + "' instead of '" + *expectedGovernor + "'", LOG_DEBUG );
               return false;
             }
           }
