@@ -28,6 +28,7 @@
 #include <chrono>
 #include <mutex>
 #include <optional>
+#include "CommonTypes.hpp"
 #include "workers/DaemonWorker.hpp"
 #include "workers/HardwareMonitorWorker.hpp"
 #include "workers/DisplayWorker.hpp"
@@ -200,7 +201,7 @@ public:
       nvidiaPowerCTRLAvailable( false ),
         waterCoolerAvailable( false ),
         waterCoolerConnected( false ),
-        waterCoolerScanningEnabled( false ),
+        waterCoolerScanningEnabled( ucc::WATER_COOLER_INITIAL_STATE ),
         waterCoolerSupported( false ),
         cTGPAdjustmentSupported( true )
   {

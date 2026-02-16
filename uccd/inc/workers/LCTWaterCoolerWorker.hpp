@@ -27,7 +27,7 @@
 #include <chrono>
 #include <functional>
 
-#include "../../libucc-dbus/CommonTypes.hpp"
+#include "CommonTypes.hpp"
 
 // Forward declarations
 class UccDBusData;

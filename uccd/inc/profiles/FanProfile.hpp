@@ -21,7 +21,7 @@
 #include <cmath>
 #include <iostream>
 
-#include "../../libucc-dbus/CommonTypes.hpp"
+#include "CommonTypes.hpp"
 
 /**
  * @brief Fan table entry

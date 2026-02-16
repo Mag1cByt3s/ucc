@@ -29,7 +29,7 @@
 #include "FanCurveEditorWidget.hpp"
 #include "PumpCurveEditorWidget.hpp"
 #include "LCTWaterCoolerController.hpp"
-#include "../../libucc-dbus/CommonTypes.hpp"
+#include "CommonTypes.hpp"
 #include "../../libucc-dbus/UccdClient.hpp"
 #include "ProfileManager.hpp"
 

@@ -17,6 +17,7 @@
 
 #include "profiles/UccProfile.hpp"
 #include "profiles/DefaultProfiles.hpp"
+#include "CommonTypes.hpp"
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -218,7 +219,7 @@ public:
       profile.fan.offsetFanspeed = extractInt( fanJson, "offsetFanspeed", 0 );
       profile.fan.sameSpeed = extractBool( fanJson, "sameSpeed", true );
       profile.fan.autoControlWC = extractBool( fanJson, "autoControlWC", true );
-      profile.fan.enableWaterCooler = extractBool( fanJson, "enableWaterCooler", false );
+      profile.fan.enableWaterCooler = extractBool( fanJson, "enableWaterCooler", WATER_COOLER_INITIAL_STATE );
       
       // Debug: log the parsed fan offset and sameSpeed
       std::cout << "[ProfileManager] Parsed profile '" << profile.name 

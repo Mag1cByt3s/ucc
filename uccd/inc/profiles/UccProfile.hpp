@@ -16,6 +16,7 @@
 #pragma once
 
 #include "FanProfile.hpp"
+#include "CommonTypes.hpp"
 #include <string>
 #include <vector>
 #include <map>
@@ -106,7 +107,7 @@ struct UccProfileFanControl
       offsetFanspeed( 0 ),
       sameSpeed( true ),
       autoControlWC( true ),
-      enableWaterCooler( false )
+      enableWaterCooler( WATER_COOLER_INITIAL_STATE )
   {
   }
 

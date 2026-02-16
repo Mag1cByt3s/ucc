@@ -54,6 +54,9 @@ option( BUILD_GUI "Build the main GUI application" ON )
 option( BUILD_TRAY "Build the system tray applet" ON )
 option( BUILD_WIDGETS "Build Plasma widgets" OFF )
 
+# Include directories
+include_directories( ${CMAKE_SOURCE_DIR}/include )
+
 # Try to find Plasma if widget build is requested
 if(BUILD_WIDGETS)
   find_package(KF5Plasma QUIET)
@@ -114,6 +117,9 @@ install(FILES icons/ucc-tray_32.png  DESTINATION share/icons/hicolor/32x32/apps 
 install(FILES icons/ucc-tray_48.png  DESTINATION share/icons/hicolor/48x48/apps RENAME ucc-tray.png)
 install(FILES icons/ucc-tray_64.png  DESTINATION share/icons/hicolor/64x64/apps RENAME ucc-tray.png)
 install(FILES icons/ucc-tray_128.png DESTINATION share/icons/hicolor/128x128/apps RENAME ucc-tray.png)
+
+# Install common headers
+install(FILES include/CommonTypes.hpp DESTINATION include/ucc)
 
 # Summary
 message(STATUS "")

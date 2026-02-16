@@ -17,6 +17,7 @@
 
 namespace ucc
 {
+static inline constexpr bool WATER_COOLER_INITIAL_STATE = false;  // Off by default
 
 /**
  * @brief Water cooler pump voltage levels

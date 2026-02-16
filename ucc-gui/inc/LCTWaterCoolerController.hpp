@@ -21,7 +21,7 @@
 #include <memory>
 #include <QList>
 
-#include "../../libucc-dbus/CommonTypes.hpp"
+#include "CommonTypes.hpp"
 
 namespace ucc
 {
