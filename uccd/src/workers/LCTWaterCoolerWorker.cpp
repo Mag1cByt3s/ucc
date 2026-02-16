@@ -49,7 +49,7 @@ LCTWaterCoolerWorker::LCTWaterCoolerWorker( UccDBusData& dbusData, StatusCallbac
     : QObject( parent ), m_dbusData( dbusData ), m_lastDiscoveryStart( std::chrono::steady_clock::now() ),
       m_statusCallback( std::move( statusCallback ) )
 {
-  syslog( LOG_INFO, "LCTWaterCoolerWorker: constructed" );
+  std::cout << "[LCTWaterCoolerWorker] Constructed worker" << std::endl;
 
   // Timer for periodic tick — fires on the main thread event loop
   m_tickTimer = new QTimer( this );
@@ -98,7 +98,7 @@ void LCTWaterCoolerWorker::start()
 {
   if ( m_tickTimer and not m_tickTimer->isActive() )
   {
-    syslog( LOG_INFO, "LCTWaterCoolerWorker: starting, beginning automatic discovery" );
+    std::cout << "[LCTWaterCoolerWorker] Starting worker, beginning automatic discovery" << std::endl;
     requestStartDiscovery();
     m_tickTimer->start();
   }
@@ -110,7 +110,7 @@ void LCTWaterCoolerWorker::stop()
   {
     m_tickTimer->stop();
     m_state = WaterCoolerState::Disconnected;
-    syslog( LOG_INFO, "LCTWaterCoolerWorker: stopped" );
+    std::cout << "[LCTWaterCoolerWorker] Stopped worker" << std::endl;
   }
 }
 

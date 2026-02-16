@@ -218,6 +218,7 @@ public:
       profile.fan.offsetFanspeed = extractInt( fanJson, "offsetFanspeed", 0 );
       profile.fan.sameSpeed = extractBool( fanJson, "sameSpeed", true );
       profile.fan.autoControlWC = extractBool( fanJson, "autoControlWC", true );
+      profile.fan.enableWaterCooler = extractBool( fanJson, "enableWaterCooler", false );
       
       // Debug: log the parsed fan offset and sameSpeed
       std::cout << "[ProfileManager] Parsed profile '" << profile.name 

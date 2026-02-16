@@ -137,7 +137,7 @@ void DashboardTab::setupUI()
   
   // Water Cooler Enable checkbox (synced with FanControlTab)
   m_waterCoolerEnableCheckBox = new QCheckBox( "Enable Water Cooler" );
-  m_waterCoolerEnableCheckBox->setChecked( true );
+  m_waterCoolerEnableCheckBox->setChecked( false );
   m_waterCoolerEnableCheckBox->setToolTip( tr( "When enabled the daemon will scan for water cooler devices" ) );
 
   // Hide water cooler status bar items if water cooler not supported

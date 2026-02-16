@@ -180,7 +180,7 @@ void FanControlTab::setupUI()
 
     m_waterCoolerEnableCheckBox = new QCheckBox( "Enable" );
     m_waterCoolerEnableCheckBox->setLayoutDirection( Qt::RightToLeft );
-    m_waterCoolerEnableCheckBox->setChecked( true );
+    m_waterCoolerEnableCheckBox->setChecked( false );
     m_waterCoolerEnableCheckBox->setToolTip( tr( "When enabled the daemon will scan for water cooler devices" ) );
     wcHw->addWidget( m_waterCoolerEnableCheckBox );
 

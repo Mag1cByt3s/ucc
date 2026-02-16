@@ -1525,17 +1525,14 @@ bool UccDBusInterfaceAdaptor::EnableWaterCooler( bool enable )
 {
   // Update shared DBus flag and request service to perform actions when disabling
   m_data.waterCoolerScanningEnabled = enable;
-  if ( !enable )
-  {
-    // When scanning is disabled, mark unavailable so clients don't expect discovery
+
+  // When scanning is disabled, mark unavailable so clients don't expect discovery
+  if ( not enable )
     m_data.waterCoolerAvailable = false;
-  }
 
   // Ask service to perform any active operations (disconnect/stop) if present
   if ( m_service )
-  {
     m_service->setWaterCoolerScanningEnabled( enable );
-  }
 
   return true;
 }
@@ -1706,7 +1703,7 @@ UccDBusService::UccDBusService()
   m_dbusData.nvidiaPowerCTRLAvailable = true;
   m_dbusData.nvidiaPowerCTRLDefaultPowerLimit = 95;
   m_dbusData.nvidiaPowerCTRLMaxPowerLimit = 175;
-  m_dbusData.odmPowerLimitsJSON = "[{\"min\":25,\"max\":162,\"current\":162,\"descriptor\":\"pl1\"},{\"min\":25,\"max\":162,\"current\":162,\"descriptor\":\"pl2\"},{\"min\":25,\"max\":195,\"current\":195,\"descriptor\":\"pl4\"}]";
+  m_dbusData.odmPowerLimitsJSON = "[{\"min\":25,\"max\":162,\"current\":162,\"descriptor\":\"pl1\"},{\"min\":25,\"max\":162,\"current\":162,\"descriptor\":\"pl2\"},{\"min\":25,\"max\":185,\"current\":185,\"descriptor\":\"pl4\"}]";
   m_dbusData.chargingProfilesAvailable = "[\"high_capacity\",\"balanced\",\"stationary\"]";
   m_dbusData.currentChargingProfile = "balanced";
   m_dbusData.chargingPrioritiesAvailable = "[]";
@@ -1951,7 +1948,7 @@ UccDBusService::UccDBusService()
   m_keyboardBacklightListener->start();
 
   // Only start water cooler worker if device supports Aquaris
-  if ( m_dbusData.waterCoolerSupported )
+  if ( m_dbusData.waterCoolerSupported && m_dbusData.waterCoolerScanningEnabled )
   {
     m_waterCoolerWorker->start();
   }
@@ -2301,17 +2298,20 @@ void UccDBusService::setWaterCoolerScanningEnabled( bool enable )
 {
   // Caller may hold no locks; update dbus data and request worker actions.
   m_dbusData.waterCoolerScanningEnabled = enable;
-  if ( !enable ) {
-    m_dbusData.waterCoolerAvailable = false;
-  }
 
-  if ( !m_waterCoolerWorker )
+  if ( not enable )
+    m_dbusData.waterCoolerAvailable = false;
+
+  if ( not m_waterCoolerWorker )
     return;
 
-  if ( enable ) {
+  if ( enable )
+  {
     // Start scanning immediately
     m_waterCoolerWorker->startScanning();
-  } else {
+  }
+  else
+  {
     // Request a graceful disconnect and stop discovery
     m_waterCoolerWorker->disconnectFromDevice();
     m_waterCoolerWorker->stopScanning();
@@ -2594,6 +2594,13 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
     // Set as active profile
     m_activeProfile = profile;
     updateDBusActiveProfileData();
+
+    // Apply water cooler enable state from profile
+    try
+    {
+      setWaterCoolerScanningEnabled( m_activeProfile.fan.enableWaterCooler );
+    }
+    catch ( ... ) { /* ignore */ }
 
     // If the profile explicitly sets sameSpeed, apply it to fan worker immediately
     try

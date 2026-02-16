@@ -200,7 +200,7 @@ public:
       nvidiaPowerCTRLAvailable( false ),
         waterCoolerAvailable( false ),
         waterCoolerConnected( false ),
-        waterCoolerScanningEnabled( true ),
+        waterCoolerScanningEnabled( false ),
         waterCoolerSupported( false ),
         cTGPAdjustmentSupported( true )
   {

@@ -92,6 +92,7 @@ struct UccProfileFanControl
   int32_t offsetFanspeed;
   bool sameSpeed; // when true, all fans are driven at the same percent (highest)
   bool autoControlWC; // when true, automatically control water cooler based on system temperature
+  bool enableWaterCooler; // when true, water cooler BLE scanning/connection is enabled
 
   // Embedded fan curve tables (populated when profile JSON includes them)
   std::vector< FanTableEntry > tableCPU;
@@ -104,7 +105,8 @@ struct UccProfileFanControl
       fanProfile( "fan-balanced" ),
       offsetFanspeed( 0 ),
       sameSpeed( true ),
-      autoControlWC( true )
+      autoControlWC( true ),
+      enableWaterCooler( false )
   {
   }
 
