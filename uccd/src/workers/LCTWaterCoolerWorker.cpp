@@ -685,6 +685,11 @@ void LCTWaterCoolerWorker::startScanning()
   {
     m_state = WaterCoolerState::Disconnected;
   }
+
+  // Ensure the tick timer is running so the state machine can progress
+  // (the timer may not have been started if scanning was disabled at startup)
+  if ( m_tickTimer and not m_tickTimer->isActive() )
+    m_tickTimer->start();
 }
 
 void LCTWaterCoolerWorker::stopScanning()
@@ -774,7 +779,7 @@ void LCTWaterCoolerWorker::throttledBleWrite( const QByteArray& data )
   const auto now = std::chrono::steady_clock::now();
   const auto elapsed = std::chrono::duration_cast< std::chrono::milliseconds >( now - m_lastBleWrite ).count();
   if ( elapsed < BLE_WRITE_GAP_MS )
-    QThread::msleep( BLE_WRITE_GAP_MS - static_cast< int >( elapsed ) );
+    QThread::msleep( static_cast< unsigned long >( BLE_WRITE_GAP_MS - elapsed ) );
   m_uartService->writeCharacteristic( m_txCharacteristic, data, QLowEnergyService::WriteWithoutResponse );
   m_lastBleWrite = std::chrono::steady_clock::now();
 }
@@ -923,7 +928,7 @@ bool LCTWaterCoolerWorker::setupBleController( const QBluetoothDeviceInfo& devic
   connect( m_bleController, &QLowEnergyController::disconnected, this, &LCTWaterCoolerWorker::onBleDisconnected );
   connect( m_bleController, &QLowEnergyController::errorOccurred, this, &LCTWaterCoolerWorker::onBleError );
   connect( m_bleController, &QLowEnergyController::serviceDiscovered, this,
-           [this]( const QBluetoothUuid& serviceUuid )
+           []( const QBluetoothUuid& serviceUuid )
            {
              if ( serviceUuid == NORDIC_UART_SERVICE_UUID_OBJ )
                std::cout << "LCTWaterCoolerWorker: found Nordic UART service" << std::endl;

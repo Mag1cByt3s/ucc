@@ -77,6 +77,27 @@
             ],
             "preLaunchTask": "build-uccd",
             "sourceLanguages": ["cpp"]
+        },
+        {
+            "name": "ucc-gui (C++)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceRoot}/build/ucc-gui/ucc-gui",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceRoot}/build",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "rebuild-all",
+            "sourceLanguages": ["cpp"]
         }
     ]
 }

@@ -113,7 +113,7 @@ void DashboardTab::setupUI()
   const QColor windowBg = pal.color(QPalette::Window);
   // Choose a high-contrast inner text color based on window background
   const QString innerTextHex = (windowBg.value() < 128) ? QString("#ffffff") : QString("#000000");
-  const QString ringColorHex = QString("#d32f2f");
+  m_ringColorHex = QString("#d32f2f");  // Red for disconnected state and other alerts
 
   // Title
   QLabel *titleLabel = new QLabel( "System monitor" );
@@ -134,7 +134,7 @@ void DashboardTab::setupUI()
   QLabel *coolerLabel = new QLabel( "Water Cooler Status:" );
   coolerLabel->setStyleSheet( "font-weight: bold;" );
   m_waterCoolerStatusLabel = new QLabel( "Disconnected" );
-  m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(midHex) );
+  m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(m_ringColorHex) );
   
   // Water Cooler Enable checkbox (synced with FanControlTab)
   m_waterCoolerEnableCheckBox = new QCheckBox( "Enable Water Cooler" );
@@ -172,7 +172,7 @@ void DashboardTab::setupUI()
     QFrame *ring = new QFrame();
     ring->setFixedSize( 140, 140 );
     // Thicker red ring for better visibility; use explicit red to ensure contrast
-    ring->setStyleSheet( QString("QFrame { border: 12px solid %1; border-radius: 70px; background: transparent; }").arg(ringColorHex) );
+    ring->setStyleSheet( QString("QFrame { border: 12px solid %1; border-radius: 70px; background: transparent; }").arg(m_ringColorHex) );
 
     QVBoxLayout *ringLayout = new QVBoxLayout( ring );
     ringLayout->setAlignment( Qt::AlignCenter );
@@ -323,9 +323,12 @@ void DashboardTab::connectSignals()
 
   Q_UNUSED(m_waterCoolerDbus)
 
-  // Water cooler enable checkbox → emit signal for cross-tab sync
+  // Water cooler enable checkbox → emit signal for cross-tab sync and update status
   connect( m_waterCoolerEnableCheckBox, &QCheckBox::toggled,
-           this, &DashboardTab::waterCoolerEnableChanged );
+           this, [this]() {
+             updateWaterCoolerStatus();
+             emit waterCoolerEnableChanged( m_waterCoolerEnableCheckBox->isChecked() );
+           } );
 
   // GPU toggle button switches between dGPU and iGPU views
   connect( m_gpuToggleButton, &QPushButton::clicked, this, [this]() {
@@ -349,32 +352,46 @@ void DashboardTab::updateWaterCoolerStatus()
     m_waterCoolerHeader->setVisible( connected );
   };
 
-  QDBusReply<bool> available = m_waterCoolerDbus->call(QStringLiteral("GetWaterCoolerAvailable"));
+  // Check if water cooler is enabled
+  bool wcEnabled = m_waterCoolerEnableCheckBox ? m_waterCoolerEnableCheckBox->isChecked() : false;
+  
+  // Get water cooler state from daemon
+  // Note: GetWaterCoolerAvailable returns true when scanning is active (not when a device is found)
+  // GetWaterCoolerConnected returns true only when a device is actually connected
+  QDBusReply<bool> scanning = m_waterCoolerDbus->call(QStringLiteral("GetWaterCoolerAvailable"));
   QDBusReply<bool> connected = m_waterCoolerDbus->call(QStringLiteral("GetWaterCoolerConnected"));
-  // Prefer 'connected' state when available; compute explicit hex colors
-  // from the current palette so styles are consistent.
+  
+  // Compute explicit hex colors from the current palette so styles are consistent.
   QPalette pal = this->palette();
   const QString textHex = pal.color(QPalette::WindowText).name();
   const QString midHex = pal.color(QPalette::Mid).name();
   const QString highlightHex = pal.color(QPalette::Highlight).name();
   const QString linkHex = pal.color(QPalette::Link).name();
 
-  if ( connected.isValid() && connected.value() )
+  // Status progression: Disabled → Disconnected → Searching → Connected
+  if ( !wcEnabled )
+  {
+    m_waterCoolerStatusLabel->setText( QStringLiteral("Disabled") );
+    m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(m_ringColorHex) );
+    setWCStatus( false );
+  }
+  else if ( connected.isValid() && connected.value() )
   {
     m_waterCoolerStatusLabel->setText( QStringLiteral("Connected") );
     m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(highlightHex) );
     setWCStatus( true );
   }
-  else if ( available.isValid() && available.value() )
+  else if ( scanning.isValid() && scanning.value() )
   {
-    m_waterCoolerStatusLabel->setText( QStringLiteral("Available") );
+    // GetWaterCoolerAvailable == true means the daemon is actively scanning
+    m_waterCoolerStatusLabel->setText( QStringLiteral("Searching...") );
     m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(linkHex) );
     setWCStatus( false );
   }
   else
   {
     m_waterCoolerStatusLabel->setText( QStringLiteral("Disconnected") );
-    m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(midHex) );
+    m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(m_ringColorHex) );
     setWCStatus( false );
   }
 }
@@ -568,7 +585,6 @@ void DashboardTab::onWaterCoolerDiscoveryStarted()
 
 void DashboardTab::onWaterCoolerDiscoveryFinished()
 {
-  // If scanning finished, refresh status
   updateWaterCoolerStatus();
 }
 

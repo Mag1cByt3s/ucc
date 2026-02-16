@@ -1727,7 +1727,7 @@ UccDBusService::UccDBusService()
   m_cpuWorker = std::make_unique< CpuWorker >(
     [this]() { return m_activeProfile; },
     [this]() { return m_settings.cpuSettingsEnabled; },
-    [this]( const std::string &msg ) { syslog( LOG_INFO, "%s", msg.c_str() ); }
+    []( const std::string &msg ) { syslog( LOG_INFO, "%s", msg.c_str() ); }
   );
   
   // initialize profile settings worker (replaces ODMPowerLimitWorker, ODMProfileWorker, ChargingWorker, YCbCr420WorkaroundWorker)
@@ -1742,7 +1742,7 @@ UccDBusService::UccDBusService()
       std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
       m_dbusData.odmPowerLimitsJSON = json;
     },
-    [this]( const std::string &msg ) { syslog( LOG_INFO, "%s", msg.c_str() ); },
+    []( const std::string &msg ) { syslog( LOG_INFO, "%s", msg.c_str() ); },
     m_settings,
     m_dbusData.modeReapplyPending,
     m_dbusData.nvidiaPowerCTRLDefaultPowerLimit,
@@ -1921,17 +1921,8 @@ UccDBusService::UccDBusService()
   m_fanControlWorker->start();
   m_keyboardBacklightListener->start();
 
-  // Only start water cooler worker if device supports Aquaris
-  if ( m_dbusData.waterCoolerSupported && m_dbusData.waterCoolerScanningEnabled )
-  {
-    m_waterCoolerWorker->start();
-  }
-  else
-  {
-    syslog( LOG_INFO, "Aquaris not supported for this device - water cooler worker disabled" );
-  }
-
   // Apply startup profile based on current power state and stateMap
+  // (this also starts water cooler scanning if the profile enables it)
   applyStartupProfile();
 
   // start main DBus worker loop after construction completes
@@ -2010,12 +2001,12 @@ void UccDBusService::updateFanData()
 
     if ( m_io.getFanSpeedPercent( fanIndex, speedPercent ) )
     {
-      m_dbusData.fans[ fanIndex ].speed.set( static_cast< int64_t >( now ), speedPercent );
+      m_dbusData.fans[ static_cast< size_t >( fanIndex ) ].speed.set( static_cast< int64_t >( now ), speedPercent );
     }
 
     if ( m_io.getFanTemperature( fanIndex, tempCelsius ) )
     {
-      m_dbusData.fans[ fanIndex ].temp.set( static_cast< int64_t >( now ), tempCelsius );
+      m_dbusData.fans[ static_cast< size_t >( fanIndex ) ].temp.set( static_cast< int64_t >( now ), tempCelsius );
     }
   }
 }
@@ -2281,8 +2272,11 @@ void UccDBusService::setWaterCoolerScanningEnabled( bool enable )
 
   if ( enable )
   {
-    // Start scanning immediately
-    m_waterCoolerWorker->startScanning();
+    // Only start scanning if not already scanning/connected.
+    // startScanning() calls cleanupBleController() which would tear down
+    // an active BLE connection, causing pump/fan commands to fail.
+    if ( not m_dbusData.waterCoolerAvailable.load() and not m_dbusData.waterCoolerConnected.load() )
+      m_waterCoolerWorker->startScanning();
   }
   else
   {
@@ -3198,6 +3192,10 @@ void UccDBusService::applyStartupProfile()
         std::cout << "[Startup] Applying keyboard backlight settings from profile" << std::endl;
         m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
       }
+
+      // Apply water cooler enable state from profile
+      if ( m_dbusData.waterCoolerSupported )
+        setWaterCoolerScanningEnabled( profile.fan.enableWaterCooler );
       
       return;
     }
@@ -3244,6 +3242,10 @@ void UccDBusService::applyStartupProfile()
         std::cout << "[Startup] Applying keyboard backlight settings from profile" << std::endl;
         m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
       }
+
+      // Apply water cooler enable state from profile
+      if ( m_dbusData.waterCoolerSupported )
+        setWaterCoolerScanningEnabled( profile.fan.enableWaterCooler );
       
       break;
     }
@@ -3425,6 +3427,10 @@ void UccDBusService::applyProfileForCurrentState()
          && profile.keyboard.keyboardProfileData != "{}" )
       m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
 
+    // Apply water cooler enable state from profile
+    if ( m_dbusData.waterCoolerSupported )
+      setWaterCoolerScanningEnabled( profile.fan.enableWaterCooler );
+
     // Emit ProfileChanged signal for DBus clients
     if ( m_adaptor )
       m_adaptor->emitProfileChanged( profile.id );
@@ -3602,7 +3608,7 @@ void UccDBusService::fillDeviceSpecificDefaults( std::vector< UccProfile > &prof
       // Add missing TDP values with max values from hardware
       for ( size_t i = profile.odmPowerLimits.tdpValues.size(); i < tdpInfo.size(); ++i )
       {
-        profile.odmPowerLimits.tdpValues.push_back( tdpInfo[i].max );
+        profile.odmPowerLimits.tdpValues.push_back( static_cast< int >( tdpInfo[i].max ) );
         std::cout << "[fillDeviceSpecificDefaults]     Added TDP[" << i << "] = " << tdpInfo[i].max << std::endl;
       }
     }
@@ -3684,12 +3690,12 @@ std::vector< std::vector< std::string > > UccDBusService::getOutputPorts()
     // Ensure result vector is large enough
     if ( static_cast< size_t >( cardNumber + 1 ) > result.size() )
     {
-      result.resize( cardNumber + 1 );
+      result.resize( static_cast< size_t >( cardNumber + 1 ) );
     }
     
     // Extract port name (everything after "card0-")
     std::string portName = name.substr( dashPos + 1 );
-    result[cardNumber].push_back( portName );
+    result[ static_cast< size_t >( cardNumber ) ].push_back( portName );
   }
   
   udev_enumerate_unref( drm_devices );

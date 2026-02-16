@@ -111,5 +111,8 @@ namespace ucc
     bool m_hasIGpuData = false;
 
     bool m_waterCoolerSupported = false;
+
+    // Theme colors
+    QString m_ringColorHex = "#d32f2f";  // Red for disconnected/disabled state
   };
 }

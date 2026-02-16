@@ -4,7 +4,7 @@
 		{
 			"label": "build-uccd",
 			"type": "shell",
-			"command": "ninja",
+			"command": "make",
 			"args": [
 				"-C",
 				"${workspaceRoot}/build"
@@ -104,7 +104,7 @@
 		{
 			"label": "Build uccd only",
 			"type": "shell",
-			"command": "ninja",
+			"command": "make",
 			"args": [
 				"-j8",
 				"uccd"
@@ -114,31 +114,31 @@
 		{
 			"label": "Build uccd only (rebuild)",
 			"type": "shell",
-			"command": "ninja",
+			"command": "make",
 			"args": [
-				"-j4"
+				"-j16"
 			],
 			"group": "build"
 		},
 		{
 			"label": "rebuild-uccd",
 			"type": "shell",
-			"command": "ninja -j4 -C /opt/devel/git/ucc/build"
+			"command": "make -j16 -C /opt/devel/git/ucc/build"
 		},
 		{
 			"label": "rebuild-all",
 			"type": "shell",
-			"command": "cd /opt/devel/git/ucc/build && ninja -j4"
+			"command": "cd /opt/devel/git/ucc/build && make -j16"
 		},
 		{
 			"label": "rebuild-gui",
 			"type": "shell",
-			"command": "cd /opt/devel/git/ucc/build && ninja -j4"
+			"command": "cd /opt/devel/git/ucc/build && make -j16"
 		},
 		{
 			"label": "build-all",
 			"type": "shell",
-			"command": "cd /opt/devel/git/ucc/build && ninja -j4 2>&1; echo EXIT_CODE=$?",
+			"command": "cd /opt/devel/git/ucc/build && make -j16 2>&1; echo EXIT_CODE=$?",
 			"isBackground": false
 		}
 	]

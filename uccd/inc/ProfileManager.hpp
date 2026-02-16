@@ -565,7 +565,8 @@ public:
         << "\"fanProfile\":\"" << jsonEscape( profile.fan.fanProfile ) << "\","
         << "\"offsetFanspeed\":" << profile.fan.offsetFanspeed << ","
         << "\"sameSpeed\":" << ( profile.fan.sameSpeed ? "true" : "false" ) << ","
-        << "\"autoControlWC\":" << ( profile.fan.autoControlWC ? "true" : "false" );
+        << "\"autoControlWC\":" << ( profile.fan.autoControlWC ? "true" : "false" ) << ","
+        << "\"enableWaterCooler\":" << ( profile.fan.enableWaterCooler ? "true" : "false" );
 
     // Embed fan tables if present
     if ( !profile.fan.tableCPU.empty() )

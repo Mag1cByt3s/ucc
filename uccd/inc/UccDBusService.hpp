@@ -159,7 +159,7 @@ public:
       tuxedoWmiAvailable( false ),
       fanHwmonAvailable( false ),
       uccdVersion( "0.0.0" ),
-      fans( numberFans ),
+      fans( static_cast< size_t >( numberFans ) ),
       webcamSwitchAvailable( false ),
       webcamSwitchStatus( false ),
       forceYUV420OutputSwitchAvailable( false ),

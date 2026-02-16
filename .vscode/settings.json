@@ -1,4 +1,14 @@
 {
+  // Disable editor-level inlay hints
+  "editor.inlayHints.enabled": false,
+
+  // Disable clangd inlay hints (if using clangd)
+  "clangd.inlayHints.enable": false,
+
+  // Disable Microsoft C/C++ extension inlay hints (if available)
+  "C_Cpp.inlayHints.enabled": false
+}
+{
   "clangd.path": "clangd",
   "clangd.arguments": ["--compile-commands-dir=build"],
   "clangd.fallbackFlags": ["-std=c++20"],

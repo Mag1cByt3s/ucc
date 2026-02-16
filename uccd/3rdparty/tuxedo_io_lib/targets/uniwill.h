@@ -115,7 +115,7 @@ public:
 
   virtual bool getFanSpeedPercent( const int fanNr, int &fanSpeedPercent )
   {
-    int fanSpeedRaw;
+    int fanSpeedRaw = 0;
     bool result;
 
     switch ( fanNr )

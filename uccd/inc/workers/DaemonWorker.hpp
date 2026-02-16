@@ -191,7 +191,7 @@ protected:
           firstLoop = false;
         }
         onWork();
-        QThread::msleep( m_timeout.count() );
+        QThread::msleep( static_cast< unsigned long >( m_timeout.count() ) );
       }
 
       ucc::wDebug("[DEBUG] DaemonWorker: exiting %s", typeid(*this).name());
