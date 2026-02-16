@@ -45,7 +45,6 @@ public:
     , m_getCpuSettingsEnabled( std::move( getCpuSettingsEnabled ) )
     , m_logFunction( std::move( logFunction ) )
     , m_cpuCtrl( std::make_unique< CpuController >() )
-    , m_defaultGovernor( findDefaultGovernor() )
   {
     // check for EPP write quirks for specific devices
     m_noEPPWriteQuirk = false; // todo: implement device detection if needed
@@ -55,7 +54,7 @@ public:
 
   void onStart() override
   {
-    if ( m_getCpuSettingsEnabled() && !m_getActiveProfile().id.empty() )
+    if ( m_getCpuSettingsEnabled() && not m_getActiveProfile().id.empty() )
       applyCpuProfile( m_getActiveProfile() );
   }
 
@@ -125,8 +124,13 @@ public:
     return m_cpuCtrl->cores[ 0 ].scalingAvailableGovernors.read();
   }
 
-  std::optional< std::string > getDefaultGovernor( void ) const
-  { return m_defaultGovernor; }
+  std::optional< std::string > getDefaultGovernor( void )
+  {
+    if ( not m_defaultGovernor.has_value() )
+      m_defaultGovernor = findDefaultGovernor();
+
+    return m_defaultGovernor;
+  }
 
 private:
   std::function< UccProfile() > m_getActiveProfile;
@@ -163,7 +167,7 @@ private:
    */
   std::optional< std::string > findDefaultGovernor( void )
   {
-    if ( m_cpuCtrl->cores.empty() )
+    if ( not m_cpuCtrl || m_cpuCtrl->cores.empty() )
       return std::nullopt;
 
     auto scalingDriver = m_cpuCtrl->cores[ 0 ].scalingDriver.read();
