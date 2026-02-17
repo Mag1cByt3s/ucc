@@ -160,6 +160,50 @@ public:
     return static_cast< int32_t >( m_cpuCtrl.cores.size() );
   }
 
+  /**
+   * @brief Snap profile frequency values to nearest available hardware frequencies
+   *
+   * Call this after receiving a profile (from file, D-Bus, etc.) to ensure
+   * min/max frequencies match actual hardware-supported values before storing.
+   * This prevents mismatches between what the kernel accepts and what we expect.
+   */
+  void snapProfileFrequencies( UccProfile &profile )
+  {
+    if ( m_cpuCtrl.cores.empty() )
+      return;
+
+    auto availableFrequencies = m_cpuCtrl.cores[ 0 ].scalingAvailableFrequencies.read();
+
+    if ( not availableFrequencies.has_value() or availableFrequencies->empty() )
+      return;
+
+    if ( profile.cpu.scalingMinFrequency.has_value() and *profile.cpu.scalingMinFrequency > 0 )
+    {
+      int32_t snapped = CpuController::findClosestValue( *profile.cpu.scalingMinFrequency, *availableFrequencies );
+
+      if ( snapped != *profile.cpu.scalingMinFrequency )
+      {
+        logLine( "CpuWorker: Snapping min frequency "
+                 + std::to_string( *profile.cpu.scalingMinFrequency ) + " -> "
+                 + std::to_string( snapped ), LOG_DEBUG );
+        profile.cpu.scalingMinFrequency = snapped;
+      }
+    }
+
+    if ( profile.cpu.scalingMaxFrequency.has_value() and *profile.cpu.scalingMaxFrequency > 0 )
+    {
+      int32_t snapped = CpuController::findClosestValue( *profile.cpu.scalingMaxFrequency, *availableFrequencies );
+
+      if ( snapped != *profile.cpu.scalingMaxFrequency )
+      {
+        logLine( "CpuWorker: Snapping max frequency "
+                 + std::to_string( *profile.cpu.scalingMaxFrequency ) + " -> "
+                 + std::to_string( snapped ), LOG_DEBUG );
+        profile.cpu.scalingMaxFrequency = snapped;
+      }
+    }
+  }
+
   std::optional< std::string > getDefaultGovernor( void )
   {
     if ( not m_defaultGovernor.has_value() )

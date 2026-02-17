@@ -2476,6 +2476,7 @@ bool UccDBusService::setCurrentProfileByName( const std::string &profileName )
     if ( profile.name == profileName )
     {
       m_activeProfile = profile;
+      snapProfileFrequencies( m_activeProfile );
       updateDBusActiveProfileData();
       return true;
     }
@@ -2483,6 +2484,7 @@ bool UccDBusService::setCurrentProfileByName( const std::string &profileName )
 
   // fallback to default profile
   m_activeProfile = getDefaultProfile();
+  snapProfileFrequencies( m_activeProfile );
   updateDBusActiveProfileData();
   return false;
 }
@@ -2497,6 +2499,7 @@ bool UccDBusService::setCurrentProfileById( const std::string &id )
     {
       std::cout << "[Profile] Switching to profile: " << profile.name << " (ID: " << id << ")" << std::endl;
       m_activeProfile = profile;
+      snapProfileFrequencies( m_activeProfile );
       updateDBusActiveProfileData();
       
       // apply fan curves and pump auto-control
@@ -2565,6 +2568,7 @@ bool UccDBusService::setCurrentProfileById( const std::string &id )
   // fallback to default profile
   std::cout << "[Profile] Profile ID not found: " << id << ", using default" << std::endl;
   m_activeProfile = getDefaultProfile();
+  snapProfileFrequencies( m_activeProfile );
   updateDBusActiveProfileData();
   
   // Emit ProfileChanged signal for DBus clients
@@ -2587,6 +2591,7 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
     
     // Set as active profile
     m_activeProfile = profile;
+    snapProfileFrequencies( m_activeProfile );
     updateDBusActiveProfileData();
 
     // Apply water cooler enable state from profile
@@ -2869,6 +2874,7 @@ bool UccDBusService::updateCustomProfile( const UccProfile &profile )
     {
       std::cout << "[ProfileManager] Updated profile is active, reapplying to system" << std::endl;
       m_activeProfile = profile;
+      snapProfileFrequencies( m_activeProfile );
       // Reapply the profile to actually update the hardware/system settings
       if ( setCurrentProfileById( profile.id ) )
       {
@@ -3195,6 +3201,7 @@ void UccDBusService::applyStartupProfile()
     {
       auto profile = m_profileManager.parseProfileJSON( profileIt->second );
       m_activeProfile = profile;
+      snapProfileFrequencies( m_activeProfile );
       updateDBusActiveProfileData();
       
       std::cout << "[Startup] Applied profile from settings: " << profile.name << " (ID: " << profile.id << ")" << std::endl;
@@ -3248,6 +3255,7 @@ void UccDBusService::applyStartupProfile()
     if ( profile.id == profileId )
     {
       m_activeProfile = profile;
+      snapProfileFrequencies( m_activeProfile );
       updateDBusActiveProfileData();
       profileFound = true;
       
@@ -3385,6 +3393,7 @@ void UccDBusService::applyProfileForCurrentState()
   auto applyFullProfile = [this]( const UccProfile &profile )
   {
     m_activeProfile = profile;
+    snapProfileFrequencies( m_activeProfile );
     updateDBusActiveProfileData();
 
     // Apply sameSpeed setting to fan worker
@@ -3652,8 +3661,17 @@ void UccDBusService::fillDeviceSpecificDefaults( std::vector< UccProfile > &prof
       }
     }
     
+    // Snap CPU frequencies to nearest available hardware frequency
+    snapProfileFrequencies( profile );
+
     std::cout << "[fillDeviceSpecificDefaults]   Final TDP values: " << profile.odmPowerLimits.tdpValues.size() << std::endl;
   }
+}
+
+void UccDBusService::snapProfileFrequencies( UccProfile &profile )
+{
+  if ( m_cpuWorker )
+    m_cpuWorker->snapProfileFrequencies( profile );
 }
 
 void UccDBusService::loadAutosave()

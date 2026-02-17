@@ -512,6 +512,7 @@ private:
   void applyProfileForCurrentState();
   void applyFanAndPumpSettings( const UccProfile &profile );
   void fillDeviceSpecificDefaults( std::vector< UccProfile > &profiles );
+  void snapProfileFrequencies( UccProfile &profile );
   std::optional< UniwillDeviceID > identifyDevice();
   void computeDeviceCapabilities();
   bool syncOutputPortsSetting();
