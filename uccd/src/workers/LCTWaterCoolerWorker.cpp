@@ -543,11 +543,11 @@ bool LCTWaterCoolerWorker::setFanSpeed( int dutyCyclePercent )
       getLastFanSpeed() == dutyCyclePercent )
     return false;
 
-  if ( dutyCyclePercent == 0 )
-    return turnOffFan();
-
   bool result = false;
-  if ( QThread::currentThread() == thread() )
+
+  if ( dutyCyclePercent == 0 )
+    result = turnOffFan();
+  else if ( QThread::currentThread() == thread() )
     result = setFanSpeedImpl( dutyCyclePercent );
   else
     QMetaObject::invokeMethod( this, "setFanSpeedImpl", Qt::BlockingQueuedConnection, Q_RETURN_ARG( bool, result ),
@@ -555,6 +555,7 @@ bool LCTWaterCoolerWorker::setFanSpeed( int dutyCyclePercent )
 
   if ( result )
     m_lastFanSpeed.store( dutyCyclePercent );
+
   return result;
 }
 
@@ -620,8 +621,8 @@ bool LCTWaterCoolerWorker::setLEDColor( int red, int green, int blue, int mode )
       m_lastLedMode.load() == hwMode )
     return true;
 
-  std::cout << "LCTWaterCoolerWorker: setting LED color R=" << red << " G=" << green << " B=" << blue
-            << " Mode=" << hwMode << std::endl;
+  //std::cout << "LCTWaterCoolerWorker: setting LED color R=" << red << " G=" << green << " B=" << blue
+  //          << " Mode=" << hwMode << std::endl;
 
   QByteArray data;
   data.append( static_cast< char >( 0xfe ) );

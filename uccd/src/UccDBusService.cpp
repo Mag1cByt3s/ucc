@@ -1861,9 +1861,9 @@ UccDBusService::UccDBusService()
             fp.tablePump = m_activeProfile.fan.tablePump;
           }
 
-          int32_t wcFanSpeed = fp.getWaterCoolerFanSpeedForTemp( temp );
-          int bucket = wcFanSpeed <= 0 ? 0 : wcFanSpeed >= 100 ? 9 : wcFanSpeed / 10;
-          m_waterCoolerWorker->setFanSpeed( bucket * 10 + 5 );
+          const int snappedTemp = ( temp / 5 + 1 ) * 5;
+          const int wcFanSpeed = fp.getWaterCoolerFanSpeedForTemp( snappedTemp );
+          m_waterCoolerWorker->setFanSpeed( wcFanSpeed );
 
           // Temperature LED mode: compute gradient color from fan speed
           if ( m_waterCoolerLedMode.load() == static_cast< int32_t >( ucc::RGBState::Temperature ) )
@@ -1880,8 +1880,8 @@ UccDBusService::UccDBusService()
           const ucc::PumpVoltage pumpSpeedValue = fp.getPumpSpeedForTemp( temp );
           m_waterCoolerWorker->setPumpVoltage( static_cast<int>(pumpSpeedValue) );
 
-          //std::cout << "[Auto WC] Temp: " << temp << "°C, Fan: " << wcFanSpeed
-          //          << "%, Pump Voltage: " << static_cast<int>(pumpSpeedValue) << std::endl;
+          // std::cout << "[Auto WC] Temp: " << temp << "°C, Fan: " << wcFanSpeed
+          //           << "%, Pump Voltage: " << static_cast<int>(pumpSpeedValue) << std::endl;
         }
         catch ( ... ) { /* ignore errors in water cooler auto-control */ }
       }

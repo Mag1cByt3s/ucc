@@ -118,12 +118,10 @@ public:
   { m_fansOffAvailable = available; }
 
   void setOffsetFanspeed( int speed )
-  { m_offsetFanspeed = std::clamp( speed, -100, 100 ); }
+  { m_offsetFanspeed = std::clamp( speed, -30, 30 ); }
 
   void updateFanProfile( const FanProfile &fanProfile )
-  {
-    m_fanProfile = fanProfile;
-  }
+  { m_fanProfile = fanProfile; }
 
   void reportTemperature( int temperatureValue )
   {
@@ -397,16 +395,13 @@ protected:
 
       // Get hardware fan limits
       int minSpeed = 0;
-      if ( m_io.getFansMinSpeed( minSpeed ) )
-      {
-        m_fansMinSpeedHWLimit = minSpeed;
-      }
-
       bool fansOffAvailable = true;
+
+      if ( m_io.getFansMinSpeed( minSpeed ) )
+        m_fansMinSpeedHWLimit = minSpeed;
+
       if ( m_io.getFansOffAvailable( fansOffAvailable ) )
-      {
         m_fansOffAvailable = fansOffAvailable;
-      }
 
       // Apply hardware limits to all fan logics
       for ( auto &logic : m_fanLogics )
