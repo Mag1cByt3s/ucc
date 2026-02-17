@@ -79,6 +79,7 @@ public:
   bool setCpuFrequency( int minFreq, int maxFreq );
   bool setEnergyPerformancePreference( const std::string &preference );
   std::optional< std::vector< std::string > > getAvailableEPPs();
+  std::optional< int > getCpuCoreCount();
 
   // Fan Control
   bool setFanProfile( const std::string &profileJSON );

@@ -516,6 +516,11 @@ std::optional< std::vector< std::string > > UccdClient::getAvailableEPPs()
   return epps;
 }
 
+std::optional< int > UccdClient::getCpuCoreCount()
+{
+  return callMethod< int >( "GetCpuCoreCount" );
+}
+
 bool UccdClient::setFanProfile( [[maybe_unused]] [[maybe_unused]] const std::string &profileJSON )
 {
   return false;

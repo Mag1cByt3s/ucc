@@ -626,11 +626,12 @@ void MainWindow::setupProfilesPage()
 
   QLabel *coresLabel = new QLabel( "Number of logical cores" );
   QHBoxLayout *coresLayout = new QHBoxLayout();
+  const int nCores = m_UccdClient->getCpuCoreCount().value_or( 1 );
   m_cpuCoresSlider = new QSlider( Qt::Horizontal );
   m_cpuCoresSlider->setMinimum( 1 );
-  m_cpuCoresSlider->setMaximum( 32 );
-  m_cpuCoresSlider->setValue( 32 );
-  m_cpuCoresValue = new QLabel( "32" );
+  m_cpuCoresSlider->setMaximum( nCores > 0 ? nCores : 1 );
+  m_cpuCoresSlider->setValue( nCores > 0 ? nCores : 1 );
+  m_cpuCoresValue = new QLabel( QString::number( nCores > 0 ? nCores : 1 ) );
   m_cpuCoresValue->setMinimumWidth( 35 );
   coresLayout->addWidget( m_cpuCoresSlider, 1 );
   coresLayout->addWidget( m_cpuCoresValue );
@@ -1478,7 +1479,7 @@ void MainWindow::loadProfileDetails( const QString &profileId )
 
 
     if ( cpuObj.contains( "onlineCores" ) )
-      m_cpuCoresSlider->setValue( cpuObj["onlineCores"].toInt( 32 ) );
+      m_cpuCoresSlider->setValue( cpuObj["onlineCores"].toInt( m_cpuCoresSlider->maximum() ) );
 
     if ( cpuObj.contains( "governor" ) )
     {

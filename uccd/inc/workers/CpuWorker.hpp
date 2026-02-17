@@ -150,6 +150,16 @@ public:
     return m_cpuCtrl.cores[ 0 ].energyPerformanceAvailablePreferences.read();
   }
 
+  /**
+   * @brief Get total number of available logical CPU cores
+   *
+   * @return Number of logical cores discovered from sysfs, or 0 if unavailable
+   */
+  int32_t getCoreCount() const
+  {
+    return static_cast< int32_t >( m_cpuCtrl.cores.size() );
+  }
+
   std::optional< std::string > getDefaultGovernor( void )
   {
     if ( not m_defaultGovernor.has_value() )

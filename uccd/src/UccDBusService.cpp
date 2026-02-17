@@ -1496,6 +1496,13 @@ QString UccDBusInterfaceAdaptor::GetAvailableEPPs()
   return QStringLiteral("[]");
 }
 
+int UccDBusInterfaceAdaptor::GetCpuCoreCount()
+{
+  if ( m_service && m_service->getCpuWorker() )
+    return m_service->getCpuWorker()->getCoreCount();
+  return -1;
+}
+
 // water cooler methods
 
 bool UccDBusInterfaceAdaptor::GetWaterCoolerAvailable()

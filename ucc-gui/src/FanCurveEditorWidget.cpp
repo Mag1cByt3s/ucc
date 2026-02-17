@@ -158,7 +158,7 @@ void FanCurveEditorWidget::paintEvent(QPaintEvent*) {
     p.restore();
     // X axis label
     p.setFont(axisFont);
-    QRectF xLabelRect(plotRect.left(), plotRect.bottom()+22, plotRect.width(), 20);
+    QRectF xLabelRect(plotRect.left(), plotRect.bottom()+28, plotRect.width(), 20);
     p.drawText(xLabelRect, Qt::AlignHCenter|Qt::AlignTop, "Temperature (°C)");
 
     // Draw border around plot area (half-pixel aligned)
