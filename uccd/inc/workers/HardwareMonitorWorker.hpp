@@ -16,11 +16,14 @@
 #pragma once
 
 #include "DaemonWorker.hpp"
+#include "../Utils.hpp"
 #include <string>
 #include <optional>
 #include <memory>
 #include <functional>
 #include <vector>
+#include <set>
+#include <sstream>
 
 /**
  * @brief GPU device counts by vendor/type
@@ -64,9 +67,111 @@ struct IGpuInfo
 };
 
 // Forward declarations for internal implementation classes
-class GpuDeviceDetector;
 class IntelRAPLController;
 class PowerController;
+
+/**
+ * @brief Detects GPU devices by scanning PCI sysfs entries
+ */
+class GpuDeviceDetector
+{
+public:
+  explicit GpuDeviceDetector() noexcept = default;
+
+  [[nodiscard]] GpuDeviceCounts detectGpuDevices() const noexcept
+  {
+    GpuDeviceCounts counts;
+    counts.intelIGpuCount = countDevicesMatchingPattern( getIntelIGpuPattern() );
+    counts.amdIGpuCount = countDevicesMatchingPattern( getAmdIGpuPattern() );
+    counts.amdDGpuCount = countDevicesMatchingPattern( getAmdDGpuPattern() );
+    counts.nvidiaCount = countNvidiaDevices();
+    return counts;
+  }
+
+private:
+  [[nodiscard]] std::string getIntelIGpuPattern() const noexcept
+  {
+    return "8086:(6420|64B0|7D51|7D67|7D41|7DD5|7D45|7D40|"
+           "A780|A781|A788|A789|A78A|A782|A78B|A783|A7A0|A7A1|A7A8|A7AA|"
+           "A7AB|A7AC|A7AD|A7A9|A721|4680|4690|4688|468A|468B|4682|4692|"
+           "4693|46D3|46D4|46D0|46D1|46D2|4626|4628|462A|46A2|46B3|46C2|"
+           "46A3|46B2|46C3|46A0|46B0|46C0|46A6|46AA|46A8)";
+  }
+
+  [[nodiscard]] std::string getAmdIGpuPattern() const noexcept
+  {
+    return "1002:(164E|1506|15DD|15D8|15E7|1636|1638|164C|164D|1681|15BF|"
+           "15C8|1304|1305|1306|1307|1309|130A|130B|130C|130D|130E|130F|"
+           "1310|1311|1312|1313|1315|1316|1317|1318|131B|131C|131D|13C0|"
+           "9830|9831|9832|9833|9834|9835|9836|9837|9838|9839|983a|983b|983c|"
+           "983d|983e|983f|9850|9851|9852|9853|9854|9855|9856|9857|9858|"
+           "9859|985A|985B|985C|985D|985E|985F|9870|9874|9875|9876|9877|"
+           "98E4|13FE|143F|74A0|1435|163f|1900|1901|1114|150E)";
+  }
+
+  [[nodiscard]] std::string getAmdDGpuPattern() const noexcept
+  {
+    return "1002:(7480)";
+  }
+
+  [[nodiscard]] int countDevicesMatchingPattern( const std::string &pattern ) const noexcept
+  {
+    try
+    {
+      std::string command =
+          "for f in /sys/bus/pci/devices/*/uevent; do "
+          "grep -q 'PCI_CLASS=30000' \"$f\" && grep -q -P 'PCI_ID=" + pattern + "' \"$f\" && echo \"$f\"; "
+          "done";
+
+      std::string output = TccUtils::executeCommand( command );
+      if ( output.empty() )
+        return 0;
+
+      int count = 0;
+      for ( char c : output )
+        if ( c == '\n' ) count++;
+      if ( not output.empty() and output.back() != '\n' )
+        count++;
+      return count;
+    }
+    catch ( ... ) { return 0; }
+  }
+
+  [[nodiscard]] int countNvidiaDevices() const noexcept
+  {
+    try
+    {
+      const std::string nvidiaVendorId = "0x10de";
+      std::string command =
+          "grep -lx '" + nvidiaVendorId + "' /sys/bus/pci/devices/*/vendor 2>/dev/null || echo ''";
+      std::string output = TccUtils::executeCommand( command );
+      if ( output.empty() )
+        return 0;
+
+      std::set< std::string > uniqueDevices;
+      std::istringstream iss( output );
+      std::string line;
+
+      while ( std::getline( iss, line ) )
+      {
+        if ( not line.empty() )
+        {
+          size_t lastSlash = line.rfind( '/' );
+          if ( lastSlash != std::string::npos and lastSlash > 0 )
+          {
+            std::string devicePath = line.substr( 0, lastSlash );
+            size_t lastDot = devicePath.rfind( '.' );
+            if ( lastDot != std::string::npos )
+              devicePath = devicePath.substr( 0, lastDot );
+            uniqueDevices.insert( devicePath );
+          }
+        }
+      }
+      return static_cast< int >( uniqueDevices.size() );
+    }
+    catch ( ... ) { return 0; }
+  }
+};
 
 /**
  * @brief HardwareMonitorWorker - Unified hardware monitoring
@@ -157,7 +262,7 @@ protected:
 
 private:
   // --- GPU state ---
-  std::unique_ptr< GpuDeviceDetector > m_gpuDetector;
+  GpuDeviceDetector m_gpuDetector;
   GpuDeviceCounts m_deviceCounts;
   bool m_isNvidiaSmiInstalled;
   GpuDataCallback m_gpuDataCallback;

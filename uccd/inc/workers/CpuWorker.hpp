@@ -41,15 +41,16 @@ public:
     std::function< bool() > getCpuSettingsEnabled,
     std::function< void( const std::string & ) > logFunction )
     : DaemonWorker( std::chrono::milliseconds( 10000 ), false )
+    , m_cpuCtrl()
     , m_getActiveProfile( std::move( getActiveProfile ) )
     , m_getCpuSettingsEnabled( std::move( getCpuSettingsEnabled ) )
     , m_logFunction( std::move( logFunction ) )
-    , m_cpuCtrl( std::make_unique< CpuController >() )
+    , m_noEPPWriteQuirk( false )
+    , m_validationFailureCount( 0 )
+    , m_reapplyGaveUp( false )
   {
     // check for EPP write quirks for specific devices
-    m_noEPPWriteQuirk = false; // todo: implement device detection if needed
-    m_validationFailureCount = 0;
-    m_reapplyGaveUp = false;
+    // todo: implement device detection if needed
   }
 
   void onStart() override
@@ -118,10 +119,10 @@ public:
    */
   std::optional< std::vector< std::string > > getAvailableGovernors()
   {
-    if ( m_cpuCtrl->cores.empty() )
+    if ( m_cpuCtrl.cores.empty() )
       return std::nullopt;
 
-    return m_cpuCtrl->cores[ 0 ].scalingAvailableGovernors.read();
+    return m_cpuCtrl.cores[ 0 ].scalingAvailableGovernors.read();
   }
 
   std::optional< std::string > getDefaultGovernor( void )
@@ -133,10 +134,10 @@ public:
   }
 
 private:
+  CpuController m_cpuCtrl;
   std::function< UccProfile() > m_getActiveProfile;
   std::function< bool() > m_getCpuSettingsEnabled;
   std::function< void( const std::string & ) > m_logFunction;
-  std::unique_ptr< CpuController > m_cpuCtrl;
   bool m_noEPPWriteQuirk;
   int m_validationFailureCount;
   bool m_reapplyGaveUp;
@@ -167,10 +168,10 @@ private:
    */
   std::optional< std::string > findDefaultGovernor( void )
   {
-    if ( not m_cpuCtrl || m_cpuCtrl->cores.empty() )
+    if ( m_cpuCtrl.cores.empty() )
       return std::nullopt;
 
-    auto scalingDriver = m_cpuCtrl->cores[ 0 ].scalingDriver.read();
+    auto scalingDriver = m_cpuCtrl.cores[ 0 ].scalingDriver.read();
 
     if ( not scalingDriver.has_value() )
       return std::nullopt;
@@ -182,7 +183,7 @@ private:
       return "powersave";
 
     // for other drivers (acpi-cpufreq), prefer ondemand/schedutil/conservative
-    auto availableGovernors = m_cpuCtrl->cores[ 0 ].scalingAvailableGovernors.read();
+    auto availableGovernors = m_cpuCtrl.cores[ 0 ].scalingAvailableGovernors.read();
 
     if ( not availableGovernors.has_value() )
       return std::nullopt;
@@ -201,10 +202,10 @@ private:
    */
   std::optional< std::string > findPerformanceGovernor()
   {
-    if ( m_cpuCtrl->cores.empty() )
+    if ( m_cpuCtrl.cores.empty() )
       return std::nullopt;
 
-    auto scalingDriver = m_cpuCtrl->cores[ 0 ].scalingDriver.read();
+    auto scalingDriver = m_cpuCtrl.cores[ 0 ].scalingDriver.read();
 
     if ( not scalingDriver.has_value() )
       return std::nullopt;
@@ -218,7 +219,7 @@ private:
     }
 
     // for other drivers, use 'performance' if available
-    auto availableGovernors = m_cpuCtrl->cores[ 0 ].scalingAvailableGovernors.read();
+    auto availableGovernors = m_cpuCtrl.cores[ 0 ].scalingAvailableGovernors.read();
 
     if ( not availableGovernors.has_value() )
       return std::nullopt;
@@ -242,20 +243,20 @@ private:
     // reset everything to default before applying new settings
     setCpuDefaultConfig();
 
-    m_cpuCtrl->setGovernor( not profile.cpu.governor.empty() ? profile.cpu.governor : getDefaultGovernor() );
+    m_cpuCtrl.setGovernor( not profile.cpu.governor.empty() ? profile.cpu.governor : getDefaultGovernor() );
 
     if ( not m_noEPPWriteQuirk )
-      m_cpuCtrl->setEnergyPerformancePreference( profile.cpu.energyPerformancePreference );
+      m_cpuCtrl.setEnergyPerformancePreference( profile.cpu.energyPerformancePreference );
 
-    m_cpuCtrl->setGovernorScalingMinFrequency( profile.cpu.scalingMinFrequency );
-    m_cpuCtrl->setGovernorScalingMaxFrequency( profile.cpu.scalingMaxFrequency );
+    m_cpuCtrl.setGovernorScalingMinFrequency( profile.cpu.scalingMinFrequency );
+    m_cpuCtrl.setGovernorScalingMaxFrequency( profile.cpu.scalingMaxFrequency );
 
     // set number of online cores
-    m_cpuCtrl->useCores( profile.cpu.onlineCores );
+    m_cpuCtrl.useCores( profile.cpu.onlineCores );
 
     // set no_turbo if available
-    if ( m_cpuCtrl->intelPstateNoTurbo.isAvailable() )
-      m_cpuCtrl->intelPstateNoTurbo.write( profile.cpu.noTurbo );
+    if ( m_cpuCtrl.intelPstateNoTurbo.isAvailable() )
+      m_cpuCtrl.intelPstateNoTurbo.write( profile.cpu.noTurbo );
   }
 
   /**
@@ -263,15 +264,15 @@ private:
    */
   void setCpuDefaultConfig()
   {
-    m_cpuCtrl->useCores( std::nullopt ); // all cores
-    m_cpuCtrl->setGovernorScalingMinFrequency( std::nullopt ); // min
-    m_cpuCtrl->setGovernorScalingMaxFrequency( std::nullopt ); // max
+    m_cpuCtrl.useCores( std::nullopt ); // all cores
+    m_cpuCtrl.setGovernorScalingMinFrequency( std::nullopt ); // min
+    m_cpuCtrl.setGovernorScalingMaxFrequency( std::nullopt ); // max
 
     if ( not m_noEPPWriteQuirk )
-      m_cpuCtrl->setEnergyPerformancePreference( "default" );
+      m_cpuCtrl.setEnergyPerformancePreference( "default" );
 
-    if ( m_cpuCtrl->intelPstateNoTurbo.isAvailable() )
-      m_cpuCtrl->intelPstateNoTurbo.write( false );
+    if ( m_cpuCtrl.intelPstateNoTurbo.isAvailable() )
+      m_cpuCtrl.intelPstateNoTurbo.write( false );
   }
 
   /**
@@ -282,7 +283,7 @@ private:
     const UccProfile profile = m_getActiveProfile();
     {
       // validate scaling frequencies match profile
-      for ( const auto &core : m_cpuCtrl->cores )
+      for ( const auto &core : m_cpuCtrl.cores )
       {
         if ( core.coreIndex == 0 or core.online.read().value_or( false ) )
         {
@@ -345,9 +346,9 @@ private:
       }
 
       // check no_turbo setting
-      if ( m_cpuCtrl->intelPstateNoTurbo.isAvailable() )
+      if ( m_cpuCtrl.intelPstateNoTurbo.isAvailable() )
       {
-        auto currentNoTurbo = m_cpuCtrl->intelPstateNoTurbo.read();
+        auto currentNoTurbo = m_cpuCtrl.intelPstateNoTurbo.read();
 
         if ( currentNoTurbo.has_value() and *currentNoTurbo != profile.cpu.noTurbo )
         {

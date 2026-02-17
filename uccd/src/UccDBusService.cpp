@@ -2867,7 +2867,7 @@ void UccDBusService::initializeDisplayModes()
   // detect session type (x11 or wayland)
   std::string sessionType = TccUtils::executeCommand(
     "cat $(printf \"/proc/%s/environ \" $(pgrep -vu root | tail -n 20)) 2>/dev/null | "
-    "tr '\0' '\n' 2>/dev/null | grep -m1 '^XDG_SESSION_TYPE=' | cut -d= -f2"
+    "tr '\\0' '\\n' 2>/dev/null | grep -m1 '^XDG_SESSION_TYPE=' | cut -d= -f2"
   );
 
   // trim whitespace
@@ -3144,12 +3144,14 @@ void UccDBusService::applyStartupProfile()
   const std::string stateKey = profileStateToString( m_currentState );
   
   std::cout << "[Startup] Current power state: " << stateKey << std::endl;
+  syslog( LOG_INFO, "[Startup] Current power state: %s", stateKey.c_str() );
   
   // Look up the profile assigned to this state
   auto stateMapIt = m_settings.stateMap.find( stateKey );
   if ( stateMapIt == m_settings.stateMap.end() )
   {
     std::cout << "[Startup] No profile assigned to state '" << stateKey << "'" << std::endl;
+    syslog( LOG_INFO, "[Startup] No profile assigned to state '%s'", stateKey.c_str() );
     return;
   }
   
@@ -3157,6 +3159,7 @@ void UccDBusService::applyStartupProfile()
   m_currentStateProfileId = profileId;
   
   std::cout << "[Startup] Applying profile assigned to state '" << stateKey << "': " << profileId << std::endl;
+  syslog( LOG_INFO, "[Startup] Applying profile assigned to state '%s': %s", stateKey.c_str(), profileId.c_str() );
   
   // First try to find the profile in settings (persistent profiles)
   auto profileIt = m_settings.profiles.find( profileId );
@@ -3169,6 +3172,7 @@ void UccDBusService::applyStartupProfile()
       updateDBusActiveProfileData();
       
       std::cout << "[Startup] Applied profile from settings: " << profile.name << " (ID: " << profile.id << ")" << std::endl;
+      syslog( LOG_INFO, "[Startup] Applied profile from settings: %s (ID: %s)", profile.name.c_str(), profile.id.c_str() );
       
       // Apply fan curves and pump auto-control
       applyFanAndPumpSettings( profile );
@@ -3177,12 +3181,14 @@ void UccDBusService::applyStartupProfile()
       if ( m_cpuWorker )
       {
         std::cout << "[Startup] Triggering CPU settings reapply" << std::endl;
+        syslog( LOG_INFO, "[Startup] Triggering CPU settings reapply" );
         m_cpuWorker->reapplyProfile();
       }
       
       if ( m_profileSettingsWorker )
       {
         std::cout << "[Startup] Triggering TDP settings reapply" << std::endl;
+        syslog( LOG_INFO, "[Startup] Triggering TDP settings reapply" );
         m_profileSettingsWorker->reapplyProfile();
       }
       
@@ -3190,6 +3196,7 @@ void UccDBusService::applyStartupProfile()
       if ( m_keyboardBacklightListener && !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
       {
         std::cout << "[Startup] Applying keyboard backlight settings from profile" << std::endl;
+        syslog( LOG_INFO, "[Startup] Applying keyboard backlight settings from profile" );
         m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
       }
 
@@ -3202,6 +3209,7 @@ void UccDBusService::applyStartupProfile()
     catch ( const std::exception &e )
     {
       std::cerr << "[Startup] Failed to parse profile '" << profileId << "' from settings: " << e.what() << std::endl;
+      syslog( LOG_ERR, "[Startup] Failed to parse profile '%s' from settings: %s", profileId.c_str(), e.what() );
     }
   }
   
@@ -3218,6 +3226,7 @@ void UccDBusService::applyStartupProfile()
       profileFound = true;
       
       std::cout << "[Startup] Applied built-in profile: " << profile.name << " (ID: " << profile.id << ")" << std::endl;
+      syslog( LOG_INFO, "[Startup] Applied built-in profile: %s (ID: %s)", profile.name.c_str(), profile.id.c_str() );
       
       // Apply fan curves and pump auto-control
       applyFanAndPumpSettings( profile );
@@ -3227,12 +3236,14 @@ void UccDBusService::applyStartupProfile()
       if ( m_cpuWorker )
       {
         std::cout << "[Startup] Triggering CPU settings reapply" << std::endl;
+        syslog( LOG_INFO, "[Startup] Triggering CPU settings reapply" );
         m_cpuWorker->reapplyProfile();
       }
       
       if ( m_profileSettingsWorker )
       {
         std::cout << "[Startup] Triggering TDP settings reapply" << std::endl;
+        syslog( LOG_INFO, "[Startup] Triggering TDP settings reapply" );
         m_profileSettingsWorker->reapplyProfile();
       }
       
@@ -3240,6 +3251,7 @@ void UccDBusService::applyStartupProfile()
       if ( m_keyboardBacklightListener && !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
       {
         std::cout << "[Startup] Applying keyboard backlight settings from profile" << std::endl;
+        syslog( LOG_INFO, "[Startup] Applying keyboard backlight settings from profile" );
         m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
       }
 
@@ -3254,6 +3266,7 @@ void UccDBusService::applyStartupProfile()
   if ( !profileFound )
   {
     std::cerr << "[Startup] WARNING: Profile ID '" << profileId << "' not found!" << std::endl;
+    syslog( LOG_WARNING, "[Startup] WARNING: Profile ID '%s' not found!", profileId.c_str() );
   }
 }
 
