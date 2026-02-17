@@ -324,7 +324,7 @@ void DisplayWorker::setEnvVariables() noexcept
 {
   try
   {
-    const char *cmd = R"(cat $(printf "/proc/%s/environ " $(pgrep -vu root | tail -n 20)) 2>/dev/null | tr '\0' '\n' | awk ' /DISPLAY=/ && !countDisplay {print; countDisplay++} /XAUTHORITY=/ && !countXAuthority {print; countXAuthority++} /XDG_SESSION_TYPE=/ && !countSessionType {print; countSessionType++} /USER=/ && !countUser {print; countUser++} {if (countDisplay && countXAuthority && countSessionType && countUser) exit} ')";
+    const char *cmd = R"(cat $(printf "/proc/%s/environ " $(pgrep -vu root | tail -n 20)) 2>/dev/null | tr '\0' '\n' 2>/dev/null | awk ' /DISPLAY=/ && !countDisplay {print; countDisplay++} /XAUTHORITY=/ && !countXAuthority {print; countXAuthority++} /XDG_SESSION_TYPE=/ && !countSessionType {print; countSessionType++} /USER=/ && !countUser {print; countUser++} {if (countDisplay && countXAuthority && countSessionType && countUser) exit} ')";
 
     auto pipe = popen( cmd, "r" );
     if ( not pipe )

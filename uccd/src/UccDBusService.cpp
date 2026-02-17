@@ -2865,14 +2865,14 @@ bool UccDBusService::updateCustomProfile( const UccProfile &profile )
 void UccDBusService::initializeDisplayModes()
 {
   // detect session type (x11 or wayland)
-  std::string sessionType = TccUtils::executeCommand( 
+  std::string sessionType = TccUtils::executeCommand(
     "cat $(printf \"/proc/%s/environ \" $(pgrep -vu root | tail -n 20)) 2>/dev/null | "
-    "tr '\\0' '\\n' | grep -m1 '^XDG_SESSION_TYPE=' | cut -d= -f2" 
+    "tr '\0' '\n' 2>/dev/null | grep -m1 '^XDG_SESSION_TYPE=' | cut -d= -f2"
   );
-  
+
   // trim whitespace
-  while ( not sessionType.empty() and 
-          ( sessionType.back() == '\n' or sessionType.back() == '\r' or 
+  while ( not sessionType.empty() and
+          ( sessionType.back() == '\n' or sessionType.back() == '\r' or
             sessionType.back() == ' ' or sessionType.back() == '\t' ) )
   {
     sessionType.pop_back();
