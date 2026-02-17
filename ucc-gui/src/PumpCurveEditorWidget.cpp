@@ -56,6 +56,20 @@ void PumpCurveEditorWidget::sortPoints() {
         m_points[i].level = i + 1;
 }
 
+void PumpCurveEditorWidget::setCrosshair( double temp, int level )
+{
+    m_crosshairVisible = true;
+    m_crosshairTemp = temp;
+    m_crosshairLevel = std::clamp( level, 0, 3 );
+    update();
+}
+
+void PumpCurveEditorWidget::clearCrosshair()
+{
+    m_crosshairVisible = false;
+    update();
+}
+
 QPointF PumpCurveEditorWidget::toWidget(const Point& pt) const {
     const int left = 110, right = 20, top = 28, bottom = 68;
     double plotW = width() - left - right;
@@ -214,6 +228,46 @@ void PumpCurveEditorWidget::paintEvent(QPaintEvent*) {
         QString tempLabel = QString::number(qRound(m_points[i].temp)) + QChar(0x00B0);
         QRectF tLabelRect(wp.x() - 20, wp.y() - 22, 40, 16);
         p.drawText(tLabelRect, Qt::AlignHCenter | Qt::AlignBottom, tempLabel);
+    }
+
+    // Draw live crosshair overlay
+    if (m_crosshairVisible) {
+        Point crossPt { m_crosshairTemp, m_crosshairLevel };
+        QPointF cp = toWidget(crossPt);
+
+        // Clamp to plot area
+        cp.setX(std::clamp(cp.x(), (double)plotRect.left(), (double)plotRect.right()));
+        cp.setY(std::clamp(cp.y(), (double)plotRect.top(), (double)plotRect.bottom()));
+
+        // Dashed crosshair lines
+        QPen crossPen(QColor("#ff5722"), 1.5, Qt::DashLine);
+        p.setPen(crossPen);
+        p.drawLine(QPointF(cp.x(), plotRect.top()), QPointF(cp.x(), plotRect.bottom()));
+        p.drawLine(QPointF(plotRect.left(), cp.y()), QPointF(plotRect.right(), cp.y()));
+
+        // Crosshair dot
+        p.setBrush(QColor("#ff5722"));
+        p.setPen(QPen(Qt::white, 1.5));
+        p.drawEllipse(cp, 5.0, 5.0);
+
+        // Labels
+        QFont labelFont = font();
+        labelFont.setPointSize(8);
+        labelFont.setWeight(QFont::Bold);
+        p.setFont(labelFont);
+
+        // Temperature label (below X axis)
+        QString tempLabel = QString::number(m_crosshairTemp, 'f', 0) + QChar(0x00B0) + "C";
+        p.setPen(QColor("#ff5722"));
+        QRectF tempLabelRect(cp.x() - 20, plotRect.bottom() + 1, 40, 14);
+        p.fillRect(tempLabelRect, QColor("#181e26"));
+        p.drawText(tempLabelRect, Qt::AlignHCenter | Qt::AlignTop, tempLabel);
+
+        // Level label (left of Y axis)
+        QString lvlLabel = levelLabel(m_crosshairLevel);
+        QRectF lvlLabelRect(plotRect.left() - 55, cp.y() - 7, 53, 14);
+        p.fillRect(lvlLabelRect, QColor("#181e26"));
+        p.drawText(lvlLabelRect, Qt::AlignRight | Qt::AlignVCenter, lvlLabel);
     }
 
     // Draw rubber band

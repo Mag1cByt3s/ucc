@@ -131,6 +131,10 @@ namespace ucc
     void setupFanControlTab();
     void connectFanControlTab();
     void updateProfileEditingWidgets( bool isCustom );
+    void updateFanCrosshairs();
+
+    /** Parse a numeric value from a SystemMonitor formatted string (e.g. "65°C" → 65). */
+    static std::optional< double > parseMonitorValue( const QString &str );
 
     std::unique_ptr< ProfileManager > m_profileManager;
     std::unique_ptr< SystemMonitor > m_systemMonitor;

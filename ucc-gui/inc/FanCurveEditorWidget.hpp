@@ -22,6 +22,11 @@ public:
     void setEditable(bool editable) { m_editable = editable; }
     bool isEditable() const { return m_editable; }
 
+    /** Set the live crosshair position (temperature in °C, duty in %). */
+    void setCrosshair( double temp, double duty );
+    /** Remove the crosshair from the display. */
+    void clearCrosshair();
+
 signals:
     void pointsChanged(const QVector<Point>&);
 
@@ -36,6 +41,11 @@ private:
     QVector<Point> m_points;
     int m_draggedIndex = -1;
     bool m_editable = true;
+
+    // Live crosshair state
+    bool m_crosshairVisible = false;
+    double m_crosshairTemp = 0.0;
+    double m_crosshairDuty = 0.0;
 
     // Multi-select state
     QSet<int> m_selectedIndices;

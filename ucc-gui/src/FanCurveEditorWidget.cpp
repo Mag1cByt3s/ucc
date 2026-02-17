@@ -31,6 +31,20 @@ void FanCurveEditorWidget::setPoints(const QVector<Point>& pts) {
     emit pointsChanged(m_points);
 }
 
+void FanCurveEditorWidget::setCrosshair( double temp, double duty )
+{
+    m_crosshairVisible = true;
+    m_crosshairTemp = temp;
+    m_crosshairDuty = duty;
+    update();
+}
+
+void FanCurveEditorWidget::clearCrosshair()
+{
+    m_crosshairVisible = false;
+    update();
+}
+
 void FanCurveEditorWidget::sortPoints() {
     std::sort(m_points.begin(), m_points.end(), [](const Point& a, const Point& b) { return a.temp < b.temp; });
 }
@@ -176,6 +190,48 @@ void FanCurveEditorWidget::paintEvent(QPaintEvent*) {
             p.setPen(QPen(QColor("#999999"), 2));
         }
         p.drawEllipse(r);
+    }
+
+    // Draw live crosshair overlay
+    if (m_crosshairVisible) {
+        Point crossPt { m_crosshairTemp, m_crosshairDuty };
+        QPointF cp = toWidget(crossPt);
+
+        // Clamp to plot area
+        cp.setX(std::clamp(cp.x(), (double)plotRect.left(), (double)plotRect.right()));
+        cp.setY(std::clamp(cp.y(), (double)plotRect.top(), (double)plotRect.bottom()));
+
+        // Dashed crosshair lines
+        QPen crossPen(QColor("#ff5722"), 1.5, Qt::DashLine);
+        p.setPen(crossPen);
+        // Vertical line (temperature)
+        p.drawLine(QPointF(cp.x(), plotRect.top()), QPointF(cp.x(), plotRect.bottom()));
+        // Horizontal line (duty)
+        p.drawLine(QPointF(plotRect.left(), cp.y()), QPointF(plotRect.right(), cp.y()));
+
+        // Draw crosshair dot
+        p.setBrush(QColor("#ff5722"));
+        p.setPen(QPen(Qt::white, 1.5));
+        p.drawEllipse(cp, 5.0, 5.0);
+
+        // Draw labels
+        QFont labelFont = font();
+        labelFont.setPointSize(8);
+        labelFont.setWeight(QFont::Bold);
+        p.setFont(labelFont);
+
+        // Temperature label (below X axis at crosshair X)
+        QString tempLabel = QString::number(m_crosshairTemp, 'f', 0) + QChar(0x00B0) + "C";
+        p.setPen(QColor("#ff5722"));
+        QRectF tempLabelRect(cp.x() - 20, plotRect.bottom() + 1, 40, 14);
+        p.fillRect(tempLabelRect, QColor("#181e26"));
+        p.drawText(tempLabelRect, Qt::AlignHCenter | Qt::AlignTop, tempLabel);
+
+        // Duty label (left of Y axis at crosshair Y)
+        QString dutyLabel = QString::number(m_crosshairDuty, 'f', 0) + "%";
+        QRectF dutyLabelRect(plotRect.left() - 40, cp.y() - 7, 38, 14);
+        p.fillRect(dutyLabelRect, QColor("#181e26"));
+        p.drawText(dutyLabelRect, Qt::AlignRight | Qt::AlignVCenter, dutyLabel);
     }
 
     // Draw rubber band selection rectangle

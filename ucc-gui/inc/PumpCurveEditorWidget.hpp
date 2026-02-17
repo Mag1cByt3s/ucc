@@ -34,6 +34,11 @@ public:
     void setEditable(bool editable) { m_editable = editable; }
     bool isEditable() const { return m_editable; }
 
+    /** Set the live crosshair position (temperature in °C, pump level 0–3). */
+    void setCrosshair( double temp, int level );
+    /** Remove the crosshair from the display. */
+    void clearCrosshair();
+
     /// Pump level labels
     static QString levelLabel(int level);
 
@@ -50,6 +55,11 @@ private:
     QVector<Point> m_points;   // exactly 3 threshold points
     int m_draggedIndex = -1;
     bool m_editable = true;
+
+    // Live crosshair state
+    bool m_crosshairVisible = false;
+    double m_crosshairTemp = 0.0;
+    int m_crosshairLevel = 0;
 
     // Multi-select
     QSet<int> m_selectedIndices;

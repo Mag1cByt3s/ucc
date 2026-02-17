@@ -579,11 +579,10 @@ bool UccDBusInterfaceAdaptor::SetFanProfileDGPU( const QString &pointsJSON )
 
 bool UccDBusInterfaceAdaptor::ApplyFanProfiles( const QString &fanProfilesJSONq )
 {
-  if ( !m_service )
+  if ( not m_service )
     return false;
 
   const std::string fanProfilesJSON = fanProfilesJSONq.toStdString();
-  std::cerr << "[DBus] ApplyFanProfiles called with JSON: " << fanProfilesJSON << std::endl;
 
   try
   {

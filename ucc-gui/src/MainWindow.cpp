@@ -31,6 +31,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <algorithm>
+#include <optional>
 
 // Helper widget for rotated y-axis label
 class RotatedLabel : public QLabel
@@ -971,6 +972,14 @@ void MainWindow::connectSignals()
 
   // Populate EPP combo
   populateEppCombo();
+
+  // ── Live crosshair tracking on fan curve editors ──
+  connect( m_systemMonitor.get(), &SystemMonitor::cpuTempChanged,              this, &MainWindow::updateFanCrosshairs );
+  connect( m_systemMonitor.get(), &SystemMonitor::fanSpeedChanged,             this, &MainWindow::updateFanCrosshairs );
+  connect( m_systemMonitor.get(), &SystemMonitor::gpuTempChanged,              this, &MainWindow::updateFanCrosshairs );
+  connect( m_systemMonitor.get(), &SystemMonitor::gpuFanSpeedChanged,          this, &MainWindow::updateFanCrosshairs );
+  connect( m_systemMonitor.get(), &SystemMonitor::waterCoolerFanSpeedChanged,  this, &MainWindow::updateFanCrosshairs );
+  connect( m_systemMonitor.get(), &SystemMonitor::waterCoolerPumpLevelChanged,  this, &MainWindow::updateFanCrosshairs );
 }
 
 void MainWindow::populateGovernorCombo()
@@ -1001,12 +1010,111 @@ void MainWindow::populateEppCombo()
   }
 }
 
+std::optional< double > MainWindow::parseMonitorValue( const QString &str )
+{
+  QString s = str.trimmed();
+  if ( s == "--" || s.isEmpty() )
+    return std::nullopt;
+
+  // Strip known suffixes (use QString for correct QChar-level chop)
+  static const QStringList suffixes = { QStringLiteral( "°C" ),
+                                        QStringLiteral( " %" ),
+                                        QStringLiteral( " MHz" ),
+                                        QStringLiteral( " W" ),
+                                        QStringLiteral( " RPM" ) };
+  for ( const auto &suffix : suffixes )
+  {
+    if ( s.endsWith( suffix ) )
+    {
+      s.chop( suffix.size() );
+      break;
+    }
+  }
+
+  bool ok = false;
+  double v = s.toDouble( &ok );
+  return ok ? std::optional< double >( v ) : std::nullopt;
+}
+
+void MainWindow::updateFanCrosshairs()
+{
+  const int fanTabIndex = m_tabs->indexOf( m_fanControlTab );
+  if ( !m_fanControlTab || m_tabs->currentIndex() != fanTabIndex )
+    return;
+
+  // CPU fan editor
+  {
+    auto temp = parseMonitorValue( m_systemMonitor->cpuTemp() );
+    auto duty = parseMonitorValue( m_systemMonitor->cpuFanSpeed() );
+    qDebug() << "[Crosshair] CPU raw:" << m_systemMonitor->cpuTemp() << m_systemMonitor->cpuFanSpeed()
+             << "parsed temp:" << ( temp ? *temp : -1 ) << "duty:" << ( duty ? *duty : -1 );
+    if ( temp && duty )
+      m_fanControlTab->cpuEditor()->setCrosshair( *temp, *duty );
+    else
+      m_fanControlTab->cpuEditor()->clearCrosshair();
+  }
+
+  // GPU fan editor
+  {
+    auto temp = parseMonitorValue( m_systemMonitor->gpuTemp() );
+    auto duty = parseMonitorValue( m_systemMonitor->gpuFanSpeed() );
+    if ( temp && duty )
+      m_fanControlTab->gpuEditor()->setCrosshair( *temp, *duty );
+    else
+      m_fanControlTab->gpuEditor()->clearCrosshair();
+  }
+
+  // Water cooler fan editor (uses CPU temp as temperature source)
+  if ( m_fanControlTab->wcFanEditor() )
+  {
+    auto temp = parseMonitorValue( m_systemMonitor->cpuTemp() );
+    auto duty = parseMonitorValue( m_systemMonitor->waterCoolerFanSpeed() );
+    if ( temp && duty )
+      m_fanControlTab->wcFanEditor()->setCrosshair( *temp, *duty );
+    else
+      m_fanControlTab->wcFanEditor()->clearCrosshair();
+  }
+
+  // Pump curve editor (uses CPU temp and pump voltage level)
+  if ( m_fanControlTab->pumpEditor() )
+  {
+    auto temp = parseMonitorValue( m_systemMonitor->cpuTemp() );
+    int pumpLevel = -1;
+    const QString &lvlStr = m_systemMonitor->waterCoolerPumpLevel();
+    if ( lvlStr == "Off" )       pumpLevel = 0;
+    else if ( lvlStr == "Low" )  pumpLevel = 1;
+    else if ( lvlStr == "Med" )  pumpLevel = 2;
+    else if ( lvlStr == "High" ) pumpLevel = 3;
+
+    if ( temp && pumpLevel >= 0 )
+      m_fanControlTab->pumpEditor()->setCrosshair( *temp, pumpLevel );
+    else
+      m_fanControlTab->pumpEditor()->clearCrosshair();
+  }
+}
+
 void MainWindow::onTabChanged( int index )
 {
-  // Enable monitoring only when dashboard tab (index 0) is visible
-  bool isDashboard = ( index == 0 );
-  qDebug() << "Tab changed to" << index << "- Monitoring active:" << isDashboard;
-  m_systemMonitor->setMonitoringActive( isDashboard );
+  const int fanTabIndex = m_fanControlTab ? m_tabs->indexOf( m_fanControlTab ) : -1;
+
+  // Enable monitoring when dashboard (0) or fan control tab is visible
+  bool needsMonitoring = ( index == 0 || index == fanTabIndex );
+  qDebug() << "Tab changed to" << index << "- Monitoring active:" << needsMonitoring
+           << "(fan tab =" << fanTabIndex << ")";
+  m_systemMonitor->setMonitoringActive( needsMonitoring );
+
+  // Update or clear fan curve crosshairs
+  if ( index == fanTabIndex )
+    updateFanCrosshairs();
+  else if ( m_fanControlTab )
+  {
+    m_fanControlTab->cpuEditor()->clearCrosshair();
+    m_fanControlTab->gpuEditor()->clearCrosshair();
+    if ( m_fanControlTab->wcFanEditor() )
+      m_fanControlTab->wcFanEditor()->clearCrosshair();
+    if ( m_fanControlTab->pumpEditor() )
+      m_fanControlTab->pumpEditor()->clearCrosshair();
+  }
 
   // Load current keyboard backlight states when keyboard tab (index 4) is activated
   if ( index == 4 )
