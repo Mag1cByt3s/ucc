@@ -197,8 +197,8 @@ public:
         profile.cpu.scalingMaxFrequency = scalingMax;
       }
       
-      profile.cpu.governor = extractString( cpuJson, "governor", "powersave" );
-      profile.cpu.energyPerformancePreference = extractString( cpuJson, "energyPerformancePreference", "balance_performance" );
+      profile.cpu.governor = extractString( cpuJson, "governor", "" );
+      profile.cpu.energyPerformancePreference = extractString( cpuJson, "energyPerformancePreference", "" );
       profile.cpu.noTurbo = extractBool( cpuJson, "noTurbo", false );
     }
 

@@ -78,6 +78,7 @@ public:
   std::optional< std::vector< std::string > > getAvailableCpuGovernors();
   bool setCpuFrequency( int minFreq, int maxFreq );
   bool setEnergyPerformancePreference( const std::string &preference );
+  std::optional< std::vector< std::string > > getAvailableEPPs();
 
   // Fan Control
   bool setFanProfile( const std::string &profileJSON );

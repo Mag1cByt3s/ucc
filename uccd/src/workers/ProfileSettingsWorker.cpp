@@ -538,8 +538,10 @@ void ProfileSettingsWorker::logLine( const std::string &message )
   {
     m_logFunction( message );
   }
-
-  syslog( LOG_INFO, "%s", message.c_str() );
+  else
+  {
+    syslog( LOG_INFO, "%s", message.c_str() );
+  }
 }
 
 void ProfileSettingsWorker::applyODMPowerLimits()

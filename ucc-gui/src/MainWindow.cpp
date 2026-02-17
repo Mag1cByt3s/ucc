@@ -639,10 +639,14 @@ void MainWindow::setupProfilesPage()
 
   QLabel *maxPerfLabel = new QLabel( "CPU Governor" );
   m_governorCombo = new QComboBox();
-  m_governorCombo->addItem( "powersave", "powersave" );
-  m_governorCombo->addItem( "performance", "performance" );
   detailsLayout->addWidget( maxPerfLabel, row, 0 );
   detailsLayout->addWidget( m_governorCombo, row, 1, Qt::AlignLeft );
+  row++;
+
+  QLabel *eppLabel = new QLabel( "Energy Performance Preference" );
+  m_eppCombo = new QComboBox();
+  detailsLayout->addWidget( eppLabel, row, 0 );
+  detailsLayout->addWidget( m_eppCombo, row, 1, Qt::AlignLeft );
   row++;
 
   QLabel *minFreqLabel = new QLabel( "Minimum frequency" );
@@ -890,6 +894,9 @@ void MainWindow::connectSignals()
   connect( m_governorCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
            this, &MainWindow::markChanged );
 
+  connect( m_eppCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+           this, &MainWindow::markChanged );
+
   connect( m_minFrequencySlider, &QSlider::valueChanged,
            this, [this]() { markChanged(); } );
 
@@ -961,6 +968,9 @@ void MainWindow::connectSignals()
 
   // Populate governor combo
   populateGovernorCombo();
+
+  // Populate EPP combo
+  populateEppCombo();
 }
 
 void MainWindow::populateGovernorCombo()
@@ -974,6 +984,20 @@ void MainWindow::populateGovernorCombo()
   {
     for ( const auto &gov : *governors )
       m_governorCombo->addItem( QString::fromStdString( gov ), QString::fromStdString( gov ) );
+  }
+}
+
+void MainWindow::populateEppCombo()
+{
+  if ( !m_eppCombo )
+    return;
+
+  m_eppCombo->clear();
+
+  if ( auto epps = m_UccdClient->getAvailableEPPs(); epps && !epps->empty() )
+  {
+    for ( const auto &epp : *epps )
+      m_eppCombo->addItem( QString::fromStdString( epp ), QString::fromStdString( epp ) );
   }
 }
 
@@ -1356,6 +1380,16 @@ void MainWindow::loadProfileDetails( const QString &profileId )
         m_governorCombo->setCurrentIndex( index );
       else
         m_governorCombo->setCurrentIndex( 0 ); // default to first
+    }
+
+    if ( cpuObj.contains( "energyPerformancePreference" ) && m_eppCombo )
+    {
+      QString epp = cpuObj["energyPerformancePreference"].toString();
+      int index = m_eppCombo->findData( epp );
+      if ( index >= 0 )
+        m_eppCombo->setCurrentIndex( index );
+      else
+        m_eppCombo->setCurrentIndex( 0 );
     }
 
     // Get hardware frequency limits and set slider ranges
@@ -1807,6 +1841,7 @@ void MainWindow::onSaveClicked()
     QJsonObject cpuObj;
     cpuObj["onlineCores"] = m_cpuCoresSlider->value();
     cpuObj["governor"] = m_governorCombo->currentData().toString();
+    cpuObj["energyPerformancePreference"] = m_eppCombo ? m_eppCombo->currentData().toString() : QString();
     cpuObj["scalingMinFrequency"] = std::clamp( m_minFrequencySlider->value(), m_cpuMinFreqKHz, m_cpuMaxFreqKHz );
     cpuObj["scalingMaxFrequency"] = std::clamp( m_maxFrequencySlider->value(), m_cpuMinFreqKHz, m_cpuMaxFreqKHz );
     profileObj["cpu"] = cpuObj;

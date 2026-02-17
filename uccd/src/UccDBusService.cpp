@@ -1477,6 +1477,26 @@ QString UccDBusInterfaceAdaptor::GetAvailableGovernors()
   return QStringLiteral("[]");
 }
 
+QString UccDBusInterfaceAdaptor::GetAvailableEPPs()
+{
+  if ( m_service && m_service->getCpuWorker() )
+  {
+    auto epps = m_service->getCpuWorker()->getAvailableEPPs();
+    if ( epps )
+    {
+      std::string json = "[";
+      for ( size_t i = 0; i < epps->size(); ++i )
+      {
+        if ( i > 0 ) json += ",";
+        json += "\"" + (*epps)[i] + "\"";
+      }
+      json += "]";
+      return QString::fromStdString( json );
+    }
+  }
+  return QStringLiteral("[]");
+}
+
 // water cooler methods
 
 bool UccDBusInterfaceAdaptor::GetWaterCoolerAvailable()

@@ -118,6 +118,7 @@ namespace ucc
     void saveFanPoints();
     void connectSignals();
     void populateGovernorCombo();
+    void populateEppCombo();
 
     // Update fan profile combo from daemon and custom store
     void reloadFanProfiles();
@@ -187,6 +188,7 @@ namespace ucc
     QSlider *m_cpuCoresSlider = nullptr;
     QLabel *m_cpuCoresValue = nullptr;
     QComboBox *m_governorCombo = nullptr;
+    QComboBox *m_eppCombo = nullptr;
     QSlider *m_minFrequencySlider = nullptr;
     QLabel *m_minFrequencyValue = nullptr;
     QSlider *m_maxFrequencySlider = nullptr;

@@ -29,8 +29,6 @@ const UccProfile maxEnergySave = []()
   profile.display.yResolution = 1080;
   profile.display.useResolution = false;
 
-  profile.cpu.governor = "powersave";
-  profile.cpu.energyPerformancePreference = "balance_performance";
   profile.cpu.noTurbo = false;
 
   profile.webcam.status = true;
@@ -56,8 +54,6 @@ const UccProfile silent = []()
   profile.display.refreshRate = -1;
   profile.display.useRefRate = false;
 
-  profile.cpu.governor = "powersave";
-  profile.cpu.energyPerformancePreference = "balance_performance";
   profile.cpu.noTurbo = false;
 
   profile.webcam.status = true;
@@ -84,8 +80,6 @@ const UccProfile office = []()
   profile.display.refreshRate = -1;
   profile.display.useRefRate = false;
 
-  profile.cpu.governor = "powersave";
-  profile.cpu.energyPerformancePreference = "balance_performance";
   profile.cpu.noTurbo = false;
 
   profile.webcam.status = true;
@@ -112,8 +106,6 @@ const UccProfile highPerformance = []()
   profile.display.refreshRate = -1;
   profile.display.useRefRate = false;
 
-  profile.cpu.governor = "powersave";
-  profile.cpu.energyPerformancePreference = "balance_performance";
   profile.cpu.noTurbo = false;
 
   profile.webcam.status = true;
@@ -141,8 +133,6 @@ const UccProfile defaultCustomProfile = []()
   profile.display.refreshRate = -1;
   profile.display.useRefRate = false;
 
-  profile.cpu.governor = "powersave";
-  profile.cpu.energyPerformancePreference = "balance_performance";
   profile.cpu.noTurbo = false;
 
   profile.webcam.status = true;
@@ -170,8 +160,6 @@ const UccProfile defaultMobileCustomProfileTDP = []()
   profile.display.useRefRate = false;
 
   profile.cpu.scalingMaxFrequency = 3500000;
-  profile.cpu.governor = "powersave";
-  profile.cpu.energyPerformancePreference = "balance_performance";
   profile.cpu.noTurbo = false;
 
   profile.webcam.status = true;
@@ -200,8 +188,6 @@ const UccProfile defaultMobileCustomProfileCl = []()
   profile.display.useRefRate = false;
 
   profile.cpu.scalingMaxFrequency = 3500000;
-  profile.cpu.governor = "powersave";
-  profile.cpu.energyPerformancePreference = "balance_performance";
   profile.cpu.noTurbo = false;
 
   profile.webcam.status = true;
@@ -227,8 +213,6 @@ const UccProfile highPerformance25WcTGP = []()
   profile.display.refreshRate = -1;
   profile.display.useRefRate = false;
 
-  profile.cpu.governor = "powersave";
-  profile.cpu.energyPerformancePreference = "balance_performance";
   profile.cpu.noTurbo = false;
 
   profile.webcam.status = true;
@@ -256,8 +240,6 @@ const UccProfile defaultCustomProfile25WcTGP = []()
   profile.display.refreshRate = -1;
   profile.display.useRefRate = false;
 
-  profile.cpu.governor = "powersave";
-  profile.cpu.energyPerformancePreference = "balance_performance";
   profile.cpu.noTurbo = false;
 
   profile.webcam.status = true;
@@ -284,8 +266,6 @@ const UccProfile legacyDefault = []()
   profile.display.refreshRate = -1;
   profile.display.useRefRate = false;
 
-  profile.cpu.governor = "powersave";
-  profile.cpu.energyPerformancePreference = "balance_performance";
   profile.cpu.noTurbo = false;
 
   profile.webcam.status = true;
@@ -312,8 +292,6 @@ const UccProfile legacyCoolAndBreezy = []()
   profile.display.refreshRate = -1;
   profile.display.useRefRate = false;
 
-  profile.cpu.governor = "powersave";
-  profile.cpu.energyPerformancePreference = "balance_performance";
   profile.cpu.noTurbo = false;
 
   profile.webcam.status = true;
@@ -340,8 +318,6 @@ const UccProfile legacyPowersaveExtreme = []()
   profile.display.refreshRate = -1;
   profile.display.useRefRate = false;
 
-  profile.cpu.governor = "powersave";
-  profile.cpu.energyPerformancePreference = "power";
   profile.cpu.noTurbo = true;
 
   profile.webcam.status = false;

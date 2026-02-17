@@ -21,6 +21,7 @@
 #include <functional>
 #include <vector>
 #include <string>
+#include <set>
 #include <syslog.h>
 
 /**
@@ -49,8 +50,19 @@ public:
     , m_validationFailureCount( 0 )
     , m_reapplyGaveUp( false )
   {
-    // check for EPP write quirks for specific devices
-    // todo: implement device detection if needed
+    // capture the system's current governor and EPP as defaults
+    // these are the values the system was booted with, before we modify anything
+    if ( not m_cpuCtrl.cores.empty() )
+    {
+      m_systemDefaultGovernor = m_cpuCtrl.cores[ 0 ].scalingGovernor.read();
+      m_systemDefaultEPP = m_cpuCtrl.cores[ 0 ].energyPerformancePreference.read();
+
+      if ( m_systemDefaultGovernor.has_value() )
+        logLine( "CpuWorker: System default governor: '" + *m_systemDefaultGovernor + "'", LOG_INFO );
+
+      if ( m_systemDefaultEPP.has_value() )
+        logLine( "CpuWorker: System default EPP: '" + *m_systemDefaultEPP + "'", LOG_INFO );
+    }
   }
 
   void onStart() override
@@ -125,6 +137,19 @@ public:
     return m_cpuCtrl.cores[ 0 ].scalingAvailableGovernors.read();
   }
 
+  /**
+   * @brief Get available energy performance preferences
+   * 
+   * @return Vector of available EPP names, or nullopt if unavailable
+   */
+  std::optional< std::vector< std::string > > getAvailableEPPs()
+  {
+    if ( m_cpuCtrl.cores.empty() )
+      return std::nullopt;
+
+    return m_cpuCtrl.cores[ 0 ].energyPerformanceAvailablePreferences.read();
+  }
+
   std::optional< std::string > getDefaultGovernor( void )
   {
     if ( not m_defaultGovernor.has_value() )
@@ -142,16 +167,12 @@ private:
   int m_validationFailureCount;
   bool m_reapplyGaveUp;
   std::optional< std::string > m_defaultGovernor;
+  std::optional< std::string > m_systemDefaultGovernor;
+  std::optional< std::string > m_systemDefaultEPP;
+  std::set< std::string > m_warnedGovernors;
+  std::set< std::string > m_warnedEPPs;
 
   static constexpr int maxReapplyAttempts = 3;
-
-  const std::vector< std::string > m_preferredAcpiFreqGovernors = {
-    "ondemand", "schedutil", "conservative"
-  };
-
-  const std::vector< std::string > m_preferredPerformanceAcpiFreqGovernors = {
-    "performance"
-  };
 
   void logLine( const std::string &message, int priority = LOG_INFO )
   {
@@ -159,80 +180,53 @@ private:
     {
       m_logFunction( message );
     }
-
-    syslog( priority, "%s", message.c_str() );
+    else
+    {
+      syslog( priority, "%s", message.c_str() );
+    }
   }
 
   /**
    * @brief Find default governor for current system
+   *
+   * Returns the governor that was active when CpuWorker was constructed,
+   * i.e. whatever the system was booted with.
    */
   std::optional< std::string > findDefaultGovernor( void )
   {
-    if ( m_cpuCtrl.cores.empty() )
-      return std::nullopt;
-
-    auto scalingDriver = m_cpuCtrl.cores[ 0 ].scalingDriver.read();
-
-    if ( not scalingDriver.has_value() )
-      return std::nullopt;
-
-    auto driverEnum = CpuController::getScalingDriverEnum( *scalingDriver );
-
-    // intel_pstate and amd-pstate-epp use fixed 'powersave' governor
-    if ( driverEnum == ScalingDriver::intel_pstate or driverEnum == ScalingDriver::amd_pstate_epp )
-      return "powersave";
-
-    // for other drivers (acpi-cpufreq), prefer ondemand/schedutil/conservative
-    auto availableGovernors = m_cpuCtrl.cores[ 0 ].scalingAvailableGovernors.read();
-
-    if ( not availableGovernors.has_value() )
-      return std::nullopt;
-
-    for ( const auto &preferred : m_preferredAcpiFreqGovernors )
-    {
-      if ( std::find( availableGovernors->begin(), availableGovernors->end(), preferred ) != availableGovernors->end() )
-        return preferred;
-    }
-
-    return std::nullopt;
+    return m_systemDefaultGovernor;
   }
 
   /**
-   * @brief Find performance governor for current system
+   * @brief Check whether a governor is available on this system
    */
-  std::optional< std::string > findPerformanceGovernor()
+  bool isGovernorAvailable( const std::string &governor )
   {
     if ( m_cpuCtrl.cores.empty() )
-      return std::nullopt;
+      return false;
 
-    auto scalingDriver = m_cpuCtrl.cores[ 0 ].scalingDriver.read();
+    auto available = m_cpuCtrl.cores[ 0 ].scalingAvailableGovernors.read();
 
-    if ( not scalingDriver.has_value() )
-      return std::nullopt;
+    if ( not available.has_value() )
+      return false;
 
-    auto driverEnum = CpuController::getScalingDriverEnum( *scalingDriver );
+    return std::find( available->begin(), available->end(), governor ) != available->end();
+  }
 
-    // intel_pstate and amd-pstate-epp use fixed 'performance' governor
-    if ( driverEnum == ScalingDriver::intel_pstate or driverEnum == ScalingDriver::amd_pstate_epp )
-    {
-      return "performance";
-    }
+  /**
+   * @brief Check whether an energy performance preference is available on this system
+   */
+  bool isEPPAvailable( const std::string &epp )
+  {
+    if ( m_cpuCtrl.cores.empty() )
+      return false;
 
-    // for other drivers, use 'performance' if available
-    auto availableGovernors = m_cpuCtrl.cores[ 0 ].scalingAvailableGovernors.read();
+    auto available = m_cpuCtrl.cores[ 0 ].energyPerformanceAvailablePreferences.read();
 
-    if ( not availableGovernors.has_value() )
-      return std::nullopt;
+    if ( not available.has_value() )
+      return false;
 
-    for ( const auto &preferred : m_preferredPerformanceAcpiFreqGovernors )
-    {
-      if ( std::find( availableGovernors->begin(), availableGovernors->end(), preferred ) != availableGovernors->end() )
-      {
-        return preferred;
-      }
-    }
-
-    return std::nullopt;
+    return std::find( available->begin(), available->end(), epp ) != available->end();
   }
 
   /**
@@ -243,10 +237,37 @@ private:
     // reset everything to default before applying new settings
     setCpuDefaultConfig();
 
-    m_cpuCtrl.setGovernor( not profile.cpu.governor.empty() ? profile.cpu.governor : getDefaultGovernor() );
+    // resolve desired governor (profile value or system default)
+    auto governor = not profile.cpu.governor.empty()
+                      ? std::optional< std::string >( profile.cpu.governor )
+                      : getDefaultGovernor();
 
-    if ( not m_noEPPWriteQuirk )
-      m_cpuCtrl.setEnergyPerformancePreference( profile.cpu.energyPerformancePreference );
+    if ( governor.has_value() )
+    {
+      if ( isGovernorAvailable( *governor ) )
+      {
+        m_cpuCtrl.setGovernor( governor );
+      }
+      else if ( m_warnedGovernors.insert( *governor ).second )
+      {
+        logLine( "CpuWorker: Governor '" + *governor
+                 + "' is not available on this system, leaving governor unmodified", LOG_WARNING );
+      }
+    }
+
+    // validate and set EPP
+    if ( not m_noEPPWriteQuirk and not profile.cpu.energyPerformancePreference.empty() )
+    {
+      if ( isEPPAvailable( profile.cpu.energyPerformancePreference ) )
+      {
+        m_cpuCtrl.setEnergyPerformancePreference( profile.cpu.energyPerformancePreference );
+      }
+      else if ( m_warnedEPPs.insert( profile.cpu.energyPerformancePreference ).second )
+      {
+        logLine( "CpuWorker: Energy performance preference '" + profile.cpu.energyPerformancePreference
+                 + "' is not available on this system, leaving EPP unmodified", LOG_WARNING );
+      }
+    }
 
     m_cpuCtrl.setGovernorScalingMinFrequency( profile.cpu.scalingMinFrequency );
     m_cpuCtrl.setGovernorScalingMaxFrequency( profile.cpu.scalingMaxFrequency );
@@ -268,8 +289,10 @@ private:
     m_cpuCtrl.setGovernorScalingMinFrequency( std::nullopt ); // min
     m_cpuCtrl.setGovernorScalingMaxFrequency( std::nullopt ); // max
 
-    if ( not m_noEPPWriteQuirk )
-      m_cpuCtrl.setEnergyPerformancePreference( "default" );
+    // restore the system's original EPP
+    if ( not m_noEPPWriteQuirk and m_systemDefaultEPP.has_value()
+         and isEPPAvailable( *m_systemDefaultEPP ) )
+      m_cpuCtrl.setEnergyPerformancePreference( *m_systemDefaultEPP );
 
     if ( m_cpuCtrl.intelPstateNoTurbo.isAvailable() )
       m_cpuCtrl.intelPstateNoTurbo.write( false );
@@ -317,7 +340,7 @@ private:
 
           const auto expectedGovernor = not profile.cpu.governor.empty() ? std::optional< std::string >( profile.cpu.governor ) 
                                                                          : getDefaultGovernor();
-          if ( expectedGovernor.has_value() )
+          if ( expectedGovernor.has_value() and isGovernorAvailable( *expectedGovernor ) )
           {
             auto currentGovernor = core.scalingGovernor.read();
 
@@ -329,8 +352,9 @@ private:
             }
           }
 
-          // check energy performance preference
-          if ( not m_noEPPWriteQuirk and not profile.cpu.energyPerformancePreference.empty() )
+          // check energy performance preference (skip if value is not available on this system)
+          if ( not m_noEPPWriteQuirk and not profile.cpu.energyPerformancePreference.empty()
+               and isEPPAvailable( profile.cpu.energyPerformancePreference ) )
           {
             auto currentEPP = core.energyPerformancePreference.read();
 

@@ -339,6 +339,7 @@ public slots:
   int GetNVIDIAPowerCTRLMaxPowerLimit();
   bool GetNVIDIAPowerCTRLAvailable();
   QString GetAvailableGovernors();
+  QString GetAvailableEPPs();
 
   // water cooler methods
   bool GetWaterCoolerAvailable();

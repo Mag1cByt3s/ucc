@@ -494,6 +494,28 @@ bool UccdClient::setEnergyPerformancePreference( [[maybe_unused]] const std::str
   return false;
 }
 
+std::optional< std::vector< std::string > > UccdClient::getAvailableEPPs()
+{
+  auto jsonStr = callMethod< QString >( "GetAvailableEPPs" );
+  if ( !jsonStr )
+    return std::nullopt;
+
+  QJsonDocument doc = QJsonDocument::fromJson( jsonStr->toUtf8() );
+  if ( !doc.isArray() )
+    return std::nullopt;
+
+  QJsonArray array = doc.array();
+  std::vector< std::string > epps;
+  for ( const QJsonValue &value : array )
+  {
+    if ( value.isString() )
+    {
+      epps.push_back( value.toString().toStdString() );
+    }
+  }
+  return epps;
+}
+
 bool UccdClient::setFanProfile( [[maybe_unused]] [[maybe_unused]] const std::string &profileJSON )
 {
   return false;

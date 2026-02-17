@@ -61,10 +61,10 @@ struct UccProfileCpu
   bool noTurbo;
 
   UccProfileCpu()
-    : governor( "powersave" ),
-      energyPerformancePreference( "balance_performance" ),
-      noTurbo( false )
+    : noTurbo( false )
   {
+    // governor and energyPerformancePreference default to empty,
+    // meaning "use the system's current value" (read at CpuWorker startup)
   }
 };
 
