@@ -68,7 +68,6 @@ FanControlTab::FanControlTab( UccdClient *client,
 
 void FanControlTab::setupUI()
 {
-  setStyleSheet( "background-color: #242424; color: #e6e6e6;" );
   QVBoxLayout *mainLayout = new QVBoxLayout( this );
   mainLayout->setContentsMargins( 0, 0, 0, 0 );
   mainLayout->setSpacing( 0 );
@@ -124,7 +123,6 @@ void FanControlTab::setupUI()
 
   QFrame *separator = new QFrame();
   separator->setFrameShape( QFrame::HLine );
-  separator->setStyleSheet( "color: #cccccc;" );
   mainLayout->addWidget( separator );
 
   // ── Sub-tabs ──
@@ -139,26 +137,20 @@ void FanControlTab::setupUI()
     QScrollArea *scroll = new QScrollArea();
     scroll->setWidgetResizable( true );
     QVBoxLayout *layout = new QVBoxLayout( systemWidget );
-    layout->setContentsMargins( 20, 20, 20, 20 );
-    layout->setSpacing( 15 );
+    layout->setContentsMargins( 10, 10, 10, 10 );
+    layout->setSpacing( 8 );
 
     QVBoxLayout *cpuLayout = new QVBoxLayout();
     cpuLayout->setSpacing( 0 );
-    QLabel *cpuLabel = new QLabel( "CPU Fan Curve" );
-    cpuLabel->setStyleSheet( "font-weight: bold; font-size: 14px;" );
-    cpuLayout->addWidget( cpuLabel );
     m_cpuFanCurveEditor = new FanCurveEditorWidget();
-    m_cpuFanCurveEditor->setStyleSheet( "background-color: #1a1a1a; border: 1px solid #555;" );
+    m_cpuFanCurveEditor->setTitle( tr( "CPU Fan Curve" ) );
     cpuLayout->addWidget( m_cpuFanCurveEditor );
     layout->addLayout( cpuLayout );
 
     QVBoxLayout *gpuLayout = new QVBoxLayout();
     gpuLayout->setSpacing( 0 );
-    QLabel *gpuLabel = new QLabel( "GPU Fan Curve" );
-    gpuLabel->setStyleSheet( "font-weight: bold; font-size: 14px;" );
-    gpuLayout->addWidget( gpuLabel );
     m_gpuFanCurveEditor = new FanCurveEditorWidget();
-    m_gpuFanCurveEditor->setStyleSheet( "background-color: #1a1a1a; border: 1px solid #555;" );
+    m_gpuFanCurveEditor->setTitle( tr( "GPU Fan Curve" ) );
     gpuLayout->addWidget( m_gpuFanCurveEditor );
     layout->addLayout( gpuLayout );
 
@@ -173,11 +165,13 @@ void FanControlTab::setupUI()
     QScrollArea *scroll = new QScrollArea();
     scroll->setWidgetResizable( true );
     QVBoxLayout *layout = new QVBoxLayout( wcWidget );
-    layout->setContentsMargins( 0, 0, 0, 0 );
-    layout->setSpacing( 5 );
+    layout->setContentsMargins( 5, 5, 5, 5 );
+    layout->setSpacing( 8 );
 
     // ── Water cooler hardware controls ──
     QHBoxLayout *wcHw = new QHBoxLayout();
+    wcHw->setContentsMargins( 0, 0, 0, 0 );
+    wcHw->setSpacing( 4 );
 
     m_waterCoolerEnableCheckBox = new QCheckBox( "Enable" );
     m_waterCoolerEnableCheckBox->setLayoutDirection( Qt::RightToLeft );
@@ -236,22 +230,16 @@ void FanControlTab::setupUI()
     // ── Water cooler fan curve editor ──
     QVBoxLayout *wcFanLayout = new QVBoxLayout();
     wcFanLayout->setSpacing( 0 );
-    QLabel *wcFanLabel = new QLabel( "Water Cooler Fan Curve" );
-    wcFanLabel->setStyleSheet( "font-weight: bold; font-size: 14px;" );
-    wcFanLayout->addWidget( wcFanLabel );
     m_waterCoolerFanCurveEditor = new FanCurveEditorWidget();
-    m_waterCoolerFanCurveEditor->setStyleSheet( "background-color: #1a1a1a; border: 1px solid #555;" );
+    m_waterCoolerFanCurveEditor->setTitle( tr( "Water Cooler Fan Curve" ) );
     wcFanLayout->addWidget( m_waterCoolerFanCurveEditor );
     layout->addLayout( wcFanLayout );
 
     // ── Pump voltage curve editor ──
     QVBoxLayout *pumpLayout = new QVBoxLayout();
     pumpLayout->setSpacing( 0 );
-    QLabel *pumpLabel = new QLabel( "Pump Voltage Curve" );
-    pumpLabel->setStyleSheet( "font-weight: bold; font-size: 14px;" );
-    pumpLayout->addWidget( pumpLabel );
     m_pumpCurveEditor = new PumpCurveEditorWidget();
-    m_pumpCurveEditor->setStyleSheet( "background-color: #1a1a1a; border: 1px solid #555;" );
+    m_pumpCurveEditor->setTitle( tr( "Pump Voltage Curve" ) );
     pumpLayout->addWidget( m_pumpCurveEditor );
     layout->addLayout( pumpLayout );
 

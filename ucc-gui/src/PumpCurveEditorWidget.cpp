@@ -1,5 +1,6 @@
 #include "PumpCurveEditorWidget.hpp"
 #include <QPainter>
+#include <QPalette>
 #include <QMouseEvent>
 #include <algorithm>
 
@@ -71,7 +72,7 @@ void PumpCurveEditorWidget::clearCrosshair()
 }
 
 QPointF PumpCurveEditorWidget::toWidget(const Point& pt) const {
-    const int left = 110, right = 20, top = 28, bottom = 68;
+    const int left = 80, right = 20, top = 28, bottom = 68;
     double plotW = width() - left - right;
     double plotH = height() - top - bottom;
     double x = left + (pt.temp - 20.0) / 80.0 * plotW;
@@ -81,7 +82,7 @@ QPointF PumpCurveEditorWidget::toWidget(const Point& pt) const {
 }
 
 double PumpCurveEditorWidget::tempFromWidgetX(double x) const {
-    const int left = 110, right = 20;
+    const int left = 80, right = 20;
     double plotW = width() - left - right;
     double temp = (x - left) / plotW * 80.0 + 20.0;
     return std::clamp(temp, 20.0, 100.0);
@@ -110,17 +111,44 @@ void PumpCurveEditorWidget::enforceOrdering() {
 void PumpCurveEditorWidget::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    p.fillRect(rect(), QColor("#181e26"));
 
-    const int left = 110, right = 20, top = 28, bottom = 68;
+    const QPalette &pal = palette();
+    const QColor bgColor       = pal.color(QPalette::Base);
+    const QColor gridColor     = pal.color(QPalette::Mid);
+    const QColor labelColor    = pal.color(QPalette::Text);
+    const QColor brightText    = pal.color(QPalette::BrightText);
+    const QColor disabledFill  = pal.color(QPalette::Disabled, QPalette::Mid);
+    const QColor disabledBorder= pal.color(QPalette::Disabled, QPalette::Light);
+
+    // Data-visualization colors: warm tones that won't collide with
+    // typical blue-ish GUI highlight/link palette roles.
+    const bool darkTheme = bgColor.lightnessF() < 0.5;
+    const QColor curveColor    = darkTheme ? QColor( 0x3f, 0xa9, 0xf5 ) : QColor( 0x19, 0x76, 0xd2 );
+    const QColor accentColor   = darkTheme ? QColor( 0xff, 0x57, 0x22 ) : QColor( 0xe6, 0x4a, 0x19 );
+    const QColor selectedFill  = darkTheme ? QColor( 0xff, 0xa7, 0x26 ) : QColor( 0xfb, 0x8c, 0x00 );
+    const QColor selectedBorder= darkTheme ? QColor( 0xff, 0x6f, 0x00 ) : QColor( 0xe6, 0x51, 0x00 );
+
+    p.fillRect(rect(), bgColor);
+
+    const int left = 80, right = 20, top = 28, bottom = 68;
+
+    // Draw title at the top of the widget if set
+    if (!m_title.isEmpty()) {
+        QFont titleFont = font();
+        titleFont.setPointSize(11);
+        titleFont.setWeight(QFont::Bold);
+        p.setFont(titleFont);
+        p.setPen(labelColor);
+        QRectF titleRect(left, 2, width() - left - right, top - 4);
+        p.drawText(titleRect, Qt::AlignCenter, m_title);
+    }
+
     QRectF plotRect(left, top, width() - left - right, height() - top - bottom);
 
     QFont tickFont = font();
     tickFont.setPointSize(9);
     tickFont.setWeight(QFont::Normal);
     p.setFont(tickFont);
-    QColor gridColor(50,50,50);
-    QColor labelColor("#bdbdbd");
 
     // Y grid/ticks/labels: pump levels Off, V7, V8, V11
     for (int lvl = 0; lvl <= 3; ++lvl) {
@@ -155,7 +183,7 @@ void PumpCurveEditorWidget::paintEvent(QPaintEvent*) {
     yFont.setPointSize(10);
     p.setPen(labelColor);
     p.save();
-    int yLabelX = left / 2 - 6;
+    int yLabelX = 14; // close to the left edge of the widget
     p.translate(yLabelX, plotRect.center().y());
     p.rotate(-90);
     p.setFont(yFont);
@@ -178,7 +206,6 @@ void PumpCurveEditorWidget::paintEvent(QPaintEvent*) {
     p.drawRect(borderRect);
 
     // Draw step curve: Off from left edge to first point, then steps
-    QColor curveColor("#e040fb");  // purple for pump curve
     p.setPen(QPen(curveColor, 3));
     p.setFont(tickFont);
 
@@ -210,15 +237,15 @@ void PumpCurveEditorWidget::paintEvent(QPaintEvent*) {
         if (m_editable) {
             bool selected = m_selectedIndices.contains(i);
             if (selected) {
-                p.setBrush(QColor("#ffa726"));
-                p.setPen(QPen(QColor("#ff6f00"), 2));
+                p.setBrush(selectedFill);
+                p.setPen(QPen(selectedBorder, 2));
             } else {
-                p.setBrush(Qt::white);
+                p.setBrush(brightText);
                 p.setPen(QPen(curveColor, 2));
             }
         } else {
-            p.setBrush(QColor("#666666"));
-            p.setPen(QPen(QColor("#999999"), 2));
+            p.setBrush(disabledFill);
+            p.setPen(QPen(disabledBorder, 2));
         }
         p.drawEllipse(r);
 
@@ -240,14 +267,14 @@ void PumpCurveEditorWidget::paintEvent(QPaintEvent*) {
         cp.setY(std::clamp(cp.y(), (double)plotRect.top(), (double)plotRect.bottom()));
 
         // Dashed crosshair lines
-        QPen crossPen(QColor("#ff5722"), 1.5, Qt::DashLine);
+        QPen crossPen(accentColor, 1.5, Qt::DashLine);
         p.setPen(crossPen);
         p.drawLine(QPointF(cp.x(), plotRect.top()), QPointF(cp.x(), plotRect.bottom()));
         p.drawLine(QPointF(plotRect.left(), cp.y()), QPointF(plotRect.right(), cp.y()));
 
         // Crosshair dot
-        p.setBrush(QColor("#ff5722"));
-        p.setPen(QPen(Qt::white, 1.5));
+        p.setBrush(accentColor);
+        p.setPen(QPen(brightText, 1.5));
         p.drawEllipse(cp, 5.0, 5.0);
 
         // Labels
@@ -258,22 +285,24 @@ void PumpCurveEditorWidget::paintEvent(QPaintEvent*) {
 
         // Temperature label (below X axis)
         QString tempLabel = QString::number(m_crosshairTemp, 'f', 0) + QChar(0x00B0) + "C";
-        p.setPen(QColor("#ff5722"));
+        p.setPen(accentColor);
         QRectF tempLabelRect(cp.x() - 20, plotRect.bottom() + 1, 40, 14);
-        p.fillRect(tempLabelRect, QColor("#181e26"));
+        p.fillRect(tempLabelRect, bgColor);
         p.drawText(tempLabelRect, Qt::AlignHCenter | Qt::AlignTop, tempLabel);
 
         // Level label (left of Y axis)
         QString lvlLabel = levelLabel(m_crosshairLevel);
         QRectF lvlLabelRect(plotRect.left() - 55, cp.y() - 7, 53, 14);
-        p.fillRect(lvlLabelRect, QColor("#181e26"));
+        p.fillRect(lvlLabelRect, bgColor);
         p.drawText(lvlLabelRect, Qt::AlignRight | Qt::AlignVCenter, lvlLabel);
     }
 
     // Draw rubber band
     if (m_rubberBandActive && m_rubberBandRect.isValid()) {
-        QColor bandFill(224, 64, 251, 40);
-        QColor bandBorder(224, 64, 251, 160);
+        QColor bandFill = selectedFill;
+        bandFill.setAlpha(40);
+        QColor bandBorder = selectedFill;
+        bandBorder.setAlpha(160);
         p.setBrush(bandFill);
         p.setPen(QPen(bandBorder, 1, Qt::DashLine));
         p.drawRect(m_rubberBandRect);

@@ -1,5 +1,6 @@
 #include "FanCurveEditorWidget.hpp"
 #include <QPainter>
+#include <QPalette>
 #include <QMouseEvent>
 #include <QMenu>
 #include <algorithm>
@@ -51,7 +52,7 @@ void FanCurveEditorWidget::sortPoints() {
 
 QPointF FanCurveEditorWidget::toWidget(const Point& pt) const {
     // use same margins as paintEvent for consistent mapping
-    const int left = 110, right = 20, top = 28, bottom = 68;
+    const int left = 80, right = 20, top = 28, bottom = 68;
     double plotW = width() - left - right;
     double plotH = height() - top - bottom;
     double x = left + (pt.temp - 20.0) / 80.0 * plotW;
@@ -60,7 +61,7 @@ QPointF FanCurveEditorWidget::toWidget(const Point& pt) const {
 }
 
 FanCurveEditorWidget::Point FanCurveEditorWidget::fromWidget(const QPointF& pos) const {
-    const int left = 110, right = 20, top = 28, bottom = 68;
+    const int left = 80, right = 20, top = 28, bottom = 68;
     double plotW = width() - left - right;
     double plotH = height() - top - bottom;
     double temp = (pos.x() - left) / plotW * 80.0 + 20.0;
@@ -95,9 +96,38 @@ void FanCurveEditorWidget::enforceMonotonicity(int modifiedIndex) {
 void FanCurveEditorWidget::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    p.fillRect(rect(), QColor("#181e26"));
+
+    const QPalette &pal = palette();
+    const QColor bgColor       = pal.color(QPalette::Base);
+    const QColor gridColor     = pal.color(QPalette::Mid);
+    const QColor labelColor    = pal.color(QPalette::Text);
+    const QColor brightText    = pal.color(QPalette::BrightText);
+    const QColor disabledFill  = pal.color(QPalette::Disabled, QPalette::Mid);
+    const QColor disabledBorder= pal.color(QPalette::Disabled, QPalette::Light);
+
+    // Data-visualization colors: warm tones that won't collide with
+    // typical blue-ish GUI highlight/link palette roles.
+    const bool darkTheme = bgColor.lightnessF() < 0.5;
+    const QColor curveColor    = darkTheme ? QColor( 0x3f, 0xa9, 0xf5 ) : QColor( 0x19, 0x76, 0xd2 );
+    const QColor accentColor   = darkTheme ? QColor( 0xff, 0x57, 0x22 ) : QColor( 0xe6, 0x4a, 0x19 );
+    const QColor selectedFill  = darkTheme ? QColor( 0xff, 0xa7, 0x26 ) : QColor( 0xfb, 0x8c, 0x00 );
+    const QColor selectedBorder= darkTheme ? QColor( 0xff, 0x6f, 0x00 ) : QColor( 0xe6, 0x51, 0x00 );
+
+    p.fillRect(rect(), bgColor);
     // Margins for axes
-    int left = 110, right = 20, top = 28, bottom = 68;
+    int left = 80, right = 20, top = 28, bottom = 68;
+
+    // Draw title at the top of the widget if set
+    if (!m_title.isEmpty()) {
+        QFont titleFont = font();
+        titleFont.setPointSize(11);
+        titleFont.setWeight(QFont::Bold);
+        p.setFont(titleFont);
+        p.setPen(labelColor);
+        QRectF titleRect(left, 2, width() - left - right, top - 4);
+        p.drawText(titleRect, Qt::AlignCenter, m_title);
+    }
+
     QRectF plotRect(left, top, width() - left - right, height() - top - bottom);
 
     // Draw grid and ticks/labels
@@ -105,8 +135,6 @@ void FanCurveEditorWidget::paintEvent(QPaintEvent*) {
     tickFont.setPointSize(9);
     tickFont.setWeight(QFont::Normal);
     p.setFont(tickFont);
-    QColor gridColor(50,50,50);
-    QColor labelColor("#bdbdbd");
 
     // Y grid/ticks/labels (0-100% every 20%)
     for (int i = 0; i <= 5; ++i) {
@@ -149,7 +177,7 @@ void FanCurveEditorWidget::paintEvent(QPaintEvent*) {
     QFont yFont = axisFont;
     yFont.setPointSize(10);
     p.save();
-    int yLabelX = left/2 - 6; // put rotated label centered in the left margin, slight left offset
+    int yLabelX = 14; // close to the left edge of the widget
     p.translate(yLabelX, plotRect.center().y());
     p.rotate(-90);
     p.setFont(yFont);
@@ -169,7 +197,7 @@ void FanCurveEditorWidget::paintEvent(QPaintEvent*) {
 
     // Draw curve
     p.setFont(tickFont);
-    p.setPen(QPen(QColor("#3fa9f5"), 3));
+    p.setPen(QPen(curveColor, 3));
     for (int i = 1; i < m_points.size(); ++i) {
         p.drawLine(toWidget(m_points[i-1]), toWidget(m_points[i]));
     }
@@ -179,15 +207,15 @@ void FanCurveEditorWidget::paintEvent(QPaintEvent*) {
         if (m_editable) {
             bool selected = m_selectedIndices.contains(i);
             if (selected) {
-                p.setBrush(QColor("#ffa726"));  // orange fill for selected
-                p.setPen(QPen(QColor("#ff6f00"), 2));
+                p.setBrush(selectedFill);
+                p.setPen(QPen(selectedBorder, 2));
             } else {
-                p.setBrush(Qt::white);
-                p.setPen(QPen(QColor("#3fa9f5"), 2));
+                p.setBrush(brightText);
+                p.setPen(QPen(curveColor, 2));
             }
         } else {
-            p.setBrush(QColor("#666666"));
-            p.setPen(QPen(QColor("#999999"), 2));
+            p.setBrush(disabledFill);
+            p.setPen(QPen(disabledBorder, 2));
         }
         p.drawEllipse(r);
     }
@@ -202,7 +230,7 @@ void FanCurveEditorWidget::paintEvent(QPaintEvent*) {
         cp.setY(std::clamp(cp.y(), (double)plotRect.top(), (double)plotRect.bottom()));
 
         // Dashed crosshair lines
-        QPen crossPen(QColor("#ff5722"), 1.5, Qt::DashLine);
+        QPen crossPen(accentColor, 1.5, Qt::DashLine);
         p.setPen(crossPen);
         // Vertical line (temperature)
         p.drawLine(QPointF(cp.x(), plotRect.top()), QPointF(cp.x(), plotRect.bottom()));
@@ -210,8 +238,8 @@ void FanCurveEditorWidget::paintEvent(QPaintEvent*) {
         p.drawLine(QPointF(plotRect.left(), cp.y()), QPointF(plotRect.right(), cp.y()));
 
         // Draw crosshair dot
-        p.setBrush(QColor("#ff5722"));
-        p.setPen(QPen(Qt::white, 1.5));
+        p.setBrush(accentColor);
+        p.setPen(QPen(brightText, 1.5));
         p.drawEllipse(cp, 5.0, 5.0);
 
         // Draw labels
@@ -222,22 +250,24 @@ void FanCurveEditorWidget::paintEvent(QPaintEvent*) {
 
         // Temperature label (below X axis at crosshair X)
         QString tempLabel = QString::number(m_crosshairTemp, 'f', 0) + QChar(0x00B0) + "C";
-        p.setPen(QColor("#ff5722"));
+        p.setPen(accentColor);
         QRectF tempLabelRect(cp.x() - 20, plotRect.bottom() + 1, 40, 14);
-        p.fillRect(tempLabelRect, QColor("#181e26"));
+        p.fillRect(tempLabelRect, bgColor);
         p.drawText(tempLabelRect, Qt::AlignHCenter | Qt::AlignTop, tempLabel);
 
         // Duty label (left of Y axis at crosshair Y)
         QString dutyLabel = QString::number(m_crosshairDuty, 'f', 0) + "%";
         QRectF dutyLabelRect(plotRect.left() - 40, cp.y() - 7, 38, 14);
-        p.fillRect(dutyLabelRect, QColor("#181e26"));
+        p.fillRect(dutyLabelRect, bgColor);
         p.drawText(dutyLabelRect, Qt::AlignRight | Qt::AlignVCenter, dutyLabel);
     }
 
     // Draw rubber band selection rectangle
     if (m_rubberBandActive && m_rubberBandRect.isValid()) {
-        QColor bandFill(63, 169, 245, 40);
-        QColor bandBorder(63, 169, 245, 160);
+        QColor bandFill = selectedFill;
+        bandFill.setAlpha(40);
+        QColor bandBorder = selectedFill;
+        bandBorder.setAlpha(160);
         p.setBrush(bandFill);
         p.setPen(QPen(bandBorder, 1, Qt::DashLine));
         p.drawRect(m_rubberBandRect);

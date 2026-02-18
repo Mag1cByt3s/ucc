@@ -22,6 +22,10 @@ public:
     void setEditable(bool editable) { m_editable = editable; }
     bool isEditable() const { return m_editable; }
 
+    /** Set a title string drawn at the top of the widget. */
+    void setTitle(const QString &title) { m_title = title; update(); }
+    QString title() const { return m_title; }
+
     /** Set the live crosshair position (temperature in °C, duty in %). */
     void setCrosshair( double temp, double duty );
     /** Remove the crosshair from the display. */
@@ -41,6 +45,7 @@ private:
     QVector<Point> m_points;
     int m_draggedIndex = -1;
     bool m_editable = true;
+    QString m_title;
 
     // Live crosshair state
     bool m_crosshairVisible = false;
