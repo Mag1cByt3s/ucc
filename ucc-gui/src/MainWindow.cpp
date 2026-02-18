@@ -918,7 +918,15 @@ void MainWindow::connectSignals()
            this, [this]() { markChanged(); } );
 
   connect( m_profileKeyboardProfileCombo, QOverload< int >::of( &QComboBox::currentIndexChanged ),
-           this, &MainWindow::markChanged );
+           this, [this](int index) {
+             markChanged();
+             // Update keyboard tab combo to match profile tab selection
+             m_keyboardProfileCombo->blockSignals(true);
+             m_keyboardProfileCombo->setCurrentIndex(index);
+             m_keyboardProfileCombo->blockSignals(false);
+             // Load the keyboard profile data for the new selection
+             onKeyboardProfileChanged(m_profileKeyboardProfileCombo->currentData().toString());
+           } );
 
   if ( m_profileChargingProfileCombo )
   {
@@ -961,8 +969,8 @@ void MainWindow::connectSignals()
 
   connectKeyboardBacklightPageWidgets();
 
-  // Sync profile page keyboard combo (auto-created "Current" may have been
-  // added before the customKeyboardProfilesChanged signal was connected)
+  // Sync profile page keyboard combo (profiles may have been added before
+  // the customKeyboardProfilesChanged signal was connected)
   onCustomKeyboardProfilesChanged();
 
   // Initial load of fan profiles (may be empty if service not yet available)
@@ -1165,10 +1173,21 @@ void MainWindow::onTabChanged( int index )
         if ( doc.isObject() )
         {
           QJsonObject obj = doc.object();
+          QString keyboardProfileId;
+
           // Check for embedded keyboard profile name
           if ( obj.contains( "selectedKeyboardProfile" ) )
           {
-            QString keyboardProfileId = obj["selectedKeyboardProfile"].toString();
+            keyboardProfileId = obj["selectedKeyboardProfile"].toString();
+          }
+          // Fallback: check for old format keyboard.profile field
+          else if ( obj.contains( "keyboard" ) && obj["keyboard"].isObject() )
+          {
+            keyboardProfileId = obj["keyboard"].toObject()["profile"].toString();
+          }
+
+          if ( !keyboardProfileId.isEmpty() )
+          {
             // Find by ID in combo userData
             int kbIdx = -1;
             for ( int i = 0; i < m_keyboardProfileCombo->count(); ++i )
@@ -1181,27 +1200,12 @@ void MainWindow::onTabChanged( int index )
               kbIdx = m_keyboardProfileCombo->findText( keyboardProfileId );
             if ( kbIdx >= 0 )
             {
+              m_keyboardProfileCombo->blockSignals( true );
               m_keyboardProfileCombo->setCurrentIndex( kbIdx );
-              // This triggers onKeyboardProfileChanged to load the profile data
-            }
-          }
-          // Fallback: check for old format keyboard.profile field
-          else if ( obj.contains( "keyboard" ) && obj["keyboard"].isObject() )
-          {
-            QJsonObject keyboardObj = obj["keyboard"].toObject();
-            QString keyboardProfile = keyboardObj["profile"].toString();
-            int kbIdx = -1;
-            for ( int i = 0; i < m_keyboardProfileCombo->count(); ++i )
-            {
-              if ( m_keyboardProfileCombo->itemData( i ).toString() == keyboardProfile )
-              { kbIdx = i; break; }
-            }
-            if ( kbIdx < 0 )
-              kbIdx = m_keyboardProfileCombo->findText( keyboardProfile );
-            if ( kbIdx >= 0 )
-            {
-              m_keyboardProfileCombo->setCurrentIndex( kbIdx );
-              // This triggers onKeyboardProfileChanged to load the profile data
+              m_keyboardProfileCombo->blockSignals( false );
+              // Explicitly load the profile data (setCurrentIndex won't emit
+              // if the index was already restored by reloadKeyboardProfiles)
+              onKeyboardProfileChanged( m_keyboardProfileCombo->itemData( kbIdx ).toString() );
             }
           }
         }
@@ -1213,7 +1217,11 @@ void MainWindow::onTabChanged( int index )
 // Profile page slots
 void MainWindow::onCustomKeyboardProfilesChanged()
 {
+  // Remember current selection so we can restore it after rebuild
+  QString prevId = m_profileKeyboardProfileCombo->currentData().toString();
+
   // Repopulate keyboard profile combos with ID userData
+  m_profileKeyboardProfileCombo->blockSignals( true );
   m_profileKeyboardProfileCombo->clear();
   for ( const auto &v : m_profileManager->customKeyboardProfilesData() )
   {
@@ -1223,6 +1231,17 @@ void MainWindow::onCustomKeyboardProfilesChanged()
       m_profileKeyboardProfileCombo->addItem( o["name"].toString(), o["id"].toString() );
     }
   }
+
+  // Restore previous selection by ID
+  if ( !prevId.isEmpty() )
+  {
+    for ( int i = 0; i < m_profileKeyboardProfileCombo->count(); ++i )
+    {
+      if ( m_profileKeyboardProfileCombo->itemData( i ).toString() == prevId )
+      { m_profileKeyboardProfileCombo->setCurrentIndex( i ); break; }
+    }
+  }
+  m_profileKeyboardProfileCombo->blockSignals( false );
 
   reloadKeyboardProfiles();
 }
@@ -1390,6 +1409,7 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   m_odmPowerLimit3Slider->blockSignals( true );
   m_gpuPowerSlider->blockSignals( true );
   m_profileKeyboardProfileCombo->blockSignals( true );
+  m_keyboardProfileCombo->blockSignals( true );
   if ( m_profileChargingProfileCombo ) m_profileChargingProfileCombo->blockSignals( true );
   if ( m_profileChargingPriorityCombo ) m_profileChargingPriorityCombo->blockSignals( true );
   if ( m_profileChargeLimitCombo ) m_profileChargeLimitCombo->blockSignals( true );
@@ -1421,6 +1441,8 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   // Load Fan Control settings (nested in fan object)
 
   QString loadedFanProfile;
+  bool fanProfileNotFound = false;
+  QString missingFanProfile;
   if ( obj.contains( "fan" ) && obj["fan"].isObject() )
   {
     QJsonObject fanObj = obj["fan"].toObject();
@@ -1447,6 +1469,12 @@ void MainWindow::loadProfileDetails( const QString &profileId )
         m_profileFanProfileCombo->setCurrentIndex( idx );
         m_fanControlTab->fanProfileCombo()->setCurrentIndex( idx );
         loadedFanProfile = m_profileFanProfileCombo->itemData( idx ).toString();
+      }
+      else
+      {
+        // Referenced fan profile was not found
+        fanProfileNotFound = true;
+        missingFanProfile = fanProfileRef;
       }
     }
 
@@ -1668,6 +1696,8 @@ void MainWindow::loadProfileDetails( const QString &profileId )
 
   // Load Keyboard settings - check for embedded keyboard profile name
   QString loadedKeyboardProfile;
+  bool keyboardProfileNotFound = false;
+  QString missingKeyboardProfile;
   if ( obj.contains( "selectedKeyboardProfile" ) )
   {
     QString keyboardProfileId = obj["selectedKeyboardProfile"].toString();
@@ -1684,7 +1714,14 @@ void MainWindow::loadProfileDetails( const QString &profileId )
     if ( idx >= 0 )
     {
       m_profileKeyboardProfileCombo->setCurrentIndex( idx );
+      m_keyboardProfileCombo->setCurrentIndex( idx );
       loadedKeyboardProfile = m_profileKeyboardProfileCombo->itemData( idx ).toString();
+    }
+    else
+    {
+      // Referenced keyboard profile was not found
+      keyboardProfileNotFound = true;
+      missingKeyboardProfile = keyboardProfileId;
     }
   }
   // Fallback: check for old format keyboard.profile field
@@ -1705,7 +1742,14 @@ void MainWindow::loadProfileDetails( const QString &profileId )
       if ( idx >= 0 )
       {
         m_profileKeyboardProfileCombo->setCurrentIndex( idx );
+        m_keyboardProfileCombo->setCurrentIndex( idx );
         loadedKeyboardProfile = m_profileKeyboardProfileCombo->itemData( idx ).toString();
+      }
+      else
+      {
+        // Referenced keyboard profile was not found
+        keyboardProfileNotFound = true;
+        missingKeyboardProfile = keyboardProfileId;
       }
     }
   }
@@ -1758,6 +1802,7 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   m_odmPowerLimit3Slider->blockSignals( false );
   m_gpuPowerSlider->blockSignals( false );
   m_profileKeyboardProfileCombo->blockSignals( false );
+  m_keyboardProfileCombo->blockSignals( false );
   if ( m_profileChargingProfileCombo ) m_profileChargingProfileCombo->blockSignals( false );
   if ( m_profileChargingPriorityCombo ) m_profileChargingPriorityCombo->blockSignals( false );
   if ( m_profileChargeLimitCombo ) m_profileChargeLimitCombo->blockSignals( false );
@@ -1783,6 +1828,11 @@ void MainWindow::loadProfileDetails( const QString &profileId )
 
   // Load keyboard profile for display only — block signals to prevent hardware writes
   // (brightness slider → setGlobalBrightness → colorsChanged → setKeyboardBacklight)
+  // If the saved keyboard profile was not found (e.g. deleted), fall back to
+  // whatever the combo currently shows so the editor stays in sync.
+  if ( loadedKeyboardProfile.isEmpty() && m_keyboardProfileCombo->count() > 0 )
+    loadedKeyboardProfile = m_keyboardProfileCombo->currentData().toString();
+
   if ( !loadedKeyboardProfile.isEmpty() )
   {
     if ( m_keyboardBrightnessSlider ) m_keyboardBrightnessSlider->blockSignals( true );
@@ -1798,6 +1848,22 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   // Enable/disable editing widgets based on whether profile is custom
   const bool isCustom = m_profileManager ? m_profileManager->isCustomProfile( profileId ) : false;
   updateProfileEditingWidgets( isCustom );
+
+  // Warn user if any referenced profiles were not found (deleted after profile creation)
+  if ( fanProfileNotFound || keyboardProfileNotFound )
+  {
+    QString profileName = m_profileCombo->currentText();
+    QString message = QString( "The profile '%1' references the following missing subprofiles:\n\n" ).arg( profileName );
+    
+    if ( keyboardProfileNotFound )
+      message += QString( "Keyboard profile: %1\n" ).arg( missingKeyboardProfile );
+    
+    if ( fanProfileNotFound )
+      message += QString( "Fan profile: %1\n" ).arg( missingFanProfile );
+    
+    message += "\nNew profiles for the missing subprofile(s) have been assigned for this session but it is not saved.";
+    QMessageBox::warning( this, "Missing Subprofile References", message );
+  }
 
 }
 
@@ -2273,6 +2339,7 @@ void MainWindow::onKeyboardProfileComboRenamed()
 void MainWindow::onRemoveFanProfileClicked()
 {
   QString currentProfile = m_fanControlTab->fanProfileCombo()->currentText();
+  QString fanProfileId = m_fanControlTab->fanProfileCombo()->currentData().toString();
 
   // Check if it's a built-in profile
   if ( m_fanControlTab->builtinFanProfiles().contains( currentProfile ) ) {
@@ -2281,16 +2348,48 @@ void MainWindow::onRemoveFanProfileClicked()
     return;
   }
 
+  // Check if any system profiles reference this fan profile
+  QStringList referencingProfiles;
+  auto checkProfiles = [&]( const QJsonArray &profiles ) {
+    for ( const auto &p : profiles )
+    {
+      if ( !p.isObject() ) continue;
+      QJsonObject obj = p.toObject();
+      QString name = obj["name"].toString();
+      if ( obj.contains( "fan" ) && obj["fan"].isObject() )
+      {
+        QString ref = obj["fan"].toObject()["fanProfile"].toString();
+        if ( ref == fanProfileId || ref == currentProfile )
+          referencingProfiles << name;
+      }
+    }
+  };
+  checkProfiles( m_profileManager->defaultProfilesData() );
+  checkProfiles( m_profileManager->customProfilesData() );
+
+  // Build confirmation message
+  QString confirmMessage;
+  if ( !referencingProfiles.isEmpty() )
+  {
+    confirmMessage = QString( "The fan profile '%1' is referenced by the following system profiles:\n\n" ).arg( currentProfile );
+    for ( const QString &name : referencingProfiles )
+      confirmMessage += QString( "  - %1\n" ).arg( name );
+    confirmMessage += "\nAre you sure you want to remove this fan profile?";
+  }
+  else
+  {
+    confirmMessage = QString( "Are you sure you want to remove the fan profile '%1'?" ).arg( currentProfile );
+  }
+
   // Confirm deletion
   QMessageBox::StandardButton reply = QMessageBox::question(
     this, "Remove Fan Profile",
-    QString("Are you sure you want to remove the fan profile '%1'?").arg(currentProfile),
+    confirmMessage,
     QMessageBox::Yes | QMessageBox::No
   );
 
   if (reply == QMessageBox::Yes) {
     // Remove from persistent storage and UI
-    QString fanProfileId = m_fanControlTab->fanProfileCombo()->currentData().toString();
     if ( m_profileManager->deleteFanProfile( fanProfileId ) ) {
       // Remove from both fan profile lists
       int idx = m_fanControlTab->fanProfileCombo()->currentIndex();
