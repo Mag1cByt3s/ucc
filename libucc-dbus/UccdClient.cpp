@@ -1054,6 +1054,35 @@ std::optional< int > UccdClient::getGpuFanSpeedPercent()
   return std::nullopt;
 } 
 
+// Water cooler control
+bool UccdClient::setWaterCoolerFanSpeed( int dutyCyclePercent )
+{
+  if ( hasMethod( m_interface.get(), "SetWaterCoolerFanSpeed" ) )
+    return callMethod< bool, int >( "SetWaterCoolerFanSpeed", dutyCyclePercent ).value_or( false );
+  return false;
+}
+
+bool UccdClient::setWaterCoolerPumpVoltage( int voltageCode )
+{
+  if ( hasMethod( m_interface.get(), "SetWaterCoolerPumpVoltage" ) )
+    return callMethod< bool, int >( "SetWaterCoolerPumpVoltage", voltageCode ).value_or( false );
+  return false;
+}
+
+bool UccdClient::setWaterCoolerLEDColor( int r, int g, int b, int mode )
+{
+  if ( hasMethod( m_interface.get(), "SetWaterCoolerLEDColor" ) )
+    return callMethod< bool, int, int, int, int >( "SetWaterCoolerLEDColor", r, g, b, mode ).value_or( false );
+  return false;
+}
+
+bool UccdClient::turnOffWaterCoolerLED()
+{
+  if ( hasMethod( m_interface.get(), "TurnOffWaterCoolerLED" ) )
+    return callMethod< bool >( "TurnOffWaterCoolerLED" ).value_or( false );
+  return false;
+}
+
 // Water cooler readings
 std::optional< int > UccdClient::getWaterCoolerFanSpeed()
 {

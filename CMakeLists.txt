@@ -119,7 +119,7 @@ install(FILES icons/ucc-tray_64.png  DESTINATION share/icons/hicolor/64x64/apps 
 install(FILES icons/ucc-tray_128.png DESTINATION share/icons/hicolor/128x128/apps RENAME ucc-tray.png)
 
 # Install common headers
-install(FILES include/CommonTypes.hpp DESTINATION include/ucc)
+# install(FILES include/CommonTypes.hpp DESTINATION include/ucc)
 
 # Summary
 message(STATUS "")

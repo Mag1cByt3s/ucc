@@ -13,6 +13,7 @@ set( CMAKE_CXX_STANDARD_REQUIRED ON )
 set( CMAKE_CXX_EXTENSIONS OFF )
 
 set( CMAKE_AUTOMOC ON )
+set( CMAKE_AUTORCC ON )
 
 # Find Qt6
 find_package( Qt6 REQUIRED COMPONENTS
@@ -20,11 +21,23 @@ find_package( Qt6 REQUIRED COMPONENTS
   Gui
   Widgets
   DBus
+  Qml
+  Quick
+  QuickControls2
 )
+
+# Optional: LayerShellQt for Wayland popup positioning
+# Install layer-shell-qt-devel (Fedora) / layer-shell-qt-dev (Debian) to enable.
+find_package( LayerShellQt QUIET )
+if ( LayerShellQt_FOUND )
+  message( STATUS "LayerShellQt found — Wayland layer-shell positioning enabled" )
+endif()
 
 # Application sources
 add_executable( ucc-tray
   main.cpp
+  TrayBackend.cpp
+  tray-resources.qrc
 )
 
 target_include_directories( ucc-tray PRIVATE
@@ -46,7 +59,15 @@ target_link_libraries( ucc-tray PRIVATE
   Qt6::Gui
   Qt6::Widgets
   Qt6::DBus
+  Qt6::Qml
+  Qt6::Quick
+  Qt6::QuickControls2
 )
+
+if ( LayerShellQt_FOUND )
+  target_compile_definitions( ucc-tray PRIVATE UCC_HAVE_LAYER_SHELL_QT )
+  target_link_libraries( ucc-tray PRIVATE LayerShellQt::Interface )
+endif()
 
 # Link libucc-dbus if available as a target, otherwise try to find an installed/shared library
 option(UCC_ENABLE_DEV_RPATH "Add build-tree RPATH for standalone run (development only)" OFF)

@@ -162,6 +162,12 @@ public:
   std::optional< int > getWaterCoolerFanSpeed();
   std::optional< int > getWaterCoolerPumpLevel();
 
+  // Water cooler control
+  bool setWaterCoolerFanSpeed( int dutyCyclePercent );
+  bool setWaterCoolerPumpVoltage( int voltageCode );   // PumpVoltage enum cast to int
+  bool setWaterCoolerLEDColor( int r, int g, int b, int mode );  // RGBState enum cast to int
+  bool turnOffWaterCoolerLED();
+
   // Signal Subscription
   using ProfileChangedCallback = std::function< void( const std::string &profileId ) >;
   using PowerStateChangedCallback = std::function< void( const std::string &state ) >;
