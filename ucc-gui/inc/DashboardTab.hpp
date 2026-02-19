@@ -29,7 +29,7 @@ namespace ucc
 {
   class SystemMonitor;
   class ProfileManager;
-  
+
 
   /**
    * @brief Dashboard tab widget for system monitoring

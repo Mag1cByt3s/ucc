@@ -240,7 +240,7 @@ private:
   int calculateSpeedPercent()
   {
     const int filteredTemp = m_tempFilter.getFilteredValue();
-    
+
     // Apply hysteresis — effective temp may lag behind during cool-down
     const int effectiveTemp = applyHysteresis( filteredTemp );
 
@@ -271,7 +271,7 @@ private:
   int m_latestSpeedPercent;
   double m_smoothedSpeed;       // EWMA state for speed output
   int m_lastEffectiveTemp;      // hysteresis state
-  
+
   int m_fansMinSpeedHWLimit;
   bool m_fansOffAvailable;
   int m_offsetFanspeed;
@@ -337,11 +337,11 @@ public:
     m_tempWaterCoolerFanTable = waterCoolerFanTable;
     m_tempPumpTable = pumpTable;
     m_hasTemporaryCurves = true;
-    
+
     for ( size_t i = 0; i < m_fanLogics.size(); ++i )
     {
       FanProfile tempProfile = m_fanLogics[i].getFanProfile(); // Copy current profile
-      
+
       if ( i == 0 && !cpuTable.empty() ) // CPU fan (index 0)
       {
         tempProfile.tableCPU = cpuTable;
@@ -355,7 +355,7 @@ public:
         tempProfile.tableWaterCoolerFan = waterCoolerFanTable;
       if ( !pumpTable.empty() )
         tempProfile.tablePump = pumpTable;
-      
+
       m_fanLogics[i].updateFanProfile( tempProfile );
     }
   }
@@ -365,7 +365,7 @@ protected:
   {
     int numberFans = 0;
     bool fansDetected = m_io.getNumberFans( numberFans ) && numberFans > 0;
-    
+
     // If getNumberFans fails, try to detect fans by reading temperature from fan 0
     if ( !fansDetected )
     {
@@ -378,14 +378,14 @@ protected:
         syslog( LOG_INFO, "FanControlWorker: Detected fans by temperature reading (getNumberFans failed)" );
       }
     }
-    
+
     if ( fansDetected && numberFans > 0 )
     {
       // Initialize fan logic for each fan
       for ( int i = 0; i < numberFans; ++i )
       {
         auto profile = m_getActiveProfile();
-        
+
         // Fan 0 is CPU, others are GPU
         FanLogicType type = ( i == 0 ) ? FanLogicType::CPU : FanLogicType::GPU;
         // Resolve the named fan profile preset
@@ -462,7 +462,7 @@ protected:
       if ( tempReadSuccess )
       {
         fanTemps.push_back( tempCelsius );
-        
+
         // Report temperature to logic and get calculated speed
         m_fanLogics[fanIndex].reportTemperature( tempCelsius );
         int calculatedSpeed = m_fanLogics[fanIndex].getSpeedPercent();
@@ -490,7 +490,7 @@ protected:
       for ( size_t fanIndex = 0; fanIndex < m_fanLogics.size(); ++fanIndex )
       {
         int speedToSet = fanSpeedsSet[fanIndex];
-        
+
         // Use highest speed if in "same speed" mode or no sensor available
         if ( m_modeSameSpeed || !tempSensorAvailable[fanIndex] )
         {
@@ -563,7 +563,7 @@ private:
         for ( const auto &p : defaultFanProfiles ) { if ( p.name == "Balanced" ) { fanProfile = p; break; } }
       }
       if ( !fanProfile.isValid() && !defaultFanProfiles.empty() ) fanProfile = defaultFanProfiles[0];
-      
+
       // If temporary curves are active, use them instead of profile curves
       if ( m_hasTemporaryCurves )
       {
@@ -580,7 +580,7 @@ private:
         if ( !m_tempPumpTable.empty() )
           fanProfile.tablePump = m_tempPumpTable;
       }
-      
+
       m_fanLogics[i].updateFanProfile( fanProfile );
       m_fanLogics[i].setOffsetFanspeed( profile.fan.offsetFanspeed );
     }
@@ -597,7 +597,7 @@ private:
   bool m_controlAvailableMessageShown;
   int m_fansMinSpeedHWLimit;
   bool m_fansOffAvailable;
-  
+
   // Temporary fan curve tracking
   bool m_hasTemporaryCurves;
   std::vector< FanTableEntry > m_tempCpuTable;

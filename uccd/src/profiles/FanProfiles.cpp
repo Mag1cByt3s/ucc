@@ -219,7 +219,7 @@ std::string getFanProfileJson( const std::string &idOrName )
     if ( i + 1 < fp->tableCPU.size() ) json += ",";
   }
   json += "],";
-  
+
   // tableGPU - return the sampled entries (already at 5°C steps from 20 to 100)
   json += "\"tableGPU\":[";
   for ( size_t i = 0; i < fp->tableGPU.size(); ++i )
@@ -229,7 +229,7 @@ std::string getFanProfileJson( const std::string &idOrName )
     if ( i + 1 < fp->tableGPU.size() ) json += ",";
   }
   json += "],";
-  
+
   // tablePump - return the entries
   json += "\"tablePump\":[";
   for ( size_t i = 0; i < fp->tablePump.size(); ++i )
@@ -249,7 +249,7 @@ std::string getFanProfileJson( const std::string &idOrName )
     if ( i + 1 < fp->tableWaterCoolerFan.size() ) json += ",";
   }
   json += "]";
-  
+
   json += "}";
   return json;
 }

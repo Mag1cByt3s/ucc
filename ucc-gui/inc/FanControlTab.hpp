@@ -75,6 +75,12 @@ public:
   void sendWaterCoolerEnable( bool enabled );
   bool isWaterCoolerEnabled() const;
 
+  /** Update water cooler manual control state based on auto control setting. */
+  void setWaterCoolerAutoControl( bool autoControl );
+
+  /** Start/stop water cooler polling based on enable state. */
+  void updateWaterCoolerPolling();
+
   QString currentFanProfile() const { return m_currentFanProfile; }
   void setCurrentFanProfile( const QString &name ) { m_currentFanProfile = name; }
 
@@ -107,6 +113,7 @@ private slots:
   void onConnected();
   void onDisconnected();
   void onPumpVoltageChanged( int index );
+  void onFanSpeedChanged( int speed );
   void onLEDOnOffChanged( bool enabled );
   void onLEDModeChanged( int index );
   void onColorPickerClicked();
@@ -115,6 +122,8 @@ private slots:
 private:
   void setupUI();
   void connectSignals();
+  void updateColorButtonState();
+  void updateManualControlState();
 
   UccdClient *m_uccdClient;
   ProfileManager *m_profileManager;
@@ -149,6 +158,8 @@ private:
   int m_currentGreen = 0;
   int m_currentBlue = 0;
 
+  bool m_autoControl = true;
+  bool m_manualControlInitialized = false;
   bool m_waterCoolerSupported = false;
 };
 

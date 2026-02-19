@@ -37,7 +37,7 @@ KeyboardVisualizerWidget::KeyboardVisualizerWidget( int zones, int maxBrightness
 {
   // Detect keyboard layout
   QString layout = detectKeyboardLayout();
-  
+
   // Load appropriate zone mappings
   m_zoneMappings = assignKeyZones(layout);
 

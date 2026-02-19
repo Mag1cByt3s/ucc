@@ -48,7 +48,7 @@ namespace ucc {
     if ( n >= 0 )
       syslog(LOG_DEBUG, "%s", buf);
   }
-  
+
   template<typename Func>
   inline void invokeBlocking(QObject *receiver, Func &&fn)
   {

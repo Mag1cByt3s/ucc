@@ -101,11 +101,11 @@ static int32_t readSysFsInt( const std::string &path, int32_t defaultValue )
   std::ifstream file( path );
   if ( !file.is_open() )
     return defaultValue;
-  
+
   int32_t value;
   if ( !( file >> value ) )
     return defaultValue;
-  
+
   return value;
 }
 
@@ -252,7 +252,7 @@ static std::string buildSettingsJSON( const std::string &keyboardBacklightStates
   oss << "{"
       << "\"fahrenheit\":" << ( settings.fahrenheit ? "true" : "false" ) << ","
       << "\"stateMap\":{";
-  
+
   // Serialize stateMap
   bool first = true;
   for ( const auto &[key, value] : settings.stateMap )
@@ -262,7 +262,7 @@ static std::string buildSettingsJSON( const std::string &keyboardBacklightStates
     first = false;
     oss << "\"" << jsonEscape( key ) << "\":\"" << jsonEscape( value ) << "\"";
   }
-  
+
   oss << "},"
       << "\"shutdownTime\":" << ( settings.shutdownTime.has_value() ? "\"" + jsonEscape( *settings.shutdownTime ) + "\"" : "null" ) << ","
       << "\"cpuSettingsEnabled\":" << ( settings.cpuSettingsEnabled ? "true" : "false" ) << ","
@@ -409,12 +409,12 @@ bool UccDBusInterfaceAdaptor::SetDisplayRefreshRate( const QString &display, int
   // Note: display parameter is currently ignored - only works with primary display
   // TODO: Support multiple displays in the future
   (void)display;
-  
+
   if ( m_service && m_service->m_displayWorker )
   {
     return m_service->m_displayWorker->setRefreshRate( refreshRate );
   }
-  
+
   return false;
 }
 
@@ -623,7 +623,7 @@ bool UccDBusInterfaceAdaptor::ApplyFanProfiles( const QString &fanProfilesJSONq 
       m_service->m_fanControlWorker->applyTemporaryFanCurves( cpuTable, gpuTable, waterCoolerFanTable, pumpTable );
       std::cerr << "[DBus] Applied temporary fan profiles" << std::endl;
     }
-    
+
     return true;
   }
   catch ( ... )
@@ -647,11 +647,11 @@ bool UccDBusInterfaceAdaptor::RevertFanProfiles()
       m_service->m_fanControlWorker->clearTemporaryCurves();
       std::cerr << "[DBus] Cleared temporary fan curves" << std::endl;
     }
-    
+
     // Reload the current profile to reset fan logics
     auto profile = m_service->getCurrentProfile();
     // The onWork method will call updateFanLogicsFromProfile which will now use profile curves
-    
+
     return true;
   }
   catch ( ... )
@@ -713,7 +713,7 @@ QString UccDBusInterfaceAdaptor::GetCpuFrequencyLimitsJSON()
 {
   const int32_t minFreq = getCpuMinFrequency();
   const int32_t maxFreq = getCpuMaxFrequency();
-  
+
   std::ostringstream json;
   json << "{\"min\":" << minFreq << ",\"max\":" << maxFreq << "}";
   return QString::fromStdString( json.str() );
@@ -737,16 +737,16 @@ bool UccDBusInterfaceAdaptor::AddCustomProfile( const QString &profileJSON )
   {
     // Parse the profile JSON and add it
     auto profile = ProfileManager::parseProfileJSON( profileJSON.toStdString() );
-    
+
     // Generate new ID if empty
     if ( profile.id.empty() )
     {
       profile.id = generateProfileId();
     }
-    
+
     std::cout << "[Profile] Adding custom profile '" << profile.name 
               << "' (id: " << profile.id << ")" << std::endl;
-    
+
     bool result = m_service->addCustomProfile( profile );
 
     if ( result )
@@ -757,7 +757,7 @@ bool UccDBusInterfaceAdaptor::AddCustomProfile( const QString &profileJSON )
     {
       std::cerr << "[Profile] Failed to add profile '" << profile.name << "'" << std::endl;
     }
-    
+
     return result;
   }
   catch ( const std::exception &e )
@@ -782,7 +782,7 @@ bool UccDBusInterfaceAdaptor::DeleteCustomProfile( const QString &profileId )
 
   const std::string id = profileId.toStdString();
   std::cout << "[Profile] Deleting custom profile with id: " << id << std::endl;
-  
+
   bool result = m_service->deleteCustomProfile( id );
 
   if ( result )
@@ -793,7 +793,7 @@ bool UccDBusInterfaceAdaptor::DeleteCustomProfile( const QString &profileId )
   {
     std::cerr << "[Profile] Failed to delete profile '" << id << "' (not found or error)" << std::endl;
   }
-  
+
   return result;
 }
 
@@ -810,16 +810,16 @@ bool UccDBusInterfaceAdaptor::UpdateCustomProfile( const QString &profileJSON )
     const std::string jsonStr = profileJSON.toStdString();
     std::cout << "[Profile] Received profile JSON (first 200 chars): " 
               << jsonStr.substr(0, 200) << "..." << std::endl;
-    
+
     // Parse the profile JSON and update it
     auto profile = ProfileManager::parseProfileJSON( jsonStr );
-    
+
     if ( profile.id.empty() )
     {
       std::cerr << "[Profile] UpdateCustomProfile called with empty profile ID" << std::endl;
       return false; // Must have an ID to update
     }
-    
+
     std::cout << "[Profile] Updating custom profile '" << profile.name 
               << "' (id: " << profile.id << ")" << std::endl;
     std::cout << "[Profile]   Fan control: " << (profile.fan.useControl ? "enabled" : "disabled") << std::endl;
@@ -827,9 +827,9 @@ bool UccDBusInterfaceAdaptor::UpdateCustomProfile( const QString &profileJSON )
     std::cout << "[Profile]   Auto control WC: " << (profile.fan.autoControlWC ? "enabled" : "disabled") << std::endl;
     std::cout << "[Profile]   Offset: " << profile.fan.offsetFanspeed << std::endl;
     std::cout << "[Profile]   Fan profile name: " << profile.fan.fanProfile << std::endl;
-    
+
     bool result = m_service->updateCustomProfile( profile );
-    
+
     if ( result )
     {
       std::cout << "[Profile] Successfully updated profile '" << profile.name << "'" << std::endl;
@@ -838,7 +838,7 @@ bool UccDBusInterfaceAdaptor::UpdateCustomProfile( const QString &profileJSON )
     {
       std::cerr << "[Profile] Failed to update profile '" << profile.name << "' (not found or error)" << std::endl;
     }
-    
+
     return result;
   }
   catch ( const std::exception &e )
@@ -986,7 +986,7 @@ bool UccDBusInterfaceAdaptor::SaveCustomProfile( const QString &profileJSON )
     // Store the profile in settings for persistence using the corrected ID
     std::string storedJSON = ProfileManager::profileToJSON( profile );
     m_service->m_settings.profiles[profile.id] = storedJSON;
-    
+
     // Clean up old profile entries with same name but different ID
     // This prevents accumulating duplicate profiles in settings
     std::vector<std::string> keysToDelete;
@@ -1010,13 +1010,13 @@ bool UccDBusInterfaceAdaptor::SaveCustomProfile( const QString &profileJSON )
         }
       }
     }
-    
+
     // Delete the old entries
     for ( const auto &keyToDelete : keysToDelete )
     {
       m_service->m_settings.profiles.erase( keyToDelete );
     }
-    
+
     // Also remove from m_customProfiles if it exists with old ID
     for ( auto &memProfile : m_service->m_customProfiles )
     {
@@ -1028,7 +1028,7 @@ bool UccDBusInterfaceAdaptor::SaveCustomProfile( const QString &profileJSON )
         memProfile.id = "";  // Mark for deletion
       }
     }
-    
+
     // Remove marked entries
     auto it = std::remove_if( m_service->m_customProfiles.begin(), m_service->m_customProfiles.end(),
                              [](const UccProfile &p) { return p.id.empty(); } );
@@ -1036,7 +1036,7 @@ bool UccDBusInterfaceAdaptor::SaveCustomProfile( const QString &profileJSON )
     {
       m_service->m_customProfiles.erase( it, m_service->m_customProfiles.end() );
     }
-    
+
     // Always persist settings after saving a profile
     if ( m_service->m_settingsManager.writeSettings( m_service->m_settings ) )
     {
@@ -1116,11 +1116,11 @@ bool UccDBusInterfaceAdaptor::SetStateMap( const QString &state, const QString &
   {
     return false;
   }
-  
+
   const std::string stateStr = state.toStdString();
   const std::string profileIdStr = profileId.toStdString();
   std::cout << "[DBus] SetStateMap: " << stateStr << " -> " << profileIdStr << std::endl;
-  
+
   // Verify the profile exists before updating stateMap
   if ( stateStr == "power_ac" || stateStr == "power_bat" || stateStr == "power_wc" )
   {
@@ -1129,7 +1129,7 @@ bool UccDBusInterfaceAdaptor::SetStateMap( const QString &state, const QString &
     // 2. m_settings.profiles (authoritative source from file)
     // 3. m_defaultProfiles (built-in profiles)
     bool profileExists = false;
-    
+
     for ( const auto &profile : m_service->m_customProfiles )
     {
       if ( profile.id == profileIdStr )
@@ -1138,12 +1138,12 @@ bool UccDBusInterfaceAdaptor::SetStateMap( const QString &state, const QString &
         break;
       }
     }
-    
+
     if ( !profileExists && m_service->m_settings.profiles.find( profileIdStr ) != m_service->m_settings.profiles.end() )
     {
       profileExists = true;
     }
-    
+
     if ( !profileExists )
     {
       for ( const auto &profile : m_service->m_defaultProfiles )
@@ -1155,13 +1155,13 @@ bool UccDBusInterfaceAdaptor::SetStateMap( const QString &state, const QString &
         }
       }
     }
-    
+
     if ( !profileExists )
     {
       std::cerr << "[DBus] SetStateMap: Profile ID '" << profileIdStr << "' does not exist, rejecting" << std::endl;
       return false;
     }
-    
+
     // Profile exists, safe to update
     m_service->m_settings.stateMap[stateStr] = profileIdStr;
     const bool wrote = m_service->m_settingsManager.writeSettings( m_service->m_settings );
@@ -1170,7 +1170,7 @@ bool UccDBusInterfaceAdaptor::SetStateMap( const QString &state, const QString &
     m_service->updateDBusSettingsData();
     return wrote;
   }
-  
+
   return false;
 }
 
@@ -1307,13 +1307,13 @@ QString UccDBusInterfaceAdaptor::GetCurrentChargingProfile()
 bool UccDBusInterfaceAdaptor::SetChargingProfile( const QString &profileDescriptor )
 {
   bool result = m_service->m_profileSettingsWorker->applyChargingProfile( profileDescriptor.toStdString() );
-  
+
   if ( result )
   {
     std::lock_guard< std::mutex > lock( m_data.dataMutex );
     m_data.currentChargingProfile = m_service->m_profileSettingsWorker->getCurrentChargingProfile();
   }
-  
+
   return result;
 }
 
@@ -1332,13 +1332,13 @@ QString UccDBusInterfaceAdaptor::GetCurrentChargingPriority()
 bool UccDBusInterfaceAdaptor::SetChargingPriority( const QString &priorityDescriptor )
 {
   bool result = m_service->m_profileSettingsWorker->applyChargingPriority( priorityDescriptor.toStdString() );
-  
+
   if ( result )
   {
     std::lock_guard< std::mutex > lock( m_data.dataMutex );
     m_data.currentChargingPriority = m_service->m_profileSettingsWorker->getCurrentChargingPriority();
   }
-  
+
   return result;
 }
 
@@ -1369,20 +1369,20 @@ int UccDBusInterfaceAdaptor::GetChargeEndThreshold()
 bool UccDBusInterfaceAdaptor::SetChargeStartThreshold( int value )
 {
   bool result = m_service->m_profileSettingsWorker->setChargeStartThreshold( value );
-  
+
   if ( result )
     m_data.chargeStartThreshold = value;
-  
+
   return result;
 }
 
 bool UccDBusInterfaceAdaptor::SetChargeEndThreshold( int value )
 {
   bool result = m_service->m_profileSettingsWorker->setChargeEndThreshold( value );
-  
+
   if ( result )
     m_data.chargeEndThreshold = value;
-  
+
   return result;
 }
 
@@ -1395,13 +1395,13 @@ QString UccDBusInterfaceAdaptor::GetChargeType()
 bool UccDBusInterfaceAdaptor::SetChargeType( const QString &type )
 {
   bool result = m_service->m_profileSettingsWorker->setChargeType( type.toStdString() );
-  
+
   if ( result )
   {
     std::lock_guard< std::mutex > lock( m_data.dataMutex );
     m_data.chargeType = type.toStdString();
   }
-  
+
   return result;
 }
 
@@ -1526,13 +1526,21 @@ bool UccDBusInterfaceAdaptor::EnableWaterCooler( bool enable )
   // Update shared DBus flag and request service to perform actions when disabling
   m_data.waterCoolerScanningEnabled = enable;
 
-  // When scanning is disabled, mark unavailable so clients don't expect discovery
+  // When scanning is disabled, mark unavailable and disconnected so clients
+  // immediately see the device as gone
   if ( not enable )
+  {
     m_data.waterCoolerAvailable = false;
+    m_data.waterCoolerConnected = false;
+  }
 
-  // Ask service to perform any active operations (disconnect/stop) if present
+  // Update the active profile so that subsequent profile re-applications
+  // (e.g. resume from suspend, autosave reload) don't override the runtime state.
   if ( m_service )
+  {
+    m_service->m_activeProfile.fan.enableWaterCooler = enable;
     m_service->setWaterCoolerScanningEnabled( enable );
+  }
 
   return true;
 }
@@ -1673,7 +1681,7 @@ UccDBusService::UccDBusService()
 {
   // set daemon version
   m_dbusData.uccdVersion = "2.1.21";
-  
+
   // identify and set device
   auto device = identifyDevice();
   m_deviceId = device;
@@ -1685,13 +1693,13 @@ UccDBusService::UccDBusService()
   {
     m_dbusData.device = "";
   }
-  
+
   // compute device-specific feature flags (aquaris, cTGP)
   computeDeviceCapabilities();
-  
+
   // detect display session type and initialize display modes
   initializeDisplayModes();
-  
+
   // check tuxedo wmi availability
   m_dbusData.tuxedoWmiAvailable = m_io.wmiAvailable();
 
@@ -1720,21 +1728,21 @@ UccDBusService::UccDBusService()
   m_dbusData.keyboardBacklightCapabilitiesJSON = "null";
   m_dbusData.keyboardBacklightStatesJSON = "[]";
   m_dbusData.keyboardBacklightStatesNewJSON = "";
-  
+
   // initialize profiles first (safer, doesn't start threads)
   initializeProfiles();
-  
+
   // Load settings (creates defaults if needed)
   loadSettings();
-  
+
   // Now build settings JSON with actual stateMap
   m_dbusData.settingsJSON = buildSettingsJSON( m_dbusData.keyboardBacklightStatesJSON,
                                                m_dbusData.currentChargingProfile,
                                                m_settings );
-  
+
   // Load autosave
   loadAutosave();
-  
+
   // Initialize display worker (merged backlight + refresh rate)
   m_displayWorker = std::make_unique< DisplayWorker >(
     m_autosaveManager.getAutosavePath(),
@@ -1748,14 +1756,14 @@ UccDBusService::UccDBusService()
     },
     [this]( bool isX11 ) { m_dbusData.isX11 = isX11; }
   );
-  
+
   // initialize cpu worker
   m_cpuWorker = std::make_unique< CpuWorker >(
     [this]() { return m_activeProfile; },
     [this]() { return m_settings.cpuSettingsEnabled; },
     []( const std::string &msg ) { syslog( LOG_INFO, "%s", msg.c_str() ); }
   );
-  
+
   // initialize profile settings worker (replaces ODMPowerLimitWorker, ODMProfileWorker, ChargingWorker, YCbCr420WorkaroundWorker)
   m_profileSettingsWorker = std::make_unique< ProfileSettingsWorker >(
     m_io,
@@ -1776,7 +1784,7 @@ UccDBusService::UccDBusService()
     m_dbusData.nvidiaPowerCTRLAvailable,
     m_dbusData.cTGPAdjustmentSupported
   );
-  
+
   // initialize hardware monitor worker (merged GPU info + CPU power + Prime)
   m_hardwareMonitorWorker = std::make_unique< HardwareMonitorWorker >(
     [this]( const std::string &json ) {
@@ -1802,7 +1810,7 @@ UccDBusService::UccDBusService()
       m_dbusData.webcamSwitchStatus = status;
     }
   );
-  
+
   // initialize fan control worker
   m_fanControlWorker = std::make_unique< FanControlWorker >(
     m_io,
@@ -1887,10 +1895,10 @@ UccDBusService::UccDBusService()
       }
     }
   );
-  
+
   // Update DBus availability flag from profile settings worker
   m_dbusData.forceYUV420OutputSwitchAvailable = m_profileSettingsWorker->isYCbCr420Available();
-  
+
   // Initialize NVIDIA Power Control listener on first profile set
   // Removed from constructor to prevent automatic initialization
 
@@ -1916,7 +1924,7 @@ UccDBusService::UccDBusService()
       return m_settings.keyboardBacklightControlEnabled;
     }
   );
-  
+
   // Update DBus data with charging initial states from profile settings worker
   {
     std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
@@ -1930,7 +1938,7 @@ UccDBusService::UccDBusService()
     m_dbusData.chargeEndThreshold = m_profileSettingsWorker->getChargeEndThreshold();
     m_dbusData.chargeType = m_profileSettingsWorker->getChargeType();
   }
-  
+
   // then setup gpu callback before worker starts processing
   setupGpuDataCallback();
 
@@ -1989,7 +1997,7 @@ void UccDBusService::updateFanData()
 {
   int numberFans = 0;
   bool fansAvailable = m_io.getNumberFans( numberFans ) && numberFans > 0;
-  
+
   // If getNumberFans fails, try to detect fans by reading temperature from fan 0
   if ( !fansAvailable )
   {
@@ -2129,7 +2137,7 @@ void UccDBusService::onWork()
   // STATE-BASED PROFILE SWITCHING (like TypeScript StateSwitcherWorker)
   // Disabled: uccd no longer saves or monitors settings file
   // UCC handles all profile decisions
-  
+
   // Monitor power state and emit signals for UCC to handle
   // Skip AC/BAT changes when water cooler is connected (power_wc takes priority)
   if ( m_currentState != ProfileState::WC )
@@ -2144,18 +2152,18 @@ void UccDBusService::onWork()
       // Update m_currentStateProfileId only if the state is mapped
       auto it = m_settings.stateMap.find( stateKey );
       m_currentStateProfileId = ( it != m_settings.stateMap.end() ) ? it->second : std::string();
-      
+
       std::cout << "[State] Power state changed to " << stateKey << std::endl;
-      
+
       // Emit signal for UCC to handle profile switching
       m_adaptor->emitPowerStateChanged( stateKey );
     }
   }
-  
+
   // Check for temp profile requests
   const std::string oldActiveProfileId = m_activeProfile.id;
   const std::string oldActiveProfileName = m_activeProfile.name;
-  
+
   // Check if a temp profile by ID was requested
   std::string profileId;
   {
@@ -2182,10 +2190,10 @@ void UccDBusService::onWork()
     {
       std::cerr << "[Profile] Failed to switch to profile ID: " << profileId << std::endl;
     }
-    
+
     return; // Process one change per cycle
   }
-  
+
   // Check if a temp profile by name was requested
   std::string profileName;
   {
@@ -2212,7 +2220,7 @@ void UccDBusService::onWork()
     {
       std::cerr << "[Profile] Failed to switch to profile: " << profileName << std::endl;
     }
-    
+
     return; // Process one change per cycle
   }
 
@@ -2291,7 +2299,10 @@ void UccDBusService::setWaterCoolerScanningEnabled( bool enable )
   m_dbusData.waterCoolerScanningEnabled = enable;
 
   if ( not enable )
+  {
     m_dbusData.waterCoolerAvailable = false;
+    m_dbusData.waterCoolerConnected = false;
+  }
 
   if ( not m_waterCoolerWorker )
     return;
@@ -2306,8 +2317,7 @@ void UccDBusService::setWaterCoolerScanningEnabled( bool enable )
   }
   else
   {
-    // Request a graceful disconnect and stop discovery
-    m_waterCoolerWorker->disconnectFromDevice();
+    // Stop discovery and disconnect; stopScanning() now also disconnects the device
     m_waterCoolerWorker->stopScanning();
   }
 }
@@ -2316,7 +2326,7 @@ void UccDBusService::onExit()
 {
   // Save autosave data
   saveAutosave();
-  
+
   if ( m_started )
   {
     try
@@ -2342,17 +2352,17 @@ void UccDBusService::onExit()
 void UccDBusService::loadProfiles()
 {
   std::cout << "[ProfileManager] Loading profiles..." << std::endl;
-  
+
   // identify device for device-specific profiles
   auto device = identifyDevice();
-  
+
   // load default profiles
   m_defaultProfiles = m_profileManager.getDefaultProfiles( device );
   std::cout << "[ProfileManager] Loaded " << m_defaultProfiles.size() << " default profiles" << std::endl;
 
   // Fill device-specific defaults (TDP values, etc.) after loading profiles
   fillDeviceSpecificDefaults( m_defaultProfiles );
-  
+
   // Debug: Verify TDP values were filled
   std::cout << "[loadProfiles] After fillDeviceSpecificDefaults, checking TDP values:" << std::endl;
   for ( size_t i = 0; i < m_defaultProfiles.size() && i < 3; ++i )
@@ -2397,19 +2407,19 @@ void UccDBusService::initializeProfiles()
   const int32_t defaultOnlineCores = getDefaultOnlineCores();
   const int32_t defaultScalingMin = getCpuMinFrequency();
   const int32_t defaultScalingMax = getCpuMaxFrequency();
-  
+
   UccProfile baseCustomProfile = m_profileManager.getDefaultCustomProfiles()[0];
-  
+
   // serialize all profiles to JSON
   std::ostringstream allProfilesJSON;
   allProfilesJSON << "[";
-  
+
   auto allProfiles = getAllProfiles();
   for ( size_t i = 0; i < allProfiles.size(); ++i )
   {
     if ( i > 0 )
       allProfilesJSON << ",";
-    
+
     allProfilesJSON << profileToJSON( allProfiles[ i ],
                       defaultOnlineCores,
                       defaultScalingMin,
@@ -2423,7 +2433,7 @@ void UccDBusService::initializeProfiles()
   {
     if ( i > 0 )
       defaultProfilesJSON << ",";
-    
+
     defaultProfilesJSON << profileToJSON( m_defaultProfiles[ i ],
                         defaultOnlineCores,
                         defaultScalingMin,
@@ -2437,7 +2447,7 @@ void UccDBusService::initializeProfiles()
   {
     if ( i > 0 )
       customProfilesJSON << ",";
-    
+
     customProfilesJSON << profileToJSON( m_customProfiles[ i ],
                        defaultOnlineCores,
                        defaultScalingMin,
@@ -2453,13 +2463,13 @@ void UccDBusService::initializeProfiles()
                                                        defaultOnlineCores,
                                                        defaultScalingMin,
                                                        defaultScalingMax );
-  
+
   std::cout << "[DBus] Updated profile JSONs:" << std::endl;
   std::cout << "[DBus]   customProfilesJSON: " << m_dbusData.customProfilesJSON.length() << " bytes, " 
             << m_customProfiles.size() << " profiles" << std::endl;
   std::cout << "[DBus]   defaultProfilesJSON: " << m_dbusData.defaultProfilesJSON.length() << " bytes, " 
             << m_defaultProfiles.size() << " profiles" << std::endl;
-  
+
 }
 
 UccProfile UccDBusService::getCurrentProfile() const
@@ -2470,12 +2480,14 @@ UccProfile UccDBusService::getCurrentProfile() const
 bool UccDBusService::setCurrentProfileByName( const std::string &profileName )
 {
   auto allProfiles = getAllProfiles();
-  
+
   for ( const auto &profile : allProfiles )
   {
     if ( profile.name == profileName )
     {
+      const bool preservedWcEnable = m_dbusData.waterCoolerScanningEnabled.load();
       m_activeProfile = profile;
+      m_activeProfile.fan.enableWaterCooler = preservedWcEnable;
       snapProfileFrequencies( m_activeProfile );
       updateDBusActiveProfileData();
       return true;
@@ -2483,7 +2495,9 @@ bool UccDBusService::setCurrentProfileByName( const std::string &profileName )
   }
 
   // fallback to default profile
+  const bool preservedWcEnable = m_dbusData.waterCoolerScanningEnabled.load();
   m_activeProfile = getDefaultProfile();
+  m_activeProfile.fan.enableWaterCooler = preservedWcEnable;
   snapProfileFrequencies( m_activeProfile );
   updateDBusActiveProfileData();
   return false;
@@ -2492,19 +2506,23 @@ bool UccDBusService::setCurrentProfileByName( const std::string &profileName )
 bool UccDBusService::setCurrentProfileById( const std::string &id )
 {
   auto allProfiles = getAllProfiles();
-  
+
   for ( const auto &profile : allProfiles )
   {
     if ( profile.id == id )
     {
       std::cout << "[Profile] Switching to profile: " << profile.name << " (ID: " << id << ")" << std::endl;
+      // Preserve runtime water cooler enable state across profile switches.
+      // The user's explicit EnableWaterCooler() D-Bus call is authoritative.
+      const bool preservedWcEnable = m_dbusData.waterCoolerScanningEnabled.load();
       m_activeProfile = profile;
+      m_activeProfile.fan.enableWaterCooler = preservedWcEnable;
       snapProfileFrequencies( m_activeProfile );
       updateDBusActiveProfileData();
-      
+
       // apply fan curves and pump auto-control
       applyFanAndPumpSettings( profile );
-      
+
       // apply new profile to workers
       if ( m_cpuWorker )
       {
@@ -2554,29 +2572,33 @@ bool UccDBusService::setCurrentProfileById( const std::string &id )
         std::cout << "[Profile] Notifying NVIDIA power control" << std::endl;
         m_profileSettingsWorker->onNVIDIAPowerProfileChanged();
       }
-      
+
       // Emit ProfileChanged signal for DBus clients
       if ( m_adaptor )
       {
         m_adaptor->emitProfileChanged( id );
       }
-      
+
       return true;
     }
   }
 
   // fallback to default profile
   std::cout << "[Profile] Profile ID not found: " << id << ", using default" << std::endl;
-  m_activeProfile = getDefaultProfile();
+  {
+    const bool preservedWcEnable = m_dbusData.waterCoolerScanningEnabled.load();
+    m_activeProfile = getDefaultProfile();
+    m_activeProfile.fan.enableWaterCooler = preservedWcEnable;
+  }
   snapProfileFrequencies( m_activeProfile );
   updateDBusActiveProfileData();
-  
+
   // Emit ProfileChanged signal for DBus clients
   if ( m_adaptor )
   {
     m_adaptor->emitProfileChanged( m_activeProfile.id );
   }
-  
+
   return false;
 }
 
@@ -2586,20 +2608,17 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
   {
     // Parse the profile JSON
     auto profile = m_profileManager.parseProfileJSON( profileJSON );
-    
+
     std::cout << "[Profile] Applying profile from GUI: " << profile.name << std::endl;
-    
-    // Set as active profile
+
+    // Set as active profile, but preserve the runtime water cooler enable state.
+    // The user's explicit EnableWaterCooler() D-Bus call is authoritative;
+    // the stored profile may have a stale enableWaterCooler value.
+    const bool preservedWcEnable = m_dbusData.waterCoolerScanningEnabled.load();
     m_activeProfile = profile;
+    m_activeProfile.fan.enableWaterCooler = preservedWcEnable;
     snapProfileFrequencies( m_activeProfile );
     updateDBusActiveProfileData();
-
-    // Apply water cooler enable state from profile
-    try
-    {
-      setWaterCoolerScanningEnabled( m_activeProfile.fan.enableWaterCooler );
-    }
-    catch ( ... ) { /* ignore */ }
 
     // If the profile explicitly sets sameSpeed, apply it to fan worker immediately
     try
@@ -2719,20 +2738,20 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
         m_profileSettingsWorker->setChargeEndThreshold( profile.chargeEndThreshold );
       }
     }
-    
+
     // Apply keyboard backlight settings from profile
     if ( m_keyboardBacklightListener && !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
     {
       std::cout << "[Profile] Applying keyboard backlight settings from profile" << std::endl;
       m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
     }
-    
+
     // Emit ProfileChanged signal for DBus clients
     if ( m_adaptor )
     {
       m_adaptor->emitProfileChanged( profile.id );
     }
-    
+
     return true;
   }
   catch ( const std::exception &e )
@@ -2747,10 +2766,10 @@ std::vector< UccProfile > UccDBusService::getAllProfiles() const
 {
   std::vector< UccProfile > allProfiles;
   allProfiles.reserve( m_defaultProfiles.size() + m_customProfiles.size() );
-  
+
   allProfiles.insert( allProfiles.end(), m_defaultProfiles.begin(), m_defaultProfiles.end() );
   allProfiles.insert( allProfiles.end(), m_customProfiles.begin(), m_customProfiles.end() );
-  
+
   return allProfiles;
 }
 
@@ -2768,10 +2787,10 @@ UccProfile UccDBusService::getDefaultProfile() const
 {
   if ( not m_defaultProfiles.empty() )
     return m_defaultProfiles[0];
-  
+
   if ( not m_customProfiles.empty() )
     return m_customProfiles[0];
-  
+
   // ultimate fallback
   return defaultCustomProfile;
 }
@@ -2801,13 +2820,13 @@ void UccDBusService::updateDBusSettingsData()
 bool UccDBusService::addCustomProfile( const UccProfile &profile )
 {
   std::cout << "[ProfileManager] Adding profile '" << profile.name << "' to memory" << std::endl;
-  
+
   // Add to in-memory profiles
   m_customProfiles.push_back( profile );
-  
+
   // Update DBus data
   updateDBusActiveProfileData();
-  
+
   std::cout << "[ProfileManager] Profile added successfully" << std::endl;
   return true;
 }
@@ -2815,22 +2834,22 @@ bool UccDBusService::addCustomProfile( const UccProfile &profile )
 bool UccDBusService::deleteCustomProfile( const std::string &profileId )
 {
   std::cout << "[ProfileManager] Deleting profile '" << profileId << "' from memory" << std::endl;
-  
+
   // Remove from in-memory profiles
   auto it = std::remove_if( m_customProfiles.begin(), m_customProfiles.end(),
                            [&profileId]( const UccProfile &p ) { return p.id == profileId; } );
-  
+
   if ( it != m_customProfiles.end() )
   {
     m_customProfiles.erase( it, m_customProfiles.end() );
-    
+
     // Update DBus data
     updateDBusActiveProfileData();
-    
+
     std::cout << "[ProfileManager] Profile deleted successfully" << std::endl;
     return true;
   }
-  
+
   std::cerr << "[ProfileManager] Profile not found" << std::endl;
   return false;
 }
@@ -2838,7 +2857,7 @@ bool UccDBusService::deleteCustomProfile( const std::string &profileId )
 bool UccDBusService::updateCustomProfile( const UccProfile &profile )
 {
   std::cout << "[ProfileManager] Updating profile '" << profile.name << "' in memory" << std::endl;
-  
+
   // Check if this is a default (hardcoded) profile
   bool isDefaultProfile = false;
   for ( const auto &defaultProf : m_defaultProfiles )
@@ -2849,7 +2868,7 @@ bool UccDBusService::updateCustomProfile( const UccProfile &profile )
       break;
     }
   }
-  
+
   if ( isDefaultProfile )
   {
     std::cout << "[ProfileManager] Cannot update hardcoded default profile '" << profile.id << "'" << std::endl;
@@ -2857,23 +2876,25 @@ bool UccDBusService::updateCustomProfile( const UccProfile &profile )
     std::cerr << "[ProfileManager] ERROR: Attempt to modify read-only default profile rejected!" << std::endl;
     return false;
   }
-  
+
   // Update in-memory profile
   auto it = std::find_if( m_customProfiles.begin(), m_customProfiles.end(),
                          [&profile]( const UccProfile &p ) { return p.id == profile.id; } );
-  
+
   if ( it != m_customProfiles.end() )
   {
     *it = profile;
-    
+
     // Update DBus data
     updateDBusActiveProfileData();
-    
+
     // Update active profile if it was the one modified
     if ( m_activeProfile.id == profile.id )
     {
       std::cout << "[ProfileManager] Updated profile is active, reapplying to system" << std::endl;
+      const bool preservedWcEnable = m_dbusData.waterCoolerScanningEnabled.load();
       m_activeProfile = profile;
+      m_activeProfile.fan.enableWaterCooler = preservedWcEnable;
       snapProfileFrequencies( m_activeProfile );
       // Reapply the profile to actually update the hardware/system settings
       if ( setCurrentProfileById( profile.id ) )
@@ -2885,11 +2906,11 @@ bool UccDBusService::updateCustomProfile( const UccProfile &profile )
         std::cerr << "[ProfileManager] Failed to reapply updated profile!" << std::endl;
       }
     }
-    
+
     std::cout << "[ProfileManager] Profile updated successfully" << std::endl;
     return true;
   }
-  
+
   std::cerr << "[ProfileManager] Profile not found for update" << std::endl;
   return false;
 }
@@ -2909,9 +2930,9 @@ void UccDBusService::initializeDisplayModes()
   {
     sessionType.pop_back();
   }
-  
+
   m_dbusData.isX11 = ( sessionType == "x11" );
-  
+
   // initialize display modes as empty array - will be populated by display worker if implemented
   // must be valid JSON (empty array, not empty string) for GUI to parse correctly
   m_dbusData.displayModes = "[]";
@@ -3046,7 +3067,7 @@ void UccDBusService::computeDeviceCapabilities()
 void UccDBusService::loadSettings()
 {
   auto loadedSettings = m_settingsManager.readSettings();
-  
+
   if ( loadedSettings.has_value() )
   {
     m_settings = *loadedSettings;
@@ -3059,13 +3080,13 @@ void UccDBusService::loadSettings()
     // Let them be created when the first profile is actually saved.
     // This prevents the empty file overwrite bug on daemon restart.
     m_settings = TccSettings();
-    
+
     // No settings file – stateMap stays empty.
     // uccd will not apply any profile until ucc-gui explicitly assigns one.
     std::cout << "[Settings] No settings file found. Waiting for ucc-gui to assign profiles." << std::endl;
     updateDBusSettingsData();
   }
-  
+
   // Load custom profiles from settings BEFORE validating stateMap
   for ( const auto &[profileId, profileJson] : m_settings.profiles )
   {
@@ -3080,17 +3101,17 @@ void UccDBusService::loadSettings()
       std::cerr << "[Settings] Failed to parse profile '" << profileId << "' from settings: " << e.what() << std::endl;
     }
   }
-  
+
   // IMPORTANT: Do NOT resync/clear m_settings.profiles!
   // Reason: m_settings.profiles is the authoritative source from the file.
   // Resyncing can change keys or representation, breaking stateMap lookups.
   // Keep m_settings.profiles exactly as loaded from file.
   // Only modify it when profiles are explicitly added/edited via API.
-  
+
   // validate and fix state map if needed
   auto allProfiles = getAllProfiles();
   bool settingsChanged = false;
-  
+
   for ( const auto &stateKey : { "power_ac", "power_bat", "power_wc" } )
   {
     // check if state key exists in map – if not, leave it unassigned
@@ -3102,7 +3123,7 @@ void UccDBusService::loadSettings()
     }
 
     auto &profileId = m_settings.stateMap[stateKey];
-    
+
     // check if assigned profile exists (either in m_customProfiles OR in m_settings.profiles)
     bool profileExists = false;
 
@@ -3115,14 +3136,14 @@ void UccDBusService::loadSettings()
         break;
       }
     }
-    
+
     // If not found in objects, check if it exists as a key in m_settings.profiles (JSON map)
     // This is important because a profile might be in the file but not yet parsed into an object
     if ( !profileExists )
     {
       profileExists = ( m_settings.profiles.find( profileId ) != m_settings.profiles.end() );
     }
-    
+
     // Also check default profiles
     if ( !profileExists )
     {
@@ -3135,7 +3156,7 @@ void UccDBusService::loadSettings()
         }
       }
     }
-    
+
     if ( not profileExists )
     {
       std::cout << "[Settings] Profile ID '" << profileId << "' for state '" 
@@ -3144,7 +3165,7 @@ void UccDBusService::loadSettings()
       settingsChanged = true;
     }
   }
-  
+
   if ( settingsChanged )
   {
     if ( m_settingsManager.writeSettings( m_settings ) )
@@ -3157,7 +3178,7 @@ void UccDBusService::loadSettings()
       std::cerr << "[Settings] Failed to update settings!" << std::endl;
     }
   }
-  
+
   // Sync ycbcr420Workaround with detected display ports
   if ( syncOutputPortsSetting() )
   {
@@ -3174,10 +3195,10 @@ void UccDBusService::applyStartupProfile()
   // Determine current power state
   m_currentState = determineState();
   const std::string stateKey = profileStateToString( m_currentState );
-  
+
   std::cout << "[Startup] Current power state: " << stateKey << std::endl;
   syslog( LOG_INFO, "[Startup] Current power state: %s", stateKey.c_str() );
-  
+
   // Look up the profile assigned to this state
   auto stateMapIt = m_settings.stateMap.find( stateKey );
   if ( stateMapIt == m_settings.stateMap.end() )
@@ -3186,13 +3207,13 @@ void UccDBusService::applyStartupProfile()
     syslog( LOG_INFO, "[Startup] No profile assigned to state '%s'", stateKey.c_str() );
     return;
   }
-  
+
   const std::string &profileId = stateMapIt->second;
   m_currentStateProfileId = profileId;
-  
+
   std::cout << "[Startup] Applying profile assigned to state '" << stateKey << "': " << profileId << std::endl;
   syslog( LOG_INFO, "[Startup] Applying profile assigned to state '%s': %s", stateKey.c_str(), profileId.c_str() );
-  
+
   // First try to find the profile in settings (persistent profiles)
   auto profileIt = m_settings.profiles.find( profileId );
   if ( profileIt != m_settings.profiles.end() )
@@ -3203,13 +3224,13 @@ void UccDBusService::applyStartupProfile()
       m_activeProfile = profile;
       snapProfileFrequencies( m_activeProfile );
       updateDBusActiveProfileData();
-      
+
       std::cout << "[Startup] Applied profile from settings: " << profile.name << " (ID: " << profile.id << ")" << std::endl;
       syslog( LOG_INFO, "[Startup] Applied profile from settings: %s (ID: %s)", profile.name.c_str(), profile.id.c_str() );
-      
+
       // Apply fan curves and pump auto-control
       applyFanAndPumpSettings( profile );
-      
+
       // Apply to workers
       if ( m_cpuWorker )
       {
@@ -3217,14 +3238,14 @@ void UccDBusService::applyStartupProfile()
         syslog( LOG_INFO, "[Startup] Triggering CPU settings reapply" );
         m_cpuWorker->reapplyProfile();
       }
-      
+
       if ( m_profileSettingsWorker )
       {
         std::cout << "[Startup] Triggering TDP settings reapply" << std::endl;
         syslog( LOG_INFO, "[Startup] Triggering TDP settings reapply" );
         m_profileSettingsWorker->reapplyProfile();
       }
-      
+
       // Apply keyboard backlight settings from profile
       if ( m_keyboardBacklightListener && !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
       {
@@ -3236,7 +3257,7 @@ void UccDBusService::applyStartupProfile()
       // Apply water cooler enable state from profile
       if ( m_dbusData.waterCoolerSupported )
         setWaterCoolerScanningEnabled( profile.fan.enableWaterCooler );
-      
+
       return;
     }
     catch ( const std::exception &e )
@@ -3245,11 +3266,11 @@ void UccDBusService::applyStartupProfile()
       syslog( LOG_ERR, "[Startup] Failed to parse profile '%s' from settings: %s", profileId.c_str(), e.what() );
     }
   }
-  
+
   // Fall back to finding profile in allProfiles (for built-in profiles)
   auto allProfiles = getAllProfiles();
   bool profileFound = false;
-  
+
   for ( const auto &profile : allProfiles )
   {
     if ( profile.id == profileId )
@@ -3258,13 +3279,13 @@ void UccDBusService::applyStartupProfile()
       snapProfileFrequencies( m_activeProfile );
       updateDBusActiveProfileData();
       profileFound = true;
-      
+
       std::cout << "[Startup] Applied built-in profile: " << profile.name << " (ID: " << profile.id << ")" << std::endl;
       syslog( LOG_INFO, "[Startup] Applied built-in profile: %s (ID: %s)", profile.name.c_str(), profile.id.c_str() );
-      
+
       // Apply fan curves and pump auto-control
       applyFanAndPumpSettings( profile );
-      
+
       // Apply to workers (they should pick up the active profile automatically)
       // But we can trigger a reapply to be sure
       if ( m_cpuWorker )
@@ -3273,14 +3294,14 @@ void UccDBusService::applyStartupProfile()
         syslog( LOG_INFO, "[Startup] Triggering CPU settings reapply" );
         m_cpuWorker->reapplyProfile();
       }
-      
+
       if ( m_profileSettingsWorker )
       {
         std::cout << "[Startup] Triggering TDP settings reapply" << std::endl;
         syslog( LOG_INFO, "[Startup] Triggering TDP settings reapply" );
         m_profileSettingsWorker->reapplyProfile();
       }
-      
+
       // Apply keyboard backlight settings from profile
       if ( m_keyboardBacklightListener && !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
       {
@@ -3292,11 +3313,11 @@ void UccDBusService::applyStartupProfile()
       // Apply water cooler enable state from profile
       if ( m_dbusData.waterCoolerSupported )
         setWaterCoolerScanningEnabled( profile.fan.enableWaterCooler );
-      
+
       break;
     }
   }
-  
+
   if ( !profileFound )
   {
     std::cerr << "[Startup] WARNING: Profile ID '" << profileId << "' not found!" << std::endl;
@@ -3392,7 +3413,12 @@ void UccDBusService::applyProfileForCurrentState()
   // Lambda to apply all profile settings (fan curves, sameSpeed, CPU, ODM, keyboard, pump auto-control)
   auto applyFullProfile = [this]( const UccProfile &profile )
   {
+    // Preserve runtime water cooler enable state across profile re-application.
+    // The user's explicit EnableWaterCooler() D-Bus call is authoritative;
+    // the stored profile may have a stale enableWaterCooler value.
+    const bool preservedWcEnable = m_dbusData.waterCoolerScanningEnabled.load();
     m_activeProfile = profile;
+    m_activeProfile.fan.enableWaterCooler = preservedWcEnable;
     snapProfileFrequencies( m_activeProfile );
     updateDBusActiveProfileData();
 
@@ -3475,9 +3501,9 @@ void UccDBusService::applyProfileForCurrentState()
          && profile.keyboard.keyboardProfileData != "{}" )
       m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
 
-    // Apply water cooler enable state from profile
-    if ( m_dbusData.waterCoolerSupported )
-      setWaterCoolerScanningEnabled( profile.fan.enableWaterCooler );
+    // Water cooler scanning state is preserved from the runtime flag
+    // (set via EnableWaterCooler D-Bus call). Do NOT re-read enableWaterCooler
+    // from the stored profile — it may be stale.
 
     // Emit ProfileChanged signal for DBus clients
     if ( m_adaptor )
@@ -3521,7 +3547,7 @@ void UccDBusService::serializeProfilesJSON()
 {
   std::cout << "[serializeProfilesJSON] Starting profile serialization" << std::endl;
   std::cout << "[serializeProfilesJSON] Default profiles count: " << m_defaultProfiles.size() << std::endl;
-  
+
   // Debug: Check TDP values before serialization
   for ( size_t i = 0; i < m_defaultProfiles.size() && i < 3; ++i )
   {
@@ -3538,23 +3564,23 @@ void UccDBusService::serializeProfilesJSON()
       std::cout << "]" << std::endl;
     }
   }
-  
+
   const int32_t defaultOnlineCores = getDefaultOnlineCores();
   const int32_t defaultScalingMin = getCpuMinFrequency();
   const int32_t defaultScalingMax = getCpuMaxFrequency();
-  
+
   UccProfile defaultProfile = m_profileManager.getDefaultCustomProfiles()[0];
-  
+
   // serialize all profiles to JSON
   std::ostringstream allProfilesJSON;
   allProfilesJSON << "[";
-  
+
   auto allProfiles = getAllProfiles();
   for ( size_t i = 0; i < allProfiles.size(); ++i )
   {
     if ( i > 0 )
       allProfilesJSON << ",";
-    
+
     allProfilesJSON << profileToJSON( allProfiles[ i ],
                       defaultOnlineCores,
                       defaultScalingMin,
@@ -3568,7 +3594,7 @@ void UccDBusService::serializeProfilesJSON()
   {
     if ( i > 0 )
       defaultProfilesJSON << ",";
-    
+
     defaultProfilesJSON << profileToJSON( m_defaultProfiles[ i ],
                         defaultOnlineCores,
                         defaultScalingMin,
@@ -3582,7 +3608,7 @@ void UccDBusService::serializeProfilesJSON()
   {
     if ( i > 0 )
       customProfilesJSON << ",";
-    
+
     customProfilesJSON << profileToJSON( m_customProfiles[ i ],
                        defaultOnlineCores,
                        defaultScalingMin,
@@ -3598,7 +3624,7 @@ void UccDBusService::serializeProfilesJSON()
                                                        defaultOnlineCores,
                                                        defaultScalingMin,
                                                        defaultScalingMax );
-  
+
   std::cout << "[DBus] Re-serialized profile JSONs" << std::endl;
 }
 
@@ -3606,7 +3632,7 @@ void UccDBusService::fillDeviceSpecificDefaults( std::vector< UccProfile > &prof
 {
   const int32_t cpuMinFreq = getCpuMinFrequency();
   const int32_t cpuMaxFreq = getCpuMaxFrequency();
-  
+
   // Get TDP info from hardware
   std::vector< TDPInfo > tdpInfo;
   if ( m_profileSettingsWorker )
@@ -3623,18 +3649,18 @@ void UccDBusService::fillDeviceSpecificDefaults( std::vector< UccProfile > &prof
   {
     std::cout << "[fillDeviceSpecificDefaults] No ODM power limit worker available" << std::endl;
   }
-  
+
   for ( auto &profile : profiles )
   {
     std::cout << "[fillDeviceSpecificDefaults] Filling profile: " << profile.id 
               << ", current TDP values: " << profile.odmPowerLimits.tdpValues.size() << std::endl;
-    
+
     // Fill CPU frequency defaults
     if ( !profile.cpu.scalingMinFrequency.has_value() || profile.cpu.scalingMinFrequency.value() < cpuMinFreq )
     {
       profile.cpu.scalingMinFrequency = cpuMinFreq;
     }
-    
+
     if ( !profile.cpu.scalingMaxFrequency.has_value() )
     {
       profile.cpu.scalingMaxFrequency = cpuMaxFreq;
@@ -3647,7 +3673,7 @@ void UccDBusService::fillDeviceSpecificDefaults( std::vector< UccProfile > &prof
     {
       profile.cpu.scalingMaxFrequency = cpuMaxFreq;
     }
-    
+
     // Fill TDP values if missing and hardware TDP info is available
     if ( !tdpInfo.empty() && tdpInfo.size() > profile.odmPowerLimits.tdpValues.size() )
     {
@@ -3660,7 +3686,7 @@ void UccDBusService::fillDeviceSpecificDefaults( std::vector< UccProfile > &prof
         std::cout << "[fillDeviceSpecificDefaults]     Added TDP[" << i << "] = " << tdpInfo[i].max << std::endl;
       }
     }
-    
+
     // Snap CPU frequencies to nearest available hardware frequency
     snapProfileFrequencies( profile );
 
@@ -3696,14 +3722,14 @@ void UccDBusService::saveAutosave()
 std::vector< std::vector< std::string > > UccDBusService::getOutputPorts()
 {
   std::vector< std::vector< std::string > > result;
-  
+
   struct udev *udev_context = udev_new();
   if ( !udev_context )
   {
     std::cerr << "[OutputPorts] Failed to create udev context" << std::endl;
     return result;
   }
-  
+
   struct udev_enumerate *drm_devices = udev_enumerate_new( udev_context );
   if ( !drm_devices )
   {
@@ -3711,7 +3737,7 @@ std::vector< std::vector< std::string > > UccDBusService::getOutputPorts()
     udev_unref( udev_context );
     return result;
   }
-  
+
   if ( udev_enumerate_add_match_subsystem( drm_devices, "drm" ) < 0 ||
        udev_enumerate_add_match_sysname( drm_devices, "card*-*-*" ) < 0 ||
        udev_enumerate_scan_devices( drm_devices ) < 0 )
@@ -3721,7 +3747,7 @@ std::vector< std::vector< std::string > > UccDBusService::getOutputPorts()
     udev_unref( udev_context );
     return result;
   }
-  
+
   struct udev_list_entry *drm_devices_iterator = udev_enumerate_get_list_entry( drm_devices );
   if ( !drm_devices_iterator )
   {
@@ -3729,51 +3755,51 @@ std::vector< std::vector< std::string > > UccDBusService::getOutputPorts()
     udev_unref( udev_context );
     return result;
   }
-  
+
   struct udev_list_entry *drm_devices_entry;
   udev_list_entry_foreach( drm_devices_entry, drm_devices_iterator )
   {
     std::string path = udev_list_entry_get_name( drm_devices_entry );
     std::string name = path.substr( path.rfind( "/" ) + 1 );
-    
+
     // Extract card number (e.g., "card0" -> 0)
     size_t cardPos = name.find( "card" );
     size_t dashPos = name.find( "-", cardPos );
     if ( cardPos == std::string::npos || dashPos == std::string::npos )
       continue;
-    
+
     int cardNumber = std::stoi( name.substr( cardPos + 4, dashPos - cardPos - 4 ) );
-    
+
     // Ensure result vector is large enough
     if ( static_cast< size_t >( cardNumber + 1 ) > result.size() )
     {
       result.resize( static_cast< size_t >( cardNumber + 1 ) );
     }
-    
+
     // Extract port name (everything after "card0-")
     std::string portName = name.substr( dashPos + 1 );
     result[ static_cast< size_t >( cardNumber ) ].push_back( portName );
   }
-  
+
   udev_enumerate_unref( drm_devices );
   udev_unref( udev_context );
-  
+
   return result;
 }
 
 bool UccDBusService::syncOutputPortsSetting()
 {
   bool settingsChanged = false;
-  
+
   auto outputPorts = getOutputPorts();
-  
+
   // Delete additional cards from settings
   if ( m_settings.ycbcr420Workaround.size() > outputPorts.size() )
   {
     m_settings.ycbcr420Workaround.resize( outputPorts.size() );
     settingsChanged = true;
   }
-  
+
   for ( size_t card = 0; card < outputPorts.size(); ++card )
   {
     // Add card to settings if missing
@@ -3784,13 +3810,13 @@ bool UccDBusService::syncOutputPortsSetting()
       m_settings.ycbcr420Workaround.push_back( newCard );
       settingsChanged = true;
     }
-    
+
     // Get reference to card settings
     auto &cardSettings = m_settings.ycbcr420Workaround[card];
-    
+
     // Delete ports that no longer exist
     std::vector< std::string > portsToRemove;
-    
+
     for ( const auto &portEntry : cardSettings.ports )
     {
       bool stillAvailable = false;
@@ -3802,13 +3828,13 @@ bool UccDBusService::syncOutputPortsSetting()
           break;
         }
       }
-      
+
       if ( !stillAvailable )
       {
         portsToRemove.push_back( portEntry.port );
       }
     }
-    
+
     // Remove ports that are no longer available
     for ( const auto &port : portsToRemove )
     {
@@ -3819,7 +3845,7 @@ bool UccDBusService::syncOutputPortsSetting()
       );
       settingsChanged = true;
     }
-    
+
     // Add missing ports to settings
     for ( const auto &port : outputPorts[card] )
     {
@@ -3832,7 +3858,7 @@ bool UccDBusService::syncOutputPortsSetting()
           break;
         }
       }
-      
+
       if ( !found )
       {
         YCbCr420Port newPort;
@@ -3843,6 +3869,6 @@ bool UccDBusService::syncOutputPortsSetting()
       }
     }
   }
-  
+
   return settingsChanged;
 }

@@ -87,8 +87,8 @@ void MainWindow::setupKeyboardBacklightPage()
     QJsonObject o = v.toObject();
     m_keyboardProfileCombo->addItem( o["name"].toString(), o["id"].toString() );
   }
-  
-  m_copyKeyboardProfileButton = new QPushButton("Copy");  
+
+  m_copyKeyboardProfileButton = new QPushButton("Copy");
   m_saveKeyboardProfileButton = new QPushButton("Save");
   m_removeKeyboardProfileButton = new QPushButton("Remove");
 
@@ -314,21 +314,21 @@ void MainWindow::onKeyboardProfileChanged(const QString& profileId)
   }
 
   QJsonDocument doc = QJsonDocument::fromJson( json.toUtf8() );
-  
+
   // Parse as object first to check for top-level brightness
   int brightness = -1;
   QJsonArray statesArray;
-  
+
   if ( doc.isObject() )
   {
     QJsonObject obj = doc.object();
-    
+
     // Check for top-level brightness (new format)
     if ( obj.contains( "brightness" ) )
     {
       brightness = obj["brightness"].toInt( -1 );
     }
-    
+
     // Get states array
     if ( obj.contains( "states" ) && obj["states"].isArray() )
     {
@@ -339,7 +339,7 @@ void MainWindow::onKeyboardProfileChanged(const QString& profileId)
   {
     statesArray = doc.array();
   }
-  
+
   // Apply colors to keyboard visualizer if available
   if ( !statesArray.isEmpty() && m_keyboardVisualizer )
   {
@@ -361,7 +361,7 @@ void MainWindow::onKeyboardProfileChanged(const QString& profileId)
     QJsonObject firstState = statesArray[0].toObject();
     brightness = firstState["brightness"].toInt( 128 );
   }
-  
+
   if ( brightness >= 0 )
   {
     qDebug() << "[KBD PROFILE] applying brightness:" << brightness
@@ -496,7 +496,7 @@ void MainWindow::onRemoveKeyboardProfileClicked()
 {
   QString currentId = m_keyboardProfileCombo->currentData().toString();
   QString currentName = m_keyboardProfileCombo->currentText();
-  
+
   // Check if any system profiles reference this keyboard profile
   QStringList referencingProfiles;
   auto checkProfiles = [&]( const QJsonArray &profiles ) {
@@ -541,7 +541,7 @@ void MainWindow::onRemoveKeyboardProfileClicked()
     confirmMessage,
     QMessageBox::Yes | QMessageBox::No
   );
-  
+
   if ( reply == QMessageBox::Yes )
   {
     // Remove from persistent storage — this emits customKeyboardProfilesChanged

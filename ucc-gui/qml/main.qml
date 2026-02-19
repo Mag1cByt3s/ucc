@@ -194,7 +194,7 @@
                             ComboBox {
                                 id: profileCombo
                                 Layout.fillWidth: true
-                                
+
                                 model: profileManager.allProfiles
                                 currentIndex: profileManager.activeProfileIndex
 
@@ -278,7 +278,7 @@
                             ComboBox {
                                 id: profileCombo
                                 Layout.fillWidth: true
-                                
+
                                 model: profileManager.allProfiles
                                 currentIndex: profileManager.activeProfileIndex
 

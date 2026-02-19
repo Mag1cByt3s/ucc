@@ -63,14 +63,14 @@ public:
   [[nodiscard]] std::vector< UccProfile > getDefaultProfiles( std::optional< UniwillDeviceID > device = std::nullopt ) const noexcept
   {
     std::vector< UccProfile > result;
-    
+
     // If device is specified, check for device-specific profiles
     if ( device.has_value() )
     {
       if ( auto it = deviceProfiles.find( *device ); it != deviceProfiles.end() )
         return it->second;
     }
-    
+
     // Fallback to legacy profiles only for unknown/undetected devices
     result = legacyProfiles;
     syslog( LOG_INFO, "Device not found. Loading %zu legacy default profiles", result.size() );
@@ -92,7 +92,7 @@ public:
   {
     auto defaultProfiles = getDefaultProfiles();
     auto customProfiles = getCustomProfilesNoThrow();
-    
+
     defaultProfiles.insert( defaultProfiles.end(), 
                             customProfiles.begin(), 
                             customProfiles.end() );
@@ -157,7 +157,7 @@ public:
   [[nodiscard]] static UccProfile parseProfileJSON( const std::string &json )
   {
     UccProfile profile;
-    
+
     profile.id = extractString( json, "id" );
     profile.name = extractString( json, "name" );
     profile.description = extractString( json, "description" );
@@ -184,19 +184,19 @@ public:
       {
         profile.cpu.onlineCores = onlineCores;
       }
-      
+
       int32_t scalingMin = extractInt( cpuJson, "scalingMinFrequency", -1 );
       if ( scalingMin >= 0 )
       {
         profile.cpu.scalingMinFrequency = scalingMin;
       }
-      
+
       int32_t scalingMax = extractInt( cpuJson, "scalingMaxFrequency", -1 );
       if ( scalingMax >= 0 )
       {
         profile.cpu.scalingMaxFrequency = scalingMax;
       }
-      
+
       profile.cpu.governor = extractString( cpuJson, "governor", "" );
       profile.cpu.energyPerformancePreference = extractString( cpuJson, "energyPerformancePreference", "" );
       profile.cpu.noTurbo = extractBool( cpuJson, "noTurbo", false );
@@ -220,12 +220,12 @@ public:
       profile.fan.sameSpeed = extractBool( fanJson, "sameSpeed", true );
       profile.fan.autoControlWC = extractBool( fanJson, "autoControlWC", true );
       profile.fan.enableWaterCooler = extractBool( fanJson, "enableWaterCooler", ucc::WATER_COOLER_INITIAL_STATE );
-      
+
       // Debug: log the parsed fan offset and sameSpeed
       std::cout << "[ProfileManager] Parsed profile '" << profile.name 
                 << "' offsetFanspeed: " << profile.fan.offsetFanspeed
                 << " sameSpeed: " << ( profile.fan.sameSpeed ? "true" : "false" ) << std::endl;
-      
+
       // Parse embedded fan tables if present (GUI embeds full fan curves in custom profiles)
       std::string tableCPUJson = extractArray( fanJson, "tableCPU" );
       if ( !tableCPUJson.empty() )
@@ -315,7 +315,7 @@ public:
     profile.id = "__default_custom_profile__";
     profile.name = "TUXEDO Defaults";
     profile.description = "Edit profile to change behaviour";
-    
+
     // All fields already have sensible defaults from constructors
     return profile;
   }
@@ -328,7 +328,7 @@ public:
   [[nodiscard]] static std::vector< UccProfile > parseProfilesJSON( const std::string &json )
   {
     std::vector< UccProfile > profiles;
-    
+
     // Simple JSON array parser
     size_t pos = json.find( '[' );
     if ( pos == std::string::npos )
@@ -338,11 +338,11 @@ public:
 
     size_t depth = 0;
     size_t start = pos + 1;
-    
+
     for ( size_t i = pos; i < json.length(); ++i )
     {
       char c = json[ i ];
-      
+
       if ( c == '{' )
       {
         if ( depth == 0 )
@@ -379,7 +379,7 @@ private:
   [[nodiscard]] static bool fillMissingFields( UccProfile &profile, const UccProfile &defaultProfile ) noexcept
   {
     bool modified = false;
-    
+
     // note: In C++ with our struct design, we use special sentinel values to indicate "undefined"
     // for optionals, we check has_value(). For ints, we use -1. For strings, empty string.
 
@@ -393,38 +393,38 @@ private:
     // fill display fields
     // note: we don't fill these because they have valid defaults (brightness=100, refreshRate=-1, etc)
     // only fill if they were explicitly undefined, which in JSON would be null or missing
-    
+
     // fill CPU fields
     if ( not profile.cpu.onlineCores.has_value() and defaultProfile.cpu.onlineCores.has_value() )
     {
       profile.cpu.onlineCores = defaultProfile.cpu.onlineCores;
       modified = true;
     }
-    
+
     if ( not profile.cpu.scalingMinFrequency.has_value() and defaultProfile.cpu.scalingMinFrequency.has_value() )
     {
       profile.cpu.scalingMinFrequency = defaultProfile.cpu.scalingMinFrequency;
       modified = true;
     }
-    
+
     if ( not profile.cpu.scalingMaxFrequency.has_value() and defaultProfile.cpu.scalingMaxFrequency.has_value() )
     {
       profile.cpu.scalingMaxFrequency = defaultProfile.cpu.scalingMaxFrequency;
       modified = true;
     }
-    
+
     if ( profile.cpu.governor.empty() and not defaultProfile.cpu.governor.empty() )
     {
       profile.cpu.governor = defaultProfile.cpu.governor;
       modified = true;
     }
-    
+
     if ( profile.cpu.energyPerformancePreference.empty() and not defaultProfile.cpu.energyPerformancePreference.empty() )
     {
       profile.cpu.energyPerformancePreference = defaultProfile.cpu.energyPerformancePreference;
       modified = true;
     }
-    
+
     // fill fan profile if missing
     if ( profile.fan.fanProfile.empty() and not defaultProfile.fan.fanProfile.empty() )
     {
@@ -453,14 +453,14 @@ private:
       profile.fan.tableWaterCoolerFan = defaultProfile.fan.tableWaterCoolerFan;
       modified = true;
     }
-    
+
     // fill ODM profile name
     if ( not profile.odmProfile.name.has_value() and defaultProfile.odmProfile.name.has_value() )
     {
       profile.odmProfile.name = defaultProfile.odmProfile.name;
       modified = true;
     }
-    
+
     return modified;
   }
 
@@ -472,14 +472,14 @@ private:
   [[nodiscard]] static std::vector< FanTableEntry > parseFanTable( const std::string &json )
   {
     std::vector< FanTableEntry > table;
-    
+
     size_t depth = 0;
     size_t start = 0;
-    
+
     for ( size_t i = 0; i < json.length(); ++i )
     {
       char c = json[ i ];
-      
+
       if ( c == '{' )
       {
         if ( depth == 0 )
@@ -501,7 +501,7 @@ private:
         }
       }
     }
-    
+
     return table;
   }
 
@@ -512,7 +512,7 @@ private:
   {
     std::ostringstream oss;
     oss << "[";
-    
+
     for ( size_t i = 0; i < profiles.size(); ++i )
     {
       if ( i > 0 )
@@ -521,7 +521,7 @@ private:
       }
       oss << profileToJSON( profiles[ i ] );
     }
-    
+
     oss << "]";
     return oss.str();
   }
@@ -534,7 +534,7 @@ public:
   [[nodiscard]] static std::string profileToJSON( const UccProfile &profile )
   {
     std::ostringstream oss;
-    
+
     oss << "{"
         << "\"id\":\"" << jsonEscape( profile.id ) << "\","
         << "\"name\":\"" << jsonEscape( profile.name ) << "\","
@@ -592,13 +592,13 @@ public:
         << "},"
         << "\"odmPowerLimits\":{"
         << "\"tdpValues\":[";
-    
+
     for ( size_t i = 0; i < profile.odmPowerLimits.tdpValues.size(); ++i )
     {
       if ( i > 0 ) oss << ",";
       oss << profile.odmPowerLimits.tdpValues[ i ];
     }
-    
+
     oss << "]},"
         << "\"nvidiaPowerCTRLProfile\":{"
         << "\"cTGPOffset\":" << ( profile.nvidiaPowerCTRLProfile.has_value() ? profile.nvidiaPowerCTRLProfile->cTGPOffset : 0 )
@@ -642,7 +642,7 @@ public:
     }
 
     oss << "}";
-    
+
     return oss.str();
   }
 
@@ -658,7 +658,7 @@ public:
   {
     std::ostringstream oss;
     oss << "[";
-    
+
     for ( size_t i = 0; i < table.size(); ++i )
     {
       if ( i > 0 ) oss << ",";
@@ -667,7 +667,7 @@ public:
           << "\"speed\":" << table[ i ].speed
           << "}";
     }
-    
+
     oss << "]";
     return oss.str();
   }
@@ -737,7 +737,7 @@ private:
     {
       ++end;
     }
-    
+
     while ( end < json.length() && std::isdigit( json[ end ] ) )
     {
       ++end;
@@ -888,7 +888,7 @@ private:
   {
     std::vector< int32_t > result;
     std::string arrayJson = extractArray( json, key );
-    
+
     if ( arrayJson.empty() )
     {
       return result;
@@ -914,7 +914,7 @@ private:
       {
         ++pos;
       }
-      
+
       while ( pos < arrayJson.length() && std::isdigit( arrayJson[ pos ] ) )
       {
         ++pos;

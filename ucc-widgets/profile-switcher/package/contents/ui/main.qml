@@ -47,16 +47,16 @@ PlasmoidItem {
             if (result.length > 0) {
                 var profilesJSON = result[0]
                 var parsedProfiles = JSON.parse(profilesJSON)
-                
+  
                 profiles = []
                 profileMap = {}
-                
+  
                 for (var i = 0; i < parsedProfiles.length; i++) {
                     var profile = parsedProfiles[i]
                     profiles.push(profile.name)
                     profileMap[profile.name] = profile.id
                 }
-                
+  
                 console.log("Loaded " + profiles.length + " profiles")
             }
         } catch (e) {
@@ -82,7 +82,7 @@ PlasmoidItem {
     function setProfile(profileName) {
         try {
             console.log("Switching to profile:", profileName)
-            
+
             // Find the profile ID
             var profileId = profileMap[profileName]
             if (profileId) {
@@ -93,7 +93,7 @@ PlasmoidItem {
                 console.log("Profile ID not found, using name directly")
                 tccdInterface.call("SetTempProfile", [profileName])
             }
-            
+
             // Update active profile after a short delay
             updateTimer.start()
         } catch (e) {

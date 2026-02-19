@@ -25,7 +25,7 @@ namespace ucc
 QString normalizeLayout(const QString &layout)
 {
   QString lower = layout.toLower();
-  
+
   // Turkish
   if (lower == "tr" || lower == "turkish" || lower == "türkçe" || lower.contains("turk")) {
     return "tr";
@@ -54,7 +54,7 @@ QString normalizeLayout(const QString &layout)
   if (lower == "us" || lower == "en" || lower == "english" || lower.contains("engl")) {
     return "us";
   }
-  
+
   // Return original if no match
   return lower;
 }
@@ -62,21 +62,21 @@ QString normalizeLayout(const QString &layout)
 QString detectKeyboardLayout()
 {
   QProcess process;
-  
+
   // Detect desktop environment
   QString desktop = qgetenv( "XDG_CURRENT_DESKTOP" ).toLower();
   QString session = qgetenv( "DESKTOP_SESSION" ).toLower();
   bool isKDE = desktop.contains( "kde" ) || session.contains( "kde" ) || !qgetenv( "KDE_SESSION_UID" ).isEmpty();
   bool isGNOME = desktop.contains( "gnome" ) || session.contains( "gnome" );
   bool isWayland = !qgetenv( "WAYLAND_DISPLAY" ).isEmpty();
-  
+
   qDebug() << "Detected DE - KDE:" << isKDE << "GNOME:" << isGNOME << "Wayland:" << isWayland;
-  
+
   // Try desktop environment specific detection first
   if ( isKDE )
   {
     qDebug() << "Trying KDE detection";
-    
+
     // Try DBus for current KDE keyboard layout
     qDebug() << "Trying DBus for KDE layout";
     // Get current index
@@ -94,7 +94,7 @@ QString detectKeyboardLayout()
         }
       }
       qDebug() << "currentIndex:" << currentIndex;
-      
+
       // Get layouts list
       process.start("dbus-send", QStringList() << "--session" << "--dest=org.kde.keyboard" << "--print-reply" << "/Layouts" << "org.kde.KeyboardLayouts.getLayoutsList");
       if (process.waitForFinished(3000)) {
@@ -125,14 +125,14 @@ QString detectKeyboardLayout()
   else if ( isGNOME )
   {
     qDebug() << "Trying GNOME detection";
-    
+
     // Try gsettings for GNOME
     process.start( "gsettings", QStringList() << "get" << "org.gnome.desktop.input-sources" << "sources" );
     if ( process.waitForFinished( 3000 ) )
     {
       QString output = process.readAllStandardOutput();
       qDebug() << "gsettings output:" << output;
-      
+
       // Check for supported layouts
       QStringList supportedLayouts = {"tr", "fr", "es", "it", "ar", "de", "us", "en"};
       for (const QString &layout : supportedLayouts) {
@@ -150,17 +150,17 @@ QString detectKeyboardLayout()
       }
     }
   }
-  
+
   // Try generic/system-wide detection
   qDebug() << "Trying generic detection";
-  
+
   // Try localectl (systemd - works on most Linux systems)
   process.start( "localectl" );
   if ( process.waitForFinished( 3000 ) )
   {
     QString output = process.readAllStandardOutput();
     qDebug() << "localectl output:" << output;
-    
+
     QStringList lines = output.split( '\n' );
     for ( const QString &line : lines )
     {
@@ -175,14 +175,14 @@ QString detectKeyboardLayout()
       }
     }
   }
-  
+
   // Try setxkbmap (works on X11, may give wrong results on Wayland)
   process.start( "setxkbmap", QStringList() << "-query" );
   if ( process.waitForFinished( 3000 ) )
   {
     QString output = process.readAllStandardOutput();
     qDebug() << "setxkbmap output:" << output;
-    
+
     QStringList lines = output.split( '\n' );
     for ( const QString &line : lines )
     {
@@ -200,19 +200,19 @@ QString detectKeyboardLayout()
       }
     }
   }
-  
+
   // Try compositor-specific detection on Wayland
   if ( isWayland )
   {
     qDebug() << "Trying Wayland compositor detection";
-    
+
     // Try swaymsg for Sway
     process.start( "swaymsg", QStringList() << "-t" << "get_inputs" );
     if ( process.waitForFinished( 3000 ) )
     {
       QString output = process.readAllStandardOutput();
       qDebug() << "swaymsg output:" << output;
-      
+
       // Check for supported layouts
       QStringList supportedLayouts = {"tr", "fr", "es", "it", "ar", "de", "us", "en"};
       for (const QString &layout : supportedLayouts) {
@@ -230,9 +230,9 @@ QString detectKeyboardLayout()
       }
     }
   }
-  
+
   // Fallback: check environment variables
-  
+
   if ( QString xkbLayout = qgetenv( "XKB_DEFAULT_LAYOUT" ); !xkbLayout.isEmpty() )
   {
     qDebug() << "Detected layout from XKB_DEFAULT_LAYOUT:" << xkbLayout;
@@ -241,7 +241,7 @@ QString detectKeyboardLayout()
       return normalized;
     }
   }
-  
+
   // Another fallback: check LANG or LC_CTYPE
   if ( QString lang = qgetenv( "LANG" ); !lang.isEmpty() )
   {
@@ -251,7 +251,7 @@ QString detectKeyboardLayout()
       return normalizedLang;
     }
   }
-  
+
   qDebug() << "Defaulting to us layout";
   return "us"; // Default to US
 }

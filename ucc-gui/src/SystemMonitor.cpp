@@ -142,7 +142,7 @@ void SystemMonitor::updateMetrics()
   {
     QString iGpuFreq = "--";
 
-    if ( auto freq = m_client->getIGpuFrequency(); freq && *freq > 0 )  
+    if ( auto freq = m_client->getIGpuFrequency(); freq && *freq > 0 )
       iGpuFreq = QString::number( *freq ) + " MHz";
 
     if ( m_iGpuFrequency != iGpuFreq )
@@ -476,7 +476,7 @@ void SystemMonitor::setMonitoringActive( bool active )
     {
       // Start monitoring - do immediate update and start timer
       qDebug() << "[SystemMonitor] Starting monitoring with 500ms interval";
-      
+
       // Force refresh all values by clearing them first
       m_cpuTemp = "";
       m_cpuFrequency = "";
@@ -488,7 +488,7 @@ void SystemMonitor::setMonitoringActive( bool active )
       m_gpuFanSpeed = "";
       m_waterCoolerFanSpeed = "";
       m_waterCoolerPumpLevel = "";
-      
+
       // Start timer first - this gives uccd time to collect initial sensor data
       // The first update will happen after 500ms
       m_updateTimer->start();

@@ -62,7 +62,7 @@ enum class UniwillDeviceID
   STELLARIS16I07,
   SIRIUS1601,
   SIRIUS1602,
-  
+
   // XMG models (via SchenkerTechnologiesGmbH vendor string)
   XNE16E25,                   // XMG NEO 16" Intel (Gen7, 2025)
   XNE16A25,                   // XMG NEO 16" AMD (Gen7, 2025)

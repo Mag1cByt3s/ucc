@@ -30,7 +30,7 @@ QtObject {
             dbusInterface,
             "GetCpuTemperature"
         );
-        
+
         if (dbusCall !== undefined) {
             cpuTemp = dbusCall + "°C";
         }
@@ -41,7 +41,7 @@ QtObject {
             dbusInterface,
             "GetGpuTemperature"
         );
-        
+
         if (gpuTempResult !== undefined) {
             gpuTemp = gpuTempResult + "°C";
         }
@@ -52,7 +52,7 @@ QtObject {
             dbusInterface,
             "GetCpuFrequency"
         );
-        
+
         if (cpuFreqResult !== undefined) {
             cpuFrequency = cpuFreqResult + " MHz";
         }
@@ -63,7 +63,7 @@ QtObject {
             dbusInterface,
             "GetGpuFrequency"
         );
-        
+
         if (gpuFreqResult !== undefined) {
             gpuFrequency = gpuFreqResult + " MHz";
         }
@@ -74,7 +74,7 @@ QtObject {
             dbusInterface,
             "GetCpuPower"
         );
-        
+
         if (cpuPowerResult !== undefined) {
             cpuPower = cpuPowerResult + " W";
         }
@@ -85,7 +85,7 @@ QtObject {
             dbusInterface,
             "GetGpuPower"
         );
-        
+
         if (gpuPowerResult !== undefined) {
             gpuPower = gpuPowerResult + " W";
         }
@@ -96,7 +96,7 @@ QtObject {
             dbusInterface,
             "GetFanSpeed"
         );
-        
+
         if (fanSpeedResult !== undefined) {
             fanSpeed = fanSpeedResult;
         }

@@ -29,36 +29,36 @@ class SettingsManager
 {
 public:
   static constexpr const char *SETTINGS_FILE = "/etc/ucc/settings";
-  
+
   [[nodiscard]] std::optional< TccSettings > readSettings() const noexcept
   {
     try
     {
       namespace fs = std::filesystem;
-      
+
       if ( !fs::exists( SETTINGS_FILE ) )
       {
         std::cout << "[Settings] Settings file not found, using defaults" << std::endl;
         return std::nullopt;
       }
-      
+
       std::ifstream file( SETTINGS_FILE );
       if ( !file )
       {
         std::cerr << "[Settings] Failed to open settings file" << std::endl;
         return std::nullopt;
       }
-      
+
       std::string content( ( std::istreambuf_iterator< char >( file ) ),
                            std::istreambuf_iterator< char >() );
-      
+
       auto result = parseSettingsJSONInternal( content );
-      
+
       // FIX #5: File recovery backup on read failure
       if ( !result.has_value() )
       {
         std::cerr << "[Settings] Failed to parse settings file, attempting recovery" << std::endl;
-        
+
         // Check if backup exists
         std::string backupFile = std::string(SETTINGS_FILE) + ".backup";
         if ( fs::exists( backupFile ) )
@@ -70,18 +70,18 @@ public:
             std::string backupContent( ( std::istreambuf_iterator< char >( backupIfs ) ),
                                        std::istreambuf_iterator< char >() );
             auto backupResult = parseSettingsJSONInternal( backupContent );
-            
+
             if ( backupResult.has_value() )
             {
               std::cout << "[Settings] Successfully recovered settings from backup" << std::endl;
-              
+
               // Create dated backup of corrupted file for investigation
               auto now = std::time(nullptr);
               auto tm = *std::localtime(&now);
               std::ostringstream datetimeOss;
               datetimeOss << std::put_time(&tm, "%Y%m%d_%H%M%S");
               std::string corruptedBackup = std::string(SETTINGS_FILE) + ".corrupted_" + datetimeOss.str();
-              
+
               try
               {
                 fs::copy_file( SETTINGS_FILE, corruptedBackup );
@@ -91,7 +91,7 @@ public:
               {
                 std::cerr << "[Settings] Failed to backup corrupted file: " << e.what() << std::endl;
               }
-              
+
               return backupResult;
             }
             else
@@ -105,7 +105,7 @@ public:
           std::cout << "[Settings] No backup file available for recovery" << std::endl;
         }
       }
-      
+
       return result;
     }
     catch ( const std::exception &e )
@@ -114,19 +114,19 @@ public:
       return std::nullopt;
     }
   }
-  
+
   [[nodiscard]] bool writeSettings( const TccSettings &settings ) const noexcept
   {
     try
     {
       namespace fs = std::filesystem;
-      
+
       // Create directory if needed
       fs::create_directories( fs::path( SETTINGS_FILE ).parent_path() );
-      
+
       // Serialize settings to JSON
       std::string json = settingsToJSON( settings );
-      
+
       // FIX #5: Create backup before writing new settings
       if ( fs::exists( SETTINGS_FILE ) )
       {
@@ -142,7 +142,7 @@ public:
           // Continue with write even if backup fails
         }
       }
-      
+
       // Write to file
       std::ofstream file( SETTINGS_FILE );
       if ( !file )
@@ -150,14 +150,14 @@ public:
         std::cerr << "[Settings] Failed to create settings file" << std::endl;
         return false;
       }
-      
+
       file << json;
-      
+
       // Set permissions
       fs::permissions( SETTINGS_FILE,
                       fs::perms::owner_read | fs::perms::owner_write |
                       fs::perms::group_read | fs::perms::others_read );
-      
+
       std::cout << "[Settings] Settings written successfully" << std::endl;
       return true;
     }
@@ -173,7 +173,7 @@ public:
   {
     return parseSettingsJSONInternal( json );
   }
-  
+
 private:
   [[nodiscard]] std::optional< TccSettings > parseSettingsJSONInternal( const std::string &json ) const noexcept
   {
@@ -181,7 +181,7 @@ private:
     {
       auto j = nlohmann::json::parse(json);
       TccSettings settings;
-      
+
       // Parse stateMap
       if (j.contains("stateMap")) {
         auto& stateMap = j["stateMap"];
@@ -189,7 +189,7 @@ private:
         if (stateMap.contains("power_bat")) settings.stateMap["power_bat"] = stateMap["power_bat"];
         if (stateMap.contains("power_wc")) settings.stateMap["power_wc"] = stateMap["power_wc"];
       }
-      
+
       // Parse profiles map
       if (j.contains("profiles")) {
         auto& profiles = j["profiles"];
@@ -197,18 +197,18 @@ private:
           settings.profiles[key] = value.dump();
         }
       }
-      
+
       // Parse boolean settings
       if (j.contains("fahrenheit")) settings.fahrenheit = j["fahrenheit"];
       if (j.contains("cpuSettingsEnabled")) settings.cpuSettingsEnabled = j["cpuSettingsEnabled"];
       if (j.contains("fanControlEnabled")) settings.fanControlEnabled = j["fanControlEnabled"];
       if (j.contains("keyboardBacklightControlEnabled")) settings.keyboardBacklightControlEnabled = j["keyboardBacklightControlEnabled"];
-      
+
       // Parse optional string fields
       if (j.contains("shutdownTime") && j["shutdownTime"].is_string()) settings.shutdownTime = j["shutdownTime"];
       if (j.contains("chargingProfile") && j["chargingProfile"].is_string()) settings.chargingProfile = j["chargingProfile"];
       if (j.contains("chargingPriority") && j["chargingPriority"].is_string()) settings.chargingPriority = j["chargingPriority"];
-      
+
       // Parse ycbcr420Workaround array
       if (j.contains("ycbcr420Workaround")) {
         auto& ycbcr = j["ycbcr420Workaround"];
@@ -219,7 +219,7 @@ private:
           }
         }
       }
-      
+
       return settings;
     }
     catch ( const std::exception &e )
@@ -228,11 +228,11 @@ private:
       return std::nullopt;
     }
   }
-  
+
   [[nodiscard]] std::string settingsToJSON( const TccSettings &settings ) const noexcept
   {
     std::ostringstream json;
-    
+
     json << "{\n";
     json << "  \"fahrenheit\": " << ( settings.fahrenheit ? "true" : "false" ) << ",\n";
     json << "  \"stateMap\": {\n";
@@ -247,7 +247,7 @@ private:
       if ( stateCount > 0 ) json << "\n";
     }
     json << "  },\n";
-    
+
     // Serialize profiles map
     json << "  \"profiles\": {\n";
     size_t profileCount = 0;
@@ -262,7 +262,7 @@ private:
     json << "  \"cpuSettingsEnabled\": " << ( settings.cpuSettingsEnabled ? "true" : "false" ) << ",\n";
     json << "  \"fanControlEnabled\": " << ( settings.fanControlEnabled ? "true" : "false" ) << ",\n";
     json << "  \"keyboardBacklightControlEnabled\": " << ( settings.keyboardBacklightControlEnabled ? "true" : "false" ) << ",\n";
-    
+
     // Serialize ycbcr420Workaround array
     json << "  \"ycbcr420Workaround\": [";
     for ( size_t cardIdx = 0; cardIdx < settings.ycbcr420Workaround.size(); ++cardIdx )
@@ -279,12 +279,12 @@ private:
       json << "}";
     }
     json << "],\n";
-    
+
     json << "  \"chargingProfile\": " << ( settings.chargingProfile.has_value() ? "\"" + settings.chargingProfile.value() + "\"" : "null" ) << ",\n";
     json << "  \"chargingPriority\": " << ( settings.chargingPriority.has_value() ? "\"" + settings.chargingPriority.value() + "\"" : "null" ) << ",\n";
     json << "  \"keyboardBacklightStates\": []\n";
     json << "}\n";
-    
+
     return json.str();
   }
 };

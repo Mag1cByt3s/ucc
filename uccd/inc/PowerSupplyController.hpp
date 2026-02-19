@@ -103,12 +103,12 @@ public:
   [[nodiscard]] PowerSupplyType getType() const noexcept
   {
     const std::string typeStr = SysfsNode< std::string >( m_basePath + "/type" ).read().value_or( "" );
-    
+
     if ( typeStr == "Battery" )
       return PowerSupplyType::Battery;
     else if ( typeStr == "Mains" )
       return PowerSupplyType::Mains;
-    
+
     return PowerSupplyType::Unknown;
   }
 
@@ -157,7 +157,7 @@ public:
   [[nodiscard]] ChargeType getChargeType() const noexcept
   {
     const std::string chargeTypeStr = SysfsNode< std::string >( m_basePath + "/charge_type" ).read().value_or( "" );
-    
+
     if ( chargeTypeStr == "Trickle" )
       return ChargeType::Trickle;
     else if ( chargeTypeStr == "Fast" )
@@ -174,7 +174,7 @@ public:
       return ChargeType::Bypass;
     else if ( chargeTypeStr == "N/A" )
       return ChargeType::NotAvailable;
-    
+
     return ChargeType::Unknown;
   }
 
@@ -187,7 +187,7 @@ public:
     auto values = SysfsNode< std::vector< int32_t > >( m_basePath + "/charge_control_start_available_thresholds", " " ).read();
     if ( not values )
       return {};
-    
+
     // Convert int32_t to int
     std::vector< int > result;
     result.reserve( values->size() );
@@ -205,7 +205,7 @@ public:
     auto values = SysfsNode< std::vector< int32_t > >( m_basePath + "/charge_control_end_available_thresholds", " " ).read();
     if ( not values )
       return {};
-    
+
     // Convert int32_t to int
     std::vector< int > result;
     result.reserve( values->size() );
@@ -252,10 +252,10 @@ public:
   [[nodiscard]] static std::optional< PowerSupplyController > getFirstBattery() noexcept
   {
     auto batteries = getPowerSupplyBatteries();
-    
+
     if ( not batteries.empty() )
       return std::move( batteries[ 0 ] );
-    
+
     return std::nullopt;
   }
 

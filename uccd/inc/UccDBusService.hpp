@@ -447,7 +447,7 @@ public:
   UccProfile getDefaultProfile() const;
   void updateDBusActiveProfileData();
   void updateDBusSettingsData();
-  
+
   // profile manipulation methods
   bool addCustomProfile( const UccProfile &profile );
   bool deleteCustomProfile( const std::string &profileId );
@@ -482,11 +482,11 @@ private:
   UccProfile m_activeProfile;
   std::vector< UccProfile > m_defaultProfiles;
   std::vector< UccProfile > m_customProfiles;
-  
+
   // state switching
   ProfileState m_currentState;
   std::string m_currentStateProfileId;
-  
+
   // water cooler state tracking
   bool m_previousWaterCoolerConnected;
   std::atomic< int32_t > m_waterCoolerLedMode{ 0 };  // Tracks the GUI-requested LED mode (may be Temperature)

@@ -96,7 +96,7 @@ public:
       // Create directory if it doesn't exist
       std::filesystem::path path( m_autosavePath );
       std::filesystem::path dir = path.parent_path();
-      
+
       if ( !dir.empty() && !std::filesystem::exists( dir ) )
       {
         std::filesystem::create_directories( dir );
@@ -152,13 +152,13 @@ private:
         {
           ++start;
         }
-        
+
         size_t end = start;
         while ( end < json.length() && ( std::isdigit( json[ end ] ) || json[ end ] == '-' ) )
         {
           ++end;
         }
-        
+
         if ( end > start )
         {
           try

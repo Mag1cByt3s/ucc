@@ -50,14 +50,21 @@ FanControlTab::FanControlTab( UccdClient *client,
 
     m_waterCoolerPollTimer = new QTimer( this );
     connect( m_waterCoolerPollTimer, &QTimer::timeout, this, [this]() {
+      // Only poll if water cooler is actually enabled
       if ( not m_waterCoolerDbus ) return;
+      bool wcEnabled = m_waterCoolerEnableCheckBox ? m_waterCoolerEnableCheckBox->isChecked() : false;
+      if ( !wcEnabled ) {
+        // If water cooler becomes disabled, force disconnect
+        onDisconnected();
+        return;
+      }
       QDBusReply< bool > conn = m_waterCoolerDbus->call( QStringLiteral( "GetWaterCoolerConnected" ) );
       if ( conn.isValid() && conn.value() )
         onConnected();
       else
         onDisconnected();
     } );
-    m_waterCoolerPollTimer->start( 1000 );
+    // Don't start timer immediately - wait for water cooler to be enabled
   }
 
   setupUI();
@@ -185,8 +192,11 @@ void FanControlTab::setupUI()
     m_pumpVoltageCombo->addItem( "7V",  QVariant::fromValue( PumpVoltage::V7  ) );
     m_pumpVoltageCombo->addItem( "8V",  QVariant::fromValue( PumpVoltage::V8  ) );
     m_pumpVoltageCombo->addItem( "11V", QVariant::fromValue( PumpVoltage::V11 ) );
-    // 12V intentionally omitted — can be harmful to the pump
-    m_pumpVoltageCombo->setCurrentIndex( 2 );
+
+    // 12V option is intentionally omitted for safety of the pump.
+    // m_pumpVoltageCombo->addItem( "12V", QVariant::fromValue( PumpVoltage::V12 ) );
+
+    m_pumpVoltageCombo->setCurrentIndex( 0 );
     m_pumpVoltageCombo->setEnabled( false );
     m_pumpVoltageCombo->setMaximumWidth( 70 );
     wcHw->addWidget( pumpVoltageLabel );
@@ -196,14 +206,15 @@ void FanControlTab::setupUI()
     m_fanSpeedSlider = new QSlider( Qt::Horizontal );
     m_fanSpeedSlider->setMinimum( 0 );
     m_fanSpeedSlider->setMaximum( 100 );
-    m_fanSpeedSlider->setValue( 50 );
+    m_fanSpeedSlider->setValue( 0 );
     m_fanSpeedSlider->setEnabled( false );
+
     wcHw->addWidget( fanSpeedLabel );
     wcHw->addWidget( m_fanSpeedSlider );
 
     m_ledOnOffCheckBox = new QCheckBox( "LED" );
     m_ledOnOffCheckBox->setChecked( true );
-    m_ledOnOffCheckBox->setEnabled( false );
+    m_ledOnOffCheckBox->setEnabled( true );
     m_ledOnOffCheckBox->setLayoutDirection( Qt::RightToLeft );
     wcHw->addWidget( m_ledOnOffCheckBox );
 
@@ -219,9 +230,12 @@ void FanControlTab::setupUI()
     m_ledModeCombo->addItem( "Breathe Color", QVariant::fromValue( RGBState::BreatheColor ) );
     m_ledModeCombo->addItem( "Temperature",   QVariant::fromValue( RGBState::Temperature ) );
     m_ledModeCombo->setCurrentIndex( 0 );
-    m_ledModeCombo->setEnabled( false );
+    m_ledModeCombo->setEnabled( true );
     wcHw->addWidget( ledModeLabel );
     wcHw->addWidget( m_ledModeCombo );
+
+    // Set initial color button state
+    updateColorButtonState();
 
     QWidget *waterCoolerWidget = new QWidget();
     waterCoolerWidget->setLayout( wcHw );
@@ -296,6 +310,8 @@ void FanControlTab::connectSignals()
              this, &FanControlTab::onWaterCoolerEnableToggled );
     connect( m_pumpVoltageCombo, QOverload< int >::of( &QComboBox::currentIndexChanged ),
              this, &FanControlTab::onPumpVoltageChanged );
+    connect( m_fanSpeedSlider, &QSlider::valueChanged,
+             this, &FanControlTab::onFanSpeedChanged );
     connect( m_ledOnOffCheckBox, &QCheckBox::toggled,
              this, &FanControlTab::onLEDOnOffChanged );
     connect( m_colorPickerButton, &QPushButton::clicked,
@@ -303,6 +319,9 @@ void FanControlTab::connectSignals()
     connect( m_ledModeCombo, QOverload< int >::of( &QComboBox::currentIndexChanged ),
              this, &FanControlTab::onLEDModeChanged );
   }
+
+  // Initialize water cooler polling based on initial enabled state
+  updateWaterCoolerPolling();
 }
 
 // ── Public helpers ──────────────────────────────────────────────────
@@ -332,6 +351,7 @@ void FanControlTab::reloadFanProfiles()
   }
 
   // Restore selection by ID
+
   if ( !prevId.isEmpty() )
   {
     for ( int i = 0; i < m_fanProfileCombo->count(); ++i )
@@ -412,6 +432,10 @@ void FanControlTab::setWaterCoolerEnabled( bool enabled )
     m_waterCoolerEnableCheckBox->setChecked( enabled );
     m_waterCoolerEnableCheckBox->blockSignals( false );
   }
+
+  // Update polling state when programmatically setting enabled state
+  updateWaterCoolerPolling();
+
   // NOTE: Do NOT call EnableWaterCooler on D-Bus here.
   // This method is called during profile loading to update the UI checkbox.
   // Calling EnableWaterCooler would restart BLE scanning (destroying any
@@ -438,16 +462,41 @@ void FanControlTab::onWaterCoolerEnableToggled( bool enabled )
 {
   if ( m_waterCoolerDbus )
     m_waterCoolerDbus->call( QStringLiteral( "EnableWaterCooler" ), enabled );
+
+  // Update polling state based on new enable state
+  updateWaterCoolerPolling();
+
+  // Reset initialization flag when water cooler is enabled
+  if ( enabled )
+    m_manualControlInitialized = false;
+
+  // Update manual control state when water cooler enable state changes
+  updateManualControlState();
+
   emit waterCoolerEnableChanged( enabled );
 }
 
 void FanControlTab::onConnected()
 {
+  // Don't connect if water cooler is disabled
+  bool wcEnabled = m_waterCoolerEnableCheckBox ? m_waterCoolerEnableCheckBox->isChecked() : false;
+  if ( !wcEnabled ) {
+    onDisconnected(); // Force disconnect state
+    return;
+  }
+
   if ( m_isWcConnected ) return;
-  if ( m_pumpVoltageCombo ) m_pumpVoltageCombo->setEnabled( true );
-  if ( m_ledOnOffCheckBox ) m_ledOnOffCheckBox->setEnabled( true );
-  if ( m_colorPickerButton ) m_colorPickerButton->setEnabled( true );
-  if ( m_ledModeCombo ) m_ledModeCombo->setEnabled( true );
+  m_isWcConnected = true;
+
+  // Reset manual control initialization when reconnecting
+  m_manualControlInitialized = false;
+
+  // Update manual control state now that water cooler is connected
+  updateManualControlState();
+
+  // LED control mode and LED checkbox are always enabled
+  // Color button is only enabled if mode is Static
+  updateColorButtonState();
   m_isWcConnected = true;
   if ( auto *mw = qobject_cast< QMainWindow * >( window() ) )
     mw->statusBar()->showMessage( tr( "Connection to water cooler successful" ) );
@@ -456,10 +505,16 @@ void FanControlTab::onConnected()
 void FanControlTab::onDisconnected()
 {
   if ( !m_isWcConnected ) return;
-  if ( m_pumpVoltageCombo ) m_pumpVoltageCombo->setEnabled( false );
-  if ( m_ledOnOffCheckBox ) m_ledOnOffCheckBox->setEnabled( false );
+  m_isWcConnected = false;
+
+  // Reset initialization flag when disconnecting
+  m_manualControlInitialized = false;
+
+  // Update manual control state now that water cooler is disconnected
+  updateManualControlState();
+
+  // LED control mode and LED checkbox remain always enabled
   if ( m_colorPickerButton ) m_colorPickerButton->setEnabled( false );
-  if ( m_ledModeCombo ) m_ledModeCombo->setEnabled( false );
   m_isWcConnected = false;
   if ( auto *mw = qobject_cast< QMainWindow * >( window() ) )
     mw->statusBar()->clearMessage();
@@ -477,11 +532,16 @@ void FanControlTab::onPumpVoltageChanged( int index )
   }
 }
 
+void FanControlTab::onFanSpeedChanged( int speed )
+{
+  if ( !m_waterCoolerDbus ) return;
+  m_waterCoolerDbus->call( QStringLiteral( "SetWaterCoolerFanSpeed" ), speed );
+}
+
 void FanControlTab::onLEDOnOffChanged( bool enabled )
 {
   if ( !m_waterCoolerDbus ) return;
-  m_colorPickerButton->setEnabled( enabled );
-  m_ledModeCombo->setEnabled( enabled );
+  updateColorButtonState();
   if ( enabled )
   {
     RGBState mode = static_cast< RGBState >( m_ledModeCombo->currentData().toInt() );
@@ -494,6 +554,7 @@ void FanControlTab::onLEDOnOffChanged( bool enabled )
 
 void FanControlTab::onLEDModeChanged( int /*index*/ )
 {
+  updateColorButtonState();
   if ( !m_waterCoolerDbus ) return;
   if ( m_ledOnOffCheckBox->isChecked() )
   {
@@ -521,6 +582,85 @@ void FanControlTab::onColorPickerClicked()
   }
   m_colorPickerButton->setStyleSheet(
     QString( "background-color: rgb(%1, %2, %3);" ).arg( m_currentRed ).arg( m_currentGreen ).arg( m_currentBlue ) );
+}
+
+void FanControlTab::setWaterCoolerAutoControl( bool autoControl )
+{
+  bool wasAutoControl = m_autoControl;
+  m_autoControl = autoControl;
+
+  // Reset initialization flag when switching to manual control
+  if ( wasAutoControl && !autoControl )
+    m_manualControlInitialized = false;
+
+  // Update manual control state considering all factors
+  updateManualControlState();
+}
+
+void FanControlTab::updateManualControlState()
+{
+  // Manual controls are enabled when:
+  // 1. Water cooler is enabled (checkbox checked)
+  // 2. Water cooler is connected (hardware connection)
+  // 3. Auto control is disabled (manual control allowed)
+  bool wcEnabled = m_waterCoolerEnableCheckBox ? m_waterCoolerEnableCheckBox->isChecked() : false;
+  bool enableManualControls = wcEnabled && m_isWcConnected && !m_autoControl;
+
+  if ( m_pumpVoltageCombo )
+    m_pumpVoltageCombo->setEnabled( enableManualControls );
+  if ( m_fanSpeedSlider )
+    m_fanSpeedSlider->setEnabled( enableManualControls );
+
+  // When manual controls are first enabled after connection or auto control change,
+  // ensure pump is set to off for safety
+  if ( enableManualControls && !m_manualControlInitialized && m_waterCoolerDbus )
+  {
+    m_manualControlInitialized = true;
+    // Set pump to off and fan speed to minimum for safety
+    if ( m_pumpVoltageCombo )
+    {
+      m_pumpVoltageCombo->setCurrentIndex( 0 ); // Set to "Off"
+      m_waterCoolerDbus->call( QStringLiteral( "TurnOffWaterCoolerPump" ) );
+    }
+    if ( m_fanSpeedSlider )
+    {
+      m_fanSpeedSlider->setValue( 0 ); // Set to minimum
+      m_waterCoolerDbus->call( QStringLiteral( "SetWaterCoolerFanSpeed" ), 0 );
+    }
+  }
+}
+
+void FanControlTab::updateWaterCoolerPolling()
+{
+  if ( !m_waterCoolerPollTimer ) return;
+
+  bool wcEnabled = m_waterCoolerEnableCheckBox ? m_waterCoolerEnableCheckBox->isChecked() : false;
+
+  if ( wcEnabled ) {
+    if ( !m_waterCoolerPollTimer->isActive() )
+      m_waterCoolerPollTimer->start( 1000 );
+  } else {
+    if ( m_waterCoolerPollTimer->isActive() ) {
+      m_waterCoolerPollTimer->stop();
+      // Force disconnect when disabled
+      onDisconnected();
+      // Ensure pump is turned off when disabling
+      if ( m_waterCoolerDbus )
+        m_waterCoolerDbus->call( QStringLiteral( "TurnOffWaterCoolerPump" ) );
+    }
+  }
+}
+
+void FanControlTab::updateColorButtonState()
+{
+  if ( !m_colorPickerButton || !m_ledModeCombo ) return;
+
+  // Enable color button only when mode is Static and LED is enabled
+  RGBState currentMode = static_cast< RGBState >( m_ledModeCombo->currentData().toInt() );
+  bool isStaticMode = ( currentMode == RGBState::Static );
+  bool isLEDEnabled = m_ledOnOffCheckBox ? m_ledOnOffCheckBox->isChecked() : false;
+
+  m_colorPickerButton->setEnabled( isStaticMode && isLEDEnabled );
 }
 
 } // namespace ucc

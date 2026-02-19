@@ -108,11 +108,11 @@ void remove_pid_file()
 void ensure_config_directory()
 {
   constexpr std::string_view config_dir = "/etc/ucc";
-  
+
   try
   {
     namespace fs = std::filesystem;
-    
+
     if ( !fs::exists( config_dir ) )
     {
       if ( fs::create_directories( config_dir ) )

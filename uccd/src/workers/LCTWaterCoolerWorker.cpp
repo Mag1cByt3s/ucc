@@ -122,7 +122,9 @@ void LCTWaterCoolerWorker::onTick()
   if ( not m_dbusData.waterCoolerScanningEnabled )
   {
     m_dbusData.waterCoolerAvailable = false;
-    m_dbusData.waterCoolerConnected = m_isConnected.load();
+    // When scanning is disabled, always report disconnected to clients
+    // regardless of actual BLE state (disconnect may still be in progress)
+    m_dbusData.waterCoolerConnected = false;
     return;
   }
 
@@ -672,6 +674,10 @@ void LCTWaterCoolerWorker::startScanning()
     return;
   }
 
+  // Don't start scanning if scanning is disabled
+  if ( not m_dbusData.waterCoolerScanningEnabled )
+    return;
+
   // Clean up any stale connection and reset state machine for a fresh start
   cleanupBleController();
   m_consecutiveFailures = 0;
@@ -702,8 +708,10 @@ void LCTWaterCoolerWorker::stopScanning()
   }
 
   stopDiscoveryInternal();
+  disconnectFromDeviceInternal();
   m_state = WaterCoolerState::Disconnected;
   m_dbusData.waterCoolerAvailable = false;
+  m_dbusData.waterCoolerConnected = false;
 }
 
 void LCTWaterCoolerWorker::disconnectFromDevice()
@@ -1060,6 +1068,10 @@ bool LCTWaterCoolerWorker::resetBluetoothAdapter()
 
 void LCTWaterCoolerWorker::requestStartDiscovery()
 {
+  // Don't start discovery if scanning is disabled
+  if ( not m_dbusData.waterCoolerScanningEnabled )
+    return;
+
   m_state = WaterCoolerState::Discovering;
   m_lastDiscoveryStart = std::chrono::steady_clock::now();
 

@@ -80,10 +80,10 @@ DashboardTab::DashboardTab( SystemMonitor *systemMonitor, ProfileManager *profil
 {
   setupUI();
   connectSignals();
-  
+
   // Initialize active profile label
   m_activeProfileLabel->setText( m_profileManager->activeProfileName() );
-  
+
   // Initialize water cooler status polling only if supported
   if ( m_waterCoolerSupported )
   {
@@ -123,19 +123,19 @@ void DashboardTab::setupUI()
 
   // Active Profile and Water Cooler Status
   QHBoxLayout *statusLayout = new QHBoxLayout();
-  
+
   // Active Profile section
   QLabel *activeLabel = new QLabel( "Active profile:" );
   activeLabel->setStyleSheet( "font-weight: bold;" );
   m_activeProfileLabel = new QLabel( "Loading..." );
   m_activeProfileLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(textHex) );
-  
+
   // Water Cooler Status section
   QLabel *coolerLabel = new QLabel( "Water Cooler Status:" );
   coolerLabel->setStyleSheet( "font-weight: bold;" );
   m_waterCoolerStatusLabel = new QLabel( "Disconnected" );
   m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(m_ringColorHex) );
-  
+
   // Water Cooler Enable checkbox (synced with FanControlTab)
   m_waterCoolerEnableCheckBox = new QCheckBox( "Enable Water Cooler" );
   m_waterCoolerEnableCheckBox->setChecked( ucc::WATER_COOLER_INITIAL_STATE );
@@ -354,13 +354,13 @@ void DashboardTab::updateWaterCoolerStatus()
 
   // Check if water cooler is enabled
   bool wcEnabled = m_waterCoolerEnableCheckBox ? m_waterCoolerEnableCheckBox->isChecked() : false;
-  
+
   // Get water cooler state from daemon
   // Note: GetWaterCoolerAvailable returns true when scanning is active (not when a device is found)
   // GetWaterCoolerConnected returns true only when a device is actually connected
   QDBusReply<bool> scanning = m_waterCoolerDbus->call(QStringLiteral("GetWaterCoolerAvailable"));
   QDBusReply<bool> connected = m_waterCoolerDbus->call(QStringLiteral("GetWaterCoolerConnected"));
-  
+
   // Compute explicit hex colors from the current palette so styles are consistent.
   QPalette pal = this->palette();
   const QString textHex = pal.color(QPalette::WindowText).name();

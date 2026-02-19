@@ -107,7 +107,7 @@ public:
       // Build initial states JSON
       std::string initialStatesJSON = statesToJSON( defaultStates );
       m_setStatesJSON( initialStatesJSON );
-      
+
       // Apply if control is enabled
       if ( m_getControlEnabled() )
       {
@@ -239,10 +239,10 @@ private:
     {
       std::cout << "[KeyboardBacklight] Detected per-key RGB keyboard with " 
                 << m_ledPaths.size() << " zones" << std::endl;
-      
+
       SysfsNode< int > maxBrightness( m_ledPaths[0] + "/max_brightness" );
       auto value = maxBrightness.read();
-      
+
       m_capabilities.zones = static_cast< int >( m_ledPaths.size() );
       m_capabilities.maxBrightness = value.value_or( 255 );
       m_capabilities.maxRed = 0xFF;
@@ -408,7 +408,7 @@ private:
     {
       // Simple manual parsing for array of state objects
       std::vector< KeyboardBacklightState > newStates;
-      
+
       size_t pos = 0;
       while ( ( pos = statesJSON.find( '{', pos ) ) != std::string::npos )
       {
@@ -418,12 +418,12 @@ private:
 
         std::string stateObj = statesJSON.substr( pos, end - pos + 1 );
         KeyboardBacklightState kbs;
-        
+
         kbs.brightness = extractInt( stateObj, "brightness" );
         kbs.red = extractInt( stateObj, "red" );
         kbs.green = extractInt( stateObj, "green" );
         kbs.blue = extractInt( stateObj, "blue" );
-        
+
         newStates.push_back( kbs );
         pos = end + 1;
       }
@@ -459,7 +459,7 @@ private:
     }
 
     pos += search.length();
-    
+
     // Find the start of the array
     size_t arrayStart = keyboardJSON.find( '[', pos );
     if ( arrayStart == std::string::npos )

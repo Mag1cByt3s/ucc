@@ -60,7 +60,7 @@ namespace TccUtils
 [[nodiscard]] inline std::vector< std::string > getDeviceList( const std::string &sourceDir ) noexcept
 {
   std::vector< std::string > devices;
-  
+
   try
   {
     if ( !std::filesystem::exists( sourceDir ) || !std::filesystem::is_directory( sourceDir ) )
@@ -80,7 +80,7 @@ namespace TccUtils
   {
     // Return empty vector on error
   }
-  
+
   return devices;
 }
 

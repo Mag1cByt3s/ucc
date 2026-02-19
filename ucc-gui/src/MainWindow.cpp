@@ -889,6 +889,11 @@ void MainWindow::connectSignals()
 
   connect( m_autoWaterControlCheckBox, &QCheckBox::toggled,
            this, &MainWindow::markChanged );
+  connect( m_autoWaterControlCheckBox, &QCheckBox::toggled,
+           this, [this]( bool autoControl ) {
+             if ( m_fanControlTab )
+               m_fanControlTab->setWaterCoolerAutoControl( autoControl );
+           } );
 
   connect( m_cpuCoresSlider, &QSlider::valueChanged,
            this, [this]() { markChanged(); } );
@@ -1488,9 +1493,18 @@ void MainWindow::loadProfileDetails( const QString &profileId )
       m_sameFanSpeedCheckBox->setChecked( true );
 
     if ( fanObj.contains( "autoControlWC" ) )
-      m_autoWaterControlCheckBox->setChecked( fanObj["autoControlWC"].toBool( true ) );
+    {
+      bool autoControl = fanObj["autoControlWC"].toBool( true );
+      m_autoWaterControlCheckBox->setChecked( autoControl );
+      if ( m_fanControlTab )
+        m_fanControlTab->setWaterCoolerAutoControl( autoControl );
+    }
     else
+    {
       m_autoWaterControlCheckBox->setChecked( true );
+      if ( m_fanControlTab )
+        m_fanControlTab->setWaterCoolerAutoControl( true );
+    }
 
     // Load water-cooler scanning enable state (persisted per-profile)
     // Default to true for backward compatibility with profiles saved before this field existed
@@ -1793,6 +1807,10 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   m_fanControlTab->fanProfileCombo()->blockSignals( false );
   m_offsetFanSpeedSlider->blockSignals( false );
   if ( m_autoWaterControlCheckBox ) m_autoWaterControlCheckBox->blockSignals( false );
+
+  // Set initial auto control state for water cooler
+  if ( m_fanControlTab && m_autoWaterControlCheckBox )
+    m_fanControlTab->setWaterCoolerAutoControl( m_autoWaterControlCheckBox->isChecked() );
   m_cpuCoresSlider->blockSignals( false );
   m_governorCombo->blockSignals( false );
   m_minFrequencySlider->blockSignals( false );
@@ -1854,13 +1872,13 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   {
     QString profileName = m_profileCombo->currentText();
     QString message = QString( "The profile '%1' references the following missing subprofiles:\n\n" ).arg( profileName );
-    
+
     if ( keyboardProfileNotFound )
       message += QString( "Keyboard profile: %1\n" ).arg( missingKeyboardProfile );
-    
+
     if ( fanProfileNotFound )
       message += QString( "Fan profile: %1\n" ).arg( missingFanProfile );
-    
+
     message += "\nNew profiles for the missing subprofile(s) have been assigned for this session but it is not saved.";
     QMessageBox::warning( this, "Missing Subprofile References", message );
   }
@@ -1941,6 +1959,12 @@ void MainWindow::onApplyClicked()
   {
     QString profileName = m_profileCombo->currentText();
     m_profileManager->setActiveProfileByIndex( m_selectedProfileIndex );
+
+    // Re-send the current water cooler enable state to the daemon so that
+    // the profile apply doesn't override the user's current checkbox state.
+    if ( m_fanControlTab )
+      m_fanControlTab->sendWaterCoolerEnable( m_fanControlTab->isWaterCoolerEnabled() );
+
     statusBar()->showMessage( "Profile applied: " + profileName );
   }
   else
@@ -2701,6 +2725,12 @@ void MainWindow::onApplyFanProfilesClicked()
     if ( m_fanControlTab->wcFanEditor() )
       for ( const auto &p : m_fanControlTab->wcFanEditor()->points() )
         m_waterCoolerFanPoints.append( { static_cast< int >( p.temp ), static_cast< int >( p.duty ) } );
+
+    // Re-send the current water cooler enable state to the daemon so that
+    // the profile apply (which may set enableWaterCooler from profile data)
+    // doesn't override the user's current checkbox state.
+    if ( m_fanControlTab )
+      m_fanControlTab->sendWaterCoolerEnable( m_fanControlTab->isWaterCoolerEnabled() );
   }
   else
   {

@@ -23,49 +23,49 @@
 inline ProfileState determineState() noexcept
 {
   ProfileState state = ProfileState::AC; // Default to AC
-  
+
   try
   {
     namespace fs = std::filesystem;
     const fs::path pathPowerSupplies = "/sys/class/power_supply";
-    
+
     if ( !fs::exists( pathPowerSupplies ) )
     {
       return state;
     }
-    
+
     // Find a 'Mains' type power supply
     for ( const auto &entry : fs::directory_iterator( pathPowerSupplies ) )
     {
       if ( !entry.is_directory() )
         continue;
-      
+
       fs::path typePath = entry.path() / "type";
       if ( !fs::exists( typePath ) )
         continue;
-      
+
       // Read type
       std::ifstream typeFile( typePath );
       if ( !typeFile )
         continue;
-      
+
       std::string type;
       std::getline( typeFile, type );
-      
+
       if ( type == "Mains" )
       {
         // Found AC power supply, check if it's online
         fs::path onlinePath = entry.path() / "online";
         if ( !fs::exists( onlinePath ) )
           continue;
-        
+
         std::ifstream onlineFile( onlinePath );
         if ( !onlineFile )
           continue;
-        
+
         std::string online;
         std::getline( onlineFile, online );
-        
+
         if ( online == "1" )
         {
           state = ProfileState::AC;
@@ -74,7 +74,7 @@ inline ProfileState determineState() noexcept
         {
           state = ProfileState::BAT;
         }
-        
+
         break; // Found what we need
       }
     }
@@ -83,7 +83,7 @@ inline ProfileState determineState() noexcept
   {
     syslog( LOG_ERR, "[State] Exception determining power state: %s", e.what() );
   }
-  
+
   return state;
 }
 

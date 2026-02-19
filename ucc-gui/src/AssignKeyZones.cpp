@@ -18,7 +18,7 @@
 QMap<int, QString> assignKeyZones(const QString &layout)
 {
   QMap<int, QString> mappings;
-  
+
   if ( layout == "de" || layout == "deutsch" )
   {
     // QWERTZ layout (German)
@@ -929,6 +929,6 @@ QMap<int, QString> assignKeyZones(const QString &layout)
     mappings[124] = "PgDn";
     mappings[125] = "Unused/Unknown";
   }
-  
+
   return mappings;
 }

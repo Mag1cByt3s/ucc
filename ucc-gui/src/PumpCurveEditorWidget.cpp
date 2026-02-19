@@ -249,12 +249,12 @@ void PumpCurveEditorWidget::paintEvent(QPaintEvent*) {
         }
         p.drawEllipse(r);
 
-        // Draw temperature label below the point
+        // Draw temperature label to the left of the point
         p.setPen(labelColor);
         QPointF wp = toWidget(m_points[i]);
         QString tempLabel = QString::number(qRound(m_points[i].temp)) + QChar(0x00B0);
-        QRectF tLabelRect(wp.x() - 20, wp.y() - 22, 40, 16);
-        p.drawText(tLabelRect, Qt::AlignHCenter | Qt::AlignBottom, tempLabel);
+        QRectF tLabelRect(wp.x() - 50, wp.y() + 6, 42, 16);
+        p.drawText(tLabelRect, Qt::AlignRight | Qt::AlignVCenter, tempLabel);
     }
 
     // Draw live crosshair overlay

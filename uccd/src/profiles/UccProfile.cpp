@@ -32,7 +32,7 @@ std::string generateProfileId()
   // convert to base36
   static constexpr const char *base36 = "0123456789abcdefghijklmnopqrstuvwxyz";
   std::string randomPart;
-  
+
   for ( int i = 0; i < 5; ++i )
   {
     randomPart = base36[randomValue % 36] + randomPart;

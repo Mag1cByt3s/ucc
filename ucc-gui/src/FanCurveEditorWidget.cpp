@@ -76,15 +76,15 @@ QRectF FanCurveEditorWidget::pointRect(const Point& pt) const {
 
 void FanCurveEditorWidget::enforceMonotonicity(int modifiedIndex) {
     if (modifiedIndex < 0 || modifiedIndex >= m_points.size()) return;
-    
+
     double currentDuty = m_points[modifiedIndex].duty;
-    
+
     // Check all higher temperature points (higher indices)
     for (int i = modifiedIndex + 1; i < m_points.size(); ++i) {
         if (m_points[i].duty < currentDuty) {
             m_points[i].duty = currentDuty;
         }
-    }    
+    }
     // Check all lower temperature points (lower indices) - ensure they are <= current duty
     for (int i = modifiedIndex - 1; i >= 0; --i) {
         if (m_points[i].duty > currentDuty) {
@@ -382,17 +382,17 @@ void FanCurveEditorWidget::addPoint(const Point& pt) {
     // Snap temperature to nearest 5°C grid position
     double snappedTemp = std::round((pt.temp - 20.0) / 5.0) * 5.0 + 20.0;
     snappedTemp = std::clamp(snappedTemp, 20.0, 100.0);
-    
+
     // Check if a point already exists at this temperature
     for (const auto& existingPt : m_points) {
         if (std::abs(existingPt.temp - snappedTemp) < 1.0) {
             return; // Don't add duplicate
         }
     }
-    
+
     m_points.push_back({snappedTemp, pt.duty});
     sortPoints();
-    
+
     // Find the index of the newly added point and enforce monotonicity
     int newIndex = -1;
     for (int i = 0; i < m_points.size(); ++i) {
@@ -404,7 +404,7 @@ void FanCurveEditorWidget::addPoint(const Point& pt) {
     if (newIndex >= 0) {
         enforceMonotonicity(newIndex);
     }
-    
+
     update();
     emit pointsChanged(m_points);
 }
