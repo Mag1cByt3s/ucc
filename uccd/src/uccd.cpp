@@ -182,7 +182,8 @@ int run_daemon()
   }
   else
   {
-    // Make read end non-blocking/close-on-exec where appropriate
+    // Make read end non-blocking + close-on-exec
+    fcntl( sig_pipe_fds[0], F_SETFL, O_NONBLOCK );
     fcntl( sig_pipe_fds[0], F_SETFD, FD_CLOEXEC );
     fcntl( sig_pipe_fds[1], F_SETFD, FD_CLOEXEC );
 
@@ -234,8 +235,12 @@ int run_daemon()
       cleanup_syslog();
       return 1;
     }
+
+    // Initialize startup profile (after workers are ready, before event loop)
+    dbusService.initializeStartupProfile();
+
     dbusService.start();
-    syslog( LOG_INFO, "DBus service initialized" );
+    syslog( LOG_INFO, "DBus service started" );
 
     // Write PID file
     write_pid_file();
@@ -256,6 +261,9 @@ int run_daemon()
     // Start Qt event loop
     syslog( LOG_INFO, "Starting Qt event loop" );
     int result = app.exec();
+
+    // Graceful shutdown: stop all worker threads before stack unwinding
+    dbusService.shutdown();
 
     // Cleanup on exit
     remove_pid_file();

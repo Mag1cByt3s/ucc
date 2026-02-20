@@ -458,8 +458,17 @@ public:
   friend class UccDBusInterfaceAdaptor;
 
 public:
-  /// Call from the main thread (before start()) to register the D-Bus service.
+  /// Register the D-Bus service.  Call from the main thread before start().
   bool initDBus();
+
+  /// Resolve and apply the startup profile for the current power state.
+  /// Call after initDBus() and before start().
+  void initializeStartupProfile();
+
+  /// Gracefully stop all worker threads and the service itself.
+  /// Call before destruction to ensure a timely shutdown.
+  void shutdown();
+
   void onStart() override;
 
 protected:

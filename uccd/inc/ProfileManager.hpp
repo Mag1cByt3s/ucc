@@ -18,6 +18,7 @@
 #include "profiles/UccProfile.hpp"
 #include "profiles/DefaultProfiles.hpp"
 #include "CommonTypes.hpp"
+#include "StateUtils.hpp"
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -29,6 +30,8 @@
 #include <sys/stat.h>
 #include <cstring>
 #include <iostream>
+#include <map>
+#include <syslog.h>
 
 /**
  * @brief Manages TCC profile loading, saving, and manipulation
@@ -367,6 +370,67 @@ public:
     }
 
     return profiles;
+  }
+
+  /**
+   * @brief Resolve the startup profile for the current power state.
+   *
+   * Determines power state, looks up the assigned profile ID from the state map,
+   * and returns the parsed profile (from saved or built-in sources).
+   *
+   * @param deviceId  Device identifier for device-specific built-in profiles
+   * @param stateMap  Map of power-state string -> profile ID
+   * @param savedProfiles  Map of profile ID -> serialized JSON
+   * @return The resolved UccProfile, or a default-constructed (empty) profile on failure
+   */
+  [[nodiscard]] UccProfile resolveStartupProfile(
+    std::optional< UniwillDeviceID > deviceId,
+    const std::map< std::string, std::string > &stateMap,
+    const std::map< std::string, std::string > &savedProfiles ) noexcept
+  {
+    ProfileState currentState = determineState();
+    std::string stateKey = profileStateToString( currentState );
+
+    syslog( LOG_INFO, "[ProfileManager] Current power state: %s", stateKey.c_str() );
+
+    auto stateMapIt = stateMap.find( stateKey );
+    if ( stateMapIt == stateMap.end() )
+    {
+      syslog( LOG_INFO, "[ProfileManager] No profile assigned to state: %s", stateKey.c_str() );
+      return {};
+    }
+
+    const std::string &profileId = stateMapIt->second;
+    syslog( LOG_INFO, "[ProfileManager] State '%s' maps to profile: %s", stateKey.c_str(), profileId.c_str() );
+
+    // Try saved (custom/persistent) profiles first
+    auto savedProfileIt = savedProfiles.find( profileId );
+    if ( savedProfileIt != savedProfiles.end() )
+    {
+      try
+      {
+        UccProfile profile = parseProfileJSON( savedProfileIt->second );
+        syslog( LOG_INFO, "[ProfileManager] Resolved saved profile: %s (ID: %s)", profile.name.c_str(), profile.id.c_str() );
+        return profile;
+      }
+      catch ( const std::exception &e )
+      {
+        syslog( LOG_ERR, "[ProfileManager] Failed to parse saved profile '%s': %s", profileId.c_str(), e.what() );
+      }
+    }
+
+    // Fall back to built-in profiles
+    for ( const auto &profile : getDefaultProfiles( deviceId ) )
+    {
+      if ( profile.id == profileId )
+      {
+        syslog( LOG_INFO, "[ProfileManager] Resolved built-in profile: %s (ID: %s)", profile.name.c_str(), profile.id.c_str() );
+        return profile;
+      }
+    }
+
+    syslog( LOG_WARNING, "[ProfileManager] Profile '%s' not found in any source", profileId.c_str() );
+    return {};
   }
 
 private:

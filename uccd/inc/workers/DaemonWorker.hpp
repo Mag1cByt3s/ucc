@@ -143,6 +143,15 @@ public:
   }
 
   /**
+   * @brief Signal the worker to stop without waiting for the thread to finish.
+   * Call waitForFinished() afterwards to join the thread.
+   */
+  void requestStop() noexcept
+  {
+    m_isRunning = false;
+  }
+
+  /**
    * @brief Start the worker thread
    */
   void start()
@@ -191,7 +200,19 @@ protected:
           firstLoop = false;
         }
         onWork();
-        QThread::msleep( static_cast< unsigned long >( m_timeout.count() ) );
+
+        // Interruptible sleep: check m_isRunning every 200ms so that
+        // requestStop() is noticed promptly, not after the full timeout.
+        // Without this, CpuWorker (10s) alone would exceed the SIGTERM
+        // grace period.
+        auto remaining = m_timeout;
+        constexpr auto step = std::chrono::milliseconds( 200 );
+        while ( remaining > std::chrono::milliseconds::zero() && m_isRunning )
+        {
+          auto chunk = std::min( remaining, step );
+          QThread::msleep( static_cast< unsigned long >( chunk.count() ) );
+          remaining -= chunk;
+        }
       }
 
       ucc::wDebug("[DEBUG] DaemonWorker: exiting %s", typeid(*this).name());

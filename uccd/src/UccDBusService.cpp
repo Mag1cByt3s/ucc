@@ -33,6 +33,8 @@
 #include <algorithm>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QCoreApplication>
+#include <QEventLoop>
 
 namespace
 {
@@ -1959,16 +1961,9 @@ UccDBusService::UccDBusService()
   m_hardwareMonitorWorker->start();
   m_displayWorker->start();
   m_cpuWorker->start();
-  m_profileSettingsWorker->start();  // replaces 4 former workers (runs on main thread)
   m_fanControlWorker->start();
   m_keyboardBacklightListener->start();
-
-  // Apply startup profile based on current power state and stateMap
-  // (this also starts water cooler scanning if the profile enables it)
-  applyStartupProfile();
-
-  // start main DBus worker loop after construction completes
-  start();
+  m_profileSettingsWorker->start();
 }
 
 void UccDBusService::setupGpuDataCallback()
@@ -2102,6 +2097,72 @@ bool UccDBusService::initDBus()
     syslog( LOG_ERR, "DBus service error: %s", e.what() );
     return false;
   }
+}
+
+void UccDBusService::shutdown()
+{
+  syslog( LOG_INFO, "Shutting down workers..." );
+
+  // Phase 1: Signal ALL workers to stop (non-blocking).
+  // This must happen before waiting, because some onWork() callbacks
+  // use BlockingQueuedConnection to the main thread.  If we stop()+wait
+  // sequentially, a worker stuck in BlockingQueuedConnection will deadlock
+  // because the main thread is blocked in QThread::wait().
+  requestStop();
+  if ( m_keyboardBacklightListener ) m_keyboardBacklightListener->requestStop();
+  if ( m_fanControlWorker ) m_fanControlWorker->requestStop();
+  if ( m_cpuWorker ) m_cpuWorker->requestStop();
+  if ( m_displayWorker ) m_displayWorker->requestStop();
+  if ( m_hardwareMonitorWorker ) m_hardwareMonitorWorker->requestStop();
+
+  // Phase 2: Wait for all threads to finish while keeping the Qt event
+  // loop alive.  Workers may have pending BlockingQueuedConnection calls
+  // (e.g. LCTWaterCoolerWorker) that need the main thread to dispatch.
+  // Pumping events here prevents deadlocks.
+  auto waitPumpingEvents = []( QThread *t ) {
+    if ( !t || !t->isRunning() )
+      return;
+    auto *app = QCoreApplication::instance();
+    while ( !t->isFinished() )
+    {
+      if ( app )
+        app->processEvents( QEventLoop::AllEvents, 50 );
+      else
+        QThread::msleep( 10 );
+    }
+    t->wait();   // join the thread
+  };
+
+  // Wait for the main service thread first, then sub-workers
+  waitPumpingEvents( this );
+  waitPumpingEvents( m_keyboardBacklightListener.get() );
+  waitPumpingEvents( m_fanControlWorker.get() );
+  waitPumpingEvents( m_cpuWorker.get() );
+  waitPumpingEvents( m_displayWorker.get() );
+  waitPumpingEvents( m_hardwareMonitorWorker.get() );
+
+  // Phase 3: DBus cleanup on the main thread (where the objects live).
+  // onExit() runs on the worker thread, so DBus operations there would
+  // violate Qt's thread-affinity rules.
+  if ( m_started )
+  {
+    try
+    {
+      QDBusConnection bus = QDBusConnection::systemBus();
+      bus.unregisterService( SERVICE_NAME );
+      bus.unregisterObject( OBJECT_PATH );
+      syslog( LOG_INFO, "DBus service unregistered" );
+    }
+    catch ( const std::exception &e )
+    {
+      syslog( LOG_ERR, "DBus cleanup error: %s", e.what() );
+    }
+    m_adaptor.reset();
+    m_dbusObject.reset();
+    m_started = false;
+  }
+
+  syslog( LOG_INFO, "All workers stopped" );
 }
 
 void UccDBusService::onStart()
@@ -2332,27 +2393,9 @@ void UccDBusService::setWaterCoolerScanningEnabled( bool enable )
 
 void UccDBusService::onExit()
 {
-  // Save autosave data
+  // Only do thread-safe work here — this runs on the DaemonWorker thread.
+  // DBus cleanup happens in shutdown() on the main thread.
   saveAutosave();
-
-  if ( m_started )
-  {
-    try
-    {
-      QDBusConnection bus = QDBusConnection::systemBus();
-      bus.unregisterService( SERVICE_NAME );
-      bus.unregisterObject( OBJECT_PATH );
-      std::cout << "dbus service stopped" << std::endl;
-    }
-    catch ( const std::exception &e )
-    {
-      syslog( LOG_ERR, "DBus service error on exit: %s", e.what() );
-    }
-  }
-
-  m_adaptor.reset();
-  m_dbusObject.reset();
-  m_started = false;
 }
 
 // profile management implementation
@@ -3198,139 +3241,51 @@ void UccDBusService::loadSettings()
   }
 }
 
-void UccDBusService::applyStartupProfile()
+void UccDBusService::initializeStartupProfile()
 {
-  // Determine current power state
-  m_currentState = determineState();
-  const std::string stateKey = profileStateToString( m_currentState );
+  UccProfile resolved = m_profileManager.resolveStartupProfile(
+    m_deviceId,
+    m_settings.stateMap,
+    m_settings.profiles
+  );
 
-  std::cout << "[Startup] Current power state: " << stateKey << std::endl;
-  syslog( LOG_INFO, "[Startup] Current power state: %s", stateKey.c_str() );
-
-  // Look up the profile assigned to this state
-  auto stateMapIt = m_settings.stateMap.find( stateKey );
-  if ( stateMapIt == m_settings.stateMap.end() )
+  if ( resolved.id.empty() )
   {
-    std::cout << "[Startup] No profile assigned to state '" << stateKey << "'" << std::endl;
-    syslog( LOG_INFO, "[Startup] No profile assigned to state '%s'", stateKey.c_str() );
+    syslog( LOG_INFO, "[Startup] No startup profile resolved — no state map entry for current power state" );
     return;
   }
 
-  const std::string &profileId = stateMapIt->second;
-  m_currentStateProfileId = profileId;
+  m_activeProfile = resolved;
+  m_currentState = determineState();
+  m_currentStateProfileId = resolved.id;
 
-  std::cout << "[Startup] Applying profile assigned to state '" << stateKey << "': " << profileId << std::endl;
-  syslog( LOG_INFO, "[Startup] Applying profile assigned to state '%s': %s", stateKey.c_str(), profileId.c_str() );
+  snapProfileFrequencies( m_activeProfile );
+  updateDBusActiveProfileData();
 
-  // First try to find the profile in settings (persistent profiles)
-  auto profileIt = m_settings.profiles.find( profileId );
-  if ( profileIt != m_settings.profiles.end() )
-  {
-    try
-    {
-      auto profile = m_profileManager.parseProfileJSON( profileIt->second );
-      m_activeProfile = profile;
-      snapProfileFrequencies( m_activeProfile );
-      updateDBusActiveProfileData();
+  syslog( LOG_INFO, "[Startup] Applying startup profile: %s (ID: %s)", resolved.name.c_str(), resolved.id.c_str() );
+  applyStartupProfile();
+}
 
-      std::cout << "[Startup] Applied profile from settings: " << profile.name << " (ID: " << profile.id << ")" << std::endl;
-      syslog( LOG_INFO, "[Startup] Applied profile from settings: %s (ID: %s)", profile.name.c_str(), profile.id.c_str() );
+void UccDBusService::applyStartupProfile()
+{
+  if ( m_activeProfile.id.empty() )
+    return;
 
-      // Apply fan curves and pump auto-control
-      applyFanAndPumpSettings( profile );
+  const auto &profile = m_activeProfile;
 
-      // Apply to workers
-      if ( m_cpuWorker )
-      {
-        std::cout << "[Startup] Triggering CPU settings reapply" << std::endl;
-        syslog( LOG_INFO, "[Startup] Triggering CPU settings reapply" );
-        m_cpuWorker->reapplyProfile();
-      }
+  applyFanAndPumpSettings( profile );
 
-      if ( m_profileSettingsWorker )
-      {
-        std::cout << "[Startup] Triggering TDP settings reapply" << std::endl;
-        syslog( LOG_INFO, "[Startup] Triggering TDP settings reapply" );
-        m_profileSettingsWorker->reapplyProfile();
-      }
+  if ( m_cpuWorker )
+    m_cpuWorker->reapplyProfile();
 
-      // Apply keyboard backlight settings from profile
-      if ( m_keyboardBacklightListener && !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
-      {
-        std::cout << "[Startup] Applying keyboard backlight settings from profile" << std::endl;
-        syslog( LOG_INFO, "[Startup] Applying keyboard backlight settings from profile" );
-        m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
-      }
+  if ( m_profileSettingsWorker )
+    m_profileSettingsWorker->reapplyProfile();
 
-      // Apply water cooler enable state from profile
-      if ( m_dbusData.waterCoolerSupported )
-        setWaterCoolerScanningEnabled( profile.fan.enableWaterCooler );
+  if ( m_keyboardBacklightListener && !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
+    m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
 
-      return;
-    }
-    catch ( const std::exception &e )
-    {
-      std::cerr << "[Startup] Failed to parse profile '" << profileId << "' from settings: " << e.what() << std::endl;
-      syslog( LOG_ERR, "[Startup] Failed to parse profile '%s' from settings: %s", profileId.c_str(), e.what() );
-    }
-  }
-
-  // Fall back to finding profile in allProfiles (for built-in profiles)
-  auto allProfiles = getAllProfiles();
-  bool profileFound = false;
-
-  for ( const auto &profile : allProfiles )
-  {
-    if ( profile.id == profileId )
-    {
-      m_activeProfile = profile;
-      snapProfileFrequencies( m_activeProfile );
-      updateDBusActiveProfileData();
-      profileFound = true;
-
-      std::cout << "[Startup] Applied built-in profile: " << profile.name << " (ID: " << profile.id << ")" << std::endl;
-      syslog( LOG_INFO, "[Startup] Applied built-in profile: %s (ID: %s)", profile.name.c_str(), profile.id.c_str() );
-
-      // Apply fan curves and pump auto-control
-      applyFanAndPumpSettings( profile );
-
-      // Apply to workers (they should pick up the active profile automatically)
-      // But we can trigger a reapply to be sure
-      if ( m_cpuWorker )
-      {
-        std::cout << "[Startup] Triggering CPU settings reapply" << std::endl;
-        syslog( LOG_INFO, "[Startup] Triggering CPU settings reapply" );
-        m_cpuWorker->reapplyProfile();
-      }
-
-      if ( m_profileSettingsWorker )
-      {
-        std::cout << "[Startup] Triggering TDP settings reapply" << std::endl;
-        syslog( LOG_INFO, "[Startup] Triggering TDP settings reapply" );
-        m_profileSettingsWorker->reapplyProfile();
-      }
-
-      // Apply keyboard backlight settings from profile
-      if ( m_keyboardBacklightListener && !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
-      {
-        std::cout << "[Startup] Applying keyboard backlight settings from profile" << std::endl;
-        syslog( LOG_INFO, "[Startup] Applying keyboard backlight settings from profile" );
-        m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
-      }
-
-      // Apply water cooler enable state from profile
-      if ( m_dbusData.waterCoolerSupported )
-        setWaterCoolerScanningEnabled( profile.fan.enableWaterCooler );
-
-      break;
-    }
-  }
-
-  if ( !profileFound )
-  {
-    std::cerr << "[Startup] WARNING: Profile ID '" << profileId << "' not found!" << std::endl;
-    syslog( LOG_WARNING, "[Startup] WARNING: Profile ID '%s' not found!", profileId.c_str() );
-  }
+  if ( m_dbusData.waterCoolerSupported )
+    setWaterCoolerScanningEnabled( profile.fan.enableWaterCooler );
 }
 
 void UccDBusService::applyFanAndPumpSettings( const UccProfile &profile )
