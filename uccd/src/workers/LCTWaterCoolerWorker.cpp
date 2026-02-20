@@ -334,11 +334,16 @@ void LCTWaterCoolerWorker::onConnectionReady()
   // Reset failure counter on successful connection
   m_consecutiveFailures = 0;
 
-  // Set safe initial values: pump off, fan at low speed.
-  // Use the public API so tracking atomics are updated too.
-  setPumpVoltage( static_cast< int >( ucc::PumpVoltage::Off ) );
+  // Do NOT send initial pump/fan commands here.  The hardware powers up at its
+  // own default voltage (typically V11) and may silently ignore BLE writes
+  // issued immediately after service discovery.  Sending "Off" here would
+  // update m_lastPumpVoltage to Off while the hardware stays at V11, causing
+  // the auto-control loop to skip redundant writes and leaving the pump stuck
+  // at the wrong level.  Instead, leave m_lastPumpVoltage at -1 (set on
+  // disconnect) so the auto-control loop's first cycle always writes through.
+  // If auto-control is disabled the user sets the pump manually.
   setFanSpeed( INITIAL_FAN_SPEED_PERCENT );
-  syslog( LOG_INFO, "LCTWaterCoolerWorker: sent initial pump/fan setup commands" );
+  syslog( LOG_INFO, "LCTWaterCoolerWorker: sent initial fan setup command" );
 
   // Reapply last known LED settings — hardware starts with LED off after BLE connect.
   // Exchange the cached values with -1 so the next setLEDColor won't skip as "same".

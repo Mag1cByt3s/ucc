@@ -49,22 +49,41 @@ ScrollView {
                 title: "Water Cooler Status"
                 Layout.fillWidth: true
 
-                GridLayout {
-                    columns: 4
-                    columnSpacing: 16
-                    rowSpacing: 8
+                RowLayout {
+                    spacing: 20
                     width: parent.width
 
-                    Label { text: "Fan Duty Cycle"; opacity: 0.7 }
-                    Label {
-                        text: backend.wcFanSpeed > 0 ? (backend.wcFanSpeed + "%") : "—"
-                        font.bold: true
+                    RowLayout {
+                        spacing: 4
+                        Label { text: "Enable" }
+                        CheckBox {
+                            id: wcEnableCheckBox
+                            checked: backend.wcEnabled
+                            Connections {
+                                target: backend
+                                function onWcEnabledChanged() { wcEnableCheckBox.checked = backend.wcEnabled }
+                            }
+                            onToggled: backend.setWcEnabled(checked)
+                        }
                     }
 
-                    Label { text: "Pump Level"; opacity: 0.7 }
-                    Label {
-                        text: pumpLevelText(backend.wcPumpLevel)
-                        font.bold: true
+                    GridLayout {
+                        columns: 4
+                        columnSpacing: 16
+                        rowSpacing: 8
+                        Layout.fillWidth: true
+
+                        Label { text: "Fan Duty Cycle"; opacity: 0.7 }
+                        Label {
+                            text: backend.wcFanSpeed > 0 ? (backend.wcFanSpeed + "%") : "—"
+                            font.bold: true
+                        }
+
+                        Label { text: "Pump Level"; opacity: 0.7 }
+                        Label {
+                            text: pumpLevelText(backend.wcPumpLevel)
+                            font.bold: true
+                        }
                     }
                 }
             }

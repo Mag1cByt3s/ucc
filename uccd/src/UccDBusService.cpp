@@ -162,7 +162,8 @@ static std::string profileToJSON( const UccProfile &profile,
       << "\"fanProfile\":\"" << jsonEscape( profile.fan.fanProfile ) << "\" ,"
       << "\"offsetFanspeed\":" << profile.fan.offsetFanspeed << ","
       << "\"sameSpeed\":" << ( profile.fan.sameSpeed ? "true" : "false" ) << ","
-      << "\"autoControlWC\":" << ( profile.fan.autoControlWC ? "true" : "false" );
+      << "\"autoControlWC\":" << ( profile.fan.autoControlWC ? "true" : "false" ) << ","
+      << "\"enableWaterCooler\":" << ( profile.fan.enableWaterCooler ? "true" : "false" );
 
   // Embed fan tables if present
   if ( !profile.fan.tableCPU.empty() )
@@ -1543,6 +1544,13 @@ bool UccDBusInterfaceAdaptor::EnableWaterCooler( bool enable )
   }
 
   return true;
+}
+
+bool UccDBusInterfaceAdaptor::IsWaterCoolerEnabled()
+{
+  if ( m_service )
+    return m_service->m_activeProfile.fan.enableWaterCooler;
+  return false;
 }
 
 bool UccDBusInterfaceAdaptor::SetWaterCoolerFanSpeed( int dutyCyclePercent )

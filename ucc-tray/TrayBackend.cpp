@@ -139,6 +139,7 @@ void TrayBackend::setDisplayBrightness( int v )
 bool TrayBackend::waterCoolerSupported() const { return m_waterCoolerSupported; }
 bool TrayBackend::wcConnected()           const { return m_powerState == QStringLiteral( "AC w/ Water Cooler" ); }
 bool TrayBackend::wcAutoControl()         const { return m_wcAutoControl; }
+bool TrayBackend::wcEnabled()             const { return m_wcEnabled; }
 int  TrayBackend::wcFanPercent()      const { return m_wcFanPercent; }
 int  TrayBackend::wcPumpVoltageCode() const { return m_wcPumpVoltageCode; }
 bool TrayBackend::wcLedEnabled()      const { return m_wcLedEnabled; }
@@ -154,6 +155,14 @@ void TrayBackend::setWcFanSpeed( int percent )
     m_wcFanPercent = percent;
     emit wcControlStateChanged();
   }
+}
+
+void TrayBackend::setWcEnabled( bool enabled )
+{
+  m_client->enableWaterCooler( enabled );
+  m_wcEnabled = enabled;
+  m_wcEnabledOverride = true;
+  emit wcEnabledChanged();
 }
 
 void TrayBackend::setWcPumpVoltageCode( int voltageCode )
@@ -379,6 +388,7 @@ void TrayBackend::pollSlowState()
       {
         m_fanProfileOverride = false;
         m_keyboardProfileOverride = false;
+        m_wcEnabledOverride = false;
       }
 
       // Extract fan profile reference — skip if user manually overrode it
@@ -391,6 +401,17 @@ void TrayBackend::pollSlowState()
       {
         m_wcAutoControl = autoWC;
         emit wcAutoControlChanged();
+      }
+
+      // Query daemon directly for the runtime water-cooler enable state
+      if ( !m_wcEnabledOverride )
+      {
+        bool wcEn = m_client->isWaterCoolerEnabled().value_or( m_wcEnabled );
+        if ( wcEn != m_wcEnabled )
+        {
+          m_wcEnabled = wcEn;
+          emit wcEnabledChanged();
+        }
       }
       if ( !m_fanProfileOverride && fanId != m_activeProfileFanId )
       {

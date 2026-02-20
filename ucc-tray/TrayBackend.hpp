@@ -65,6 +65,7 @@ class TrayBackend : public QObject
   Q_PROPERTY( bool waterCoolerSupported READ waterCoolerSupported NOTIFY waterCoolerSupportedChanged )
   Q_PROPERTY( bool wcConnected          READ wcConnected          NOTIFY wcConnectedChanged )
   Q_PROPERTY( bool wcAutoControl        READ wcAutoControl        NOTIFY wcAutoControlChanged )
+  Q_PROPERTY( bool wcEnabled            READ wcEnabled            NOTIFY wcEnabledChanged )
 
   // Water cooler control state (local cache)
   Q_PROPERTY( int  wcFanPercent      READ wcFanPercent      NOTIFY wcControlStateChanged )
@@ -133,6 +134,8 @@ public:
   bool waterCoolerSupported() const;
   bool wcConnected() const;
   bool wcAutoControl() const;
+  bool wcEnabled() const;
+  Q_INVOKABLE void setWcEnabled( bool enabled );
   int  wcFanPercent() const;
   int  wcPumpVoltageCode() const;
   bool wcLedEnabled() const;
@@ -184,6 +187,7 @@ signals:
   void waterCoolerSupportedChanged();
   void wcConnectedChanged();
   void wcAutoControlChanged();
+  void wcEnabledChanged();
   void wcControlStateChanged();
   void odmProfilesAvailableChanged();
   void odmPerformanceProfileChanged();
@@ -246,7 +250,9 @@ private:
 
   // Device capabilities
   bool m_waterCoolerSupported = false;
-  bool m_wcAutoControl = true;  // true = daemon controls fan/pump automatically
+  bool m_wcAutoControl = true;
+  bool m_wcEnabled = true;  // true = daemon controls fan/pump automatically
+  bool m_wcEnabledOverride = false;  // user explicitly toggled — don't overwrite from poll
 
   // ODM profiles
   QStringList m_availableODMProfiles;

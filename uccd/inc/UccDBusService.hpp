@@ -348,6 +348,7 @@ public slots:
   int GetWaterCoolerFanSpeed();
   int GetWaterCoolerPumpLevel();
   bool EnableWaterCooler( bool enable );
+  bool IsWaterCoolerEnabled();
   bool SetWaterCoolerFanSpeed( int dutyCyclePercent );
   bool SetWaterCoolerPumpVoltage( int voltage );
   bool SetWaterCoolerLEDColor( int red, int green, int blue, int mode );

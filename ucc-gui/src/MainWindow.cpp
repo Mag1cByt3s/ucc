@@ -1506,9 +1506,9 @@ void MainWindow::loadProfileDetails( const QString &profileId )
         m_fanControlTab->setWaterCoolerAutoControl( true );
     }
 
-    // Load water-cooler scanning enable state (persisted per-profile)
-    // Default to true for backward compatibility with profiles saved before this field existed
-    bool wcEnable = fanObj["enableWaterCooler"].toBool( true );
+    // Query the daemon directly for the runtime water-cooler enable state
+    bool wcEnable = m_UccdClient->isWaterCoolerEnabled().value_or(
+        fanObj["enableWaterCooler"].toBool( true ) );
     m_fanControlTab->setWaterCoolerEnabled( wcEnable );
     m_dashboardTab->setWaterCoolerEnabled( wcEnable );
   }

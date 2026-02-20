@@ -546,6 +546,16 @@ bool UccdClient::setFanProfileDGPU( const std::string &pointsJSON )
   return false;
 }
 
+bool UccdClient::enableWaterCooler( bool enable )
+{
+  return callMethod< bool, bool >( "EnableWaterCooler", enable ).value_or( false );
+}
+
+std::optional< bool > UccdClient::isWaterCoolerEnabled()
+{
+  return callMethod< bool >( "IsWaterCoolerEnabled" );
+}
+
 bool UccdClient::applyFanProfiles( const std::string &fanProfilesJSON )
 {
   const QString js = QString::fromStdString( fanProfilesJSON );

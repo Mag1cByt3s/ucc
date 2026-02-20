@@ -97,6 +97,7 @@ ScrollView {
                     Label { text: backend.gpuFanRPM + " RPM (" + backend.gpuFanPercent + "%)"; font.bold: true }
                 }
             }
+
         }
     }
 }
