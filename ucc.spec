@@ -89,6 +89,7 @@ systemctl daemon-reload > /dev/null 2>&1 || true
 %dir %{_sysconfdir}/ucc
 %{_datadir}/applications/ucc-gui.desktop
 %{_datadir}/applications/ucc-tray.desktop
+%{_sysconfdir}/xdg/autostart/ucc-tray.desktop
 # WIDDGET # %{_datadir}/plasma/plasmoids/org.uniwill.ucc.*/
 # Icons (SVG and PNG, all sizes)
 %{_datadir}/icons/hicolor/scalable/apps/ucc-gui.svg

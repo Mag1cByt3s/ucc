@@ -52,22 +52,10 @@ include( KDECMakeSettings )
 # Options
 option( BUILD_GUI "Build the main GUI application" ON )
 option( BUILD_TRAY "Build the system tray applet" ON )
-option( BUILD_WIDGETS "Build Plasma widgets" OFF )
 
 # Include directories
 include_directories( ${CMAKE_SOURCE_DIR}/include )
 
-# Try to find Plasma if widget build is requested
-if(BUILD_WIDGETS)
-  find_package(KF5Plasma QUIET)
-  if(KF5Plasma_FOUND)
-    message(STATUS "Plasma found, building widgets.")
-    add_subdirectory(ucc-widgets)
-  else()
-    message(WARNING "Plasma not found, widgets will not be built.")
-    set(BUILD_WIDGETS OFF)
-  endif()
-endif()
 
 # Subdirectories
 add_subdirectory( uccd )
@@ -133,7 +121,6 @@ message(STATUS "  Components:")
 message(STATUS "    DBus Library:   ON")
 message(STATUS "    GUI App:        ${BUILD_GUI}")
 message(STATUS "    Tray App:       ${BUILD_TRAY}")
-message(STATUS "    Plasma Widgets: ${BUILD_WIDGETS}")
 message(STATUS "")
 message(STATUS "  Install prefix:   ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "===================================================")

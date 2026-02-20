@@ -112,7 +112,12 @@ install( TARGETS ucc-tray
   RUNTIME DESTINATION bin
 )
 
-# Desktop file for autostart
+# Desktop file for application launcher
 install( FILES ucc-tray.desktop
   DESTINATION share/applications
+)
+
+# Desktop file for autostart on GNOME/KDE session start
+install( FILES ucc-tray.desktop
+  DESTINATION /etc/xdg/autostart
 )

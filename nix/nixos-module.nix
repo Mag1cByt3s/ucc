@@ -56,6 +56,10 @@ in
       "d /etc/ucc/autosave 0755 root root - -"
     ];
 
+    # Autostart the tray applet for all desktop sessions
+    environment.etc."xdg/autostart/ucc-tray.desktop".source =
+      "${cfg.package}/share/xdg/autostart/ucc-tray.desktop";
+
     systemd.services.uccd = {
       description = "Uniwill Control Center Daemon";
       documentation = [ "man:uccd(8)" ];

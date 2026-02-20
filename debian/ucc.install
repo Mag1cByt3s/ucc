@@ -8,6 +8,7 @@ usr/share/dbus-1/system-services/com.uniwill.uccd.service
 usr/share/dbus-1/system.d/com.uniwill.uccd.conf
 usr/share/applications/ucc-gui.desktop
 usr/share/applications/ucc-tray.desktop
+etc/xdg/autostart/ucc-tray.desktop
 usr/share/icons/hicolor/*/apps/ucc-gui.png
 usr/share/icons/hicolor/*/apps/ucc-tray.png
 usr/share/icons/hicolor/scalable/apps/ucc-gui*.svg
