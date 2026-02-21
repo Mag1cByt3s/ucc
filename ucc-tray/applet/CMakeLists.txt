@@ -12,5 +12,22 @@ plasma_add_applet( com.uniwill.ucc
     HardwareTab.qml
     WaterCoolerTab.qml
     KeyboardTab.qml
+  CPP_SOURCES
+    ../src/TrayBackend.cpp
+    ../src/TrayBackend.hpp
   GENERATE_APPLET_CLASS
 )
+
+target_include_directories( com.uniwill.ucc PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../src
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../libucc-dbus
+)
+
+target_link_libraries( com.uniwill.ucc PRIVATE
+  Qt6::DBus
+)
+
+if(TARGET ucc-dbus)
+  add_dependencies( com.uniwill.ucc ucc-dbus )
+  target_link_libraries( com.uniwill.ucc PRIVATE $<TARGET_FILE:ucc-dbus> )
+endif()
