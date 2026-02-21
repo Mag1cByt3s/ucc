@@ -52,6 +52,7 @@ stdenv.mkDerivation {
     "-DCMAKE_BUILD_TYPE=Release"
     "-DBUILD_GUI=ON"
     "-DBUILD_TRAY=ON"
+    "-DUCC_AUTOSTART_DIR=share/xdg/autostart"
   ];
 
   postFixup = ''
@@ -61,15 +62,6 @@ stdenv.mkDerivation {
       --set QT_QPA_PLATFORM_PLUGIN_PATH "${kdePackages.qtbase}/lib/qt-6/plugins"
     wrapProgram $out/bin/uccd \
       --prefix PATH : "${lib.makeBinPath [ coreutils gawk gnugrep procps util-linux which ]}"
-
-    # CMake installs the autostart desktop file to an absolute /etc path which
-    # ends up under $out/etc in the Nix build sandbox.  Move it into the share
-    # tree so the NixOS module can symlink it into /etc/xdg/autostart.
-    if [ -f "$out/etc/xdg/autostart/ucc-tray.desktop" ]; then
-      mkdir -p "$out/share/xdg/autostart"
-      mv "$out/etc/xdg/autostart/ucc-tray.desktop" "$out/share/xdg/autostart/"
-      rm -rf "$out/etc/xdg"
-    fi
 
     # The upstream unit/DBus activation files use /usr/bin paths which do not
     # exist on NixOS. Keep the files installed by CMake, but patch paths to the
