@@ -241,5 +241,8 @@ namespace ucc
     bool m_waterCoolerSupported = false;
     bool m_cTGPAdjustmentSupported = true;
     int m_gpuDefaultPowerLimit = 0;  // Default GPU power limit in watts, queried from daemon
+
+    // Statusbar connection indicator
+    QLabel *m_connectionLabel = nullptr;
   };
 }

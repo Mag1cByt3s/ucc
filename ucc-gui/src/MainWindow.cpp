@@ -118,6 +118,11 @@ MainWindow::MainWindow( QWidget *parent )
   connectSignals();
 
   // Initialize status bar
+  m_connectionLabel = new QLabel( this );
+  m_connectionLabel->setTextFormat( Qt::RichText );
+  statusBar()->addPermanentWidget( m_connectionLabel );
+  // Set initial connection state
+  onUccdConnectionChanged( m_UccdClient->isConnected() );
   statusBar()->showMessage( "Ready" );
 
   // Load initial data — refresh() emits signals that populate the UI.
@@ -2491,6 +2496,7 @@ void MainWindow::onFanProfileChanged(const QString& fanProfileId)
 void MainWindow::onCpuFanPointsChanged(const QVector<FanCurveEditorWidget::Point>& points)
 {
   m_cpuFanPoints.clear();
+
   for (const auto& p : points) {
     m_cpuFanPoints.append({static_cast<int>(p.temp), static_cast<int>(p.duty)});
   }
@@ -2524,6 +2530,18 @@ void MainWindow::reloadFanProfiles()
 void MainWindow::onUccdConnectionChanged( bool connected )
 {
   qDebug() << "[MainWindow] uccd connection changed:" << connected;
+
+  // Update statusbar indicator
+  if ( m_connectionLabel )
+  {
+    if ( connected )
+      m_connectionLabel->setText(
+        QStringLiteral( "<span style='color: green;'>●</span> Connected" ) );
+    else
+      m_connectionLabel->setText(
+        QStringLiteral( "<span style='color: red;'>●</span> Disconnected" ) );
+  }
+
   if ( !connected )
     return;
 

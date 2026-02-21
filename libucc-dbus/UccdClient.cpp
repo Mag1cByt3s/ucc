@@ -17,6 +17,7 @@
 #include <QDBusMessage>
 #include <QDBusError>
 #include <QDBusArgument>
+#include <QDBusConnectionInterface>
 #include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -129,14 +130,28 @@ void UccdClient::subscribeDbusSignals()
 
 void UccdClient::connectToDaemon()
 {
-  // QDBusInterface stays permanently invalid once created for an absent
-  // service, so we must recreate it every time we try to connect.
+  // Check if the service actually has an owner on the bus.  We must NOT
+  // just create a QDBusInterface, because with a D-Bus activation .service
+  // file the bus would auto-start uccd during the introspection call that
+  // QDBusInterface performs in its constructor.
+  {
+    auto *busIface = QDBusConnection::systemBus().interface();
+    if ( !busIface || !busIface->isServiceRegistered( QLatin1String( DBUS_SERVICE ) ) )
+    {
+      m_connected = false;
+      m_interface.reset();  // no interface while disconnected
+      qWarning() << "[UccdClient] uccd D-Bus service not registered on the system bus";
+      return;
+    }
+  }
+
+  // The service is running — safe to introspect without triggering activation.
+  // Do NOT pass a parent to QDBusInterface — unique_ptr owns its lifetime.
   m_interface = std::make_unique< QDBusInterface >(
     DBUS_SERVICE,
     DBUS_PATH,
     DBUS_INTERFACE,
-    QDBusConnection::systemBus(),
-    this );
+    QDBusConnection::systemBus() );
 
   m_connected = m_interface->isValid();
 
@@ -146,7 +161,7 @@ void UccdClient::connectToDaemon()
   }
   else
   {
-    qWarning() << "[UccdClient] uccd D-Bus service not available:"
+    qWarning() << "[UccdClient] uccd D-Bus interface not valid:"
                << m_interface->lastError().message();
   }
 }
@@ -173,7 +188,7 @@ void UccdClient::onServiceUnregistered( const QString &service )
 
 bool UccdClient::isConnected() const
 {
-  return m_connected && m_interface->isValid();
+  return m_connected && m_interface && m_interface->isValid();
 }
 
 // Signal handlers
