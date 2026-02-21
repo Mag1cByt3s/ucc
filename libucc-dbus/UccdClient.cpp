@@ -85,43 +85,90 @@ bool hasMethod( QDBusInterface *interface, const QString &method )
 
 UccdClient::UccdClient( QObject *parent )
   : QObject( parent )
-  , m_interface( std::make_unique< QDBusInterface >(
-      DBUS_SERVICE,
-      DBUS_PATH,
-      DBUS_INTERFACE,
-      QDBusConnection::systemBus(),
-      this ) )
 {
+  // Initial connection attempt (uccd may not be running yet — that's fine)
+  connectToDaemon();
+
+  // Watch for uccd appearing or disappearing on the system bus
+  m_serviceWatcher = new QDBusServiceWatcher(
+    QLatin1String( DBUS_SERVICE ),
+    QDBusConnection::systemBus(),
+    QDBusServiceWatcher::WatchForOwnerChange,
+    this );
+
+  connect( m_serviceWatcher, &QDBusServiceWatcher::serviceRegistered,
+           this, &UccdClient::onServiceRegistered );
+  connect( m_serviceWatcher, &QDBusServiceWatcher::serviceUnregistered,
+           this, &UccdClient::onServiceUnregistered );
+
+  emit connectionStatusChanged( m_connected );
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+void UccdClient::subscribeDbusSignals()
+{
+  // Disconnect first so we never accumulate duplicate connections across
+  // multiple reconnect cycles.
+  QDBusConnection::systemBus().disconnect( DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,
+                  "ProfileChanged", this,
+                  SLOT( onProfileChangedSignal( QString ) ) );
+  QDBusConnection::systemBus().disconnect( DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,
+                  "PowerStateChanged", this,
+                  SLOT( onPowerStateChangedSignal( QString ) ) );
+
+  QDBusConnection::systemBus().connect( DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,
+               "ProfileChanged", this,
+               SLOT( onProfileChangedSignal( QString ) ) );
+  QDBusConnection::systemBus().connect( DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,
+               "PowerStateChanged", this,
+               SLOT( onPowerStateChangedSignal( QString ) ) );
+}
+
+void UccdClient::connectToDaemon()
+{
+  // QDBusInterface stays permanently invalid once created for an absent
+  // service, so we must recreate it every time we try to connect.
+  m_interface = std::make_unique< QDBusInterface >(
+    DBUS_SERVICE,
+    DBUS_PATH,
+    DBUS_INTERFACE,
+    QDBusConnection::systemBus(),
+    this );
+
   m_connected = m_interface->isValid();
 
   if ( m_connected )
   {
-    // Subscribe to signals
-    QDBusConnection::systemBus().connect(
-      DBUS_SERVICE,
-      DBUS_PATH,
-      DBUS_INTERFACE,
-      "ProfileChanged",
-      this,
-      SLOT( onProfileChangedSignal( QString ) )
-    );
-
-    QDBusConnection::systemBus().connect(
-      DBUS_SERVICE,
-      DBUS_PATH,
-      DBUS_INTERFACE,
-      "PowerStateChanged",
-      this,
-      SLOT( onPowerStateChangedSignal( QString ) )
-    );
+    subscribeDbusSignals();
   }
   else
   {
-    qWarning() << "Failed to connect to uccd DBus service:"
+    qWarning() << "[UccdClient] uccd D-Bus service not available:"
                << m_interface->lastError().message();
   }
+}
 
+// ---------------------------------------------------------------------------
+// D-Bus service watcher slots
+// ---------------------------------------------------------------------------
+
+void UccdClient::onServiceRegistered( const QString &service )
+{
+  Q_UNUSED( service )
+  qInfo() << "[UccdClient] uccd appeared on the system bus — reconnecting";
+  connectToDaemon();
   emit connectionStatusChanged( m_connected );
+}
+
+void UccdClient::onServiceUnregistered( const QString &service )
+{
+  Q_UNUSED( service )
+  qWarning() << "[UccdClient] uccd disappeared from the system bus";
+  m_connected = false;
+  emit connectionStatusChanged( false );
 }
 
 bool UccdClient::isConnected() const

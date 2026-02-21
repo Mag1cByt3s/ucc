@@ -200,6 +200,7 @@ private slots:
   void pollSlowState();
   void onDaemonProfileChanged( const QString &profileId );
   void onSettingsFileChanged( const QString &path );
+  void onConnectionStatusChanged( bool connected );
 
 private:
   void loadProfiles();

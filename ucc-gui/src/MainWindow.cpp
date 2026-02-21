@@ -2523,9 +2523,25 @@ void MainWindow::reloadFanProfiles()
 
 void MainWindow::onUccdConnectionChanged( bool connected )
 {
-  qDebug() << "Uccd connection status changed:" << connected;
-  if ( connected )
-    reloadFanProfiles();
+  qDebug() << "[MainWindow] uccd connection changed:" << connected;
+  if ( !connected )
+    return;
+
+  // Re-query capabilities that are only set at startup
+  if ( auto waterCooler = m_UccdClient->getWaterCoolerSupported() )
+    m_waterCoolerSupported = *waterCooler;
+  if ( auto ctgp = m_UccdClient->getCTGPAdjustmentSupported() )
+    m_cTGPAdjustmentSupported = *ctgp;
+  if ( auto gpuDefault = m_UccdClient->getNVIDIAPowerCTRLDefaultPowerLimit() )
+    m_gpuDefaultPowerLimit = *gpuDefault;
+
+  // Repopulate driver-reported option lists
+  reloadFanProfiles();
+  populateGovernorCombo();
+  populateEppCombo();
+
+  // Refresh button/widget enabled states
+  updateButtonStates();
 }
 
 void MainWindow::onGpuFanPointsChanged(const QVector<FanCurveEditorWidget::Point>& points)

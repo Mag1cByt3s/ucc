@@ -37,6 +37,17 @@ SystemMonitor::SystemMonitor( QObject *parent )
   // Load charging capabilities (these don't change at runtime)
   initializeChargingState();
 
+  // Re-init charging capabilities if uccd wasn't running at startup
+  connect( m_client.get(), &UccdClient::connectionStatusChanged,
+           this, [this]( bool connected ) {
+    if ( connected )
+    {
+      qInfo() << "[SystemMonitor] uccd reconnected — reinitialising charging state";
+      initializeChargingState();
+      refreshAll();
+    }
+  } );
+
   // Timer will be started when monitoring becomes active
 }
 

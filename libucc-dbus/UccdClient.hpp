@@ -20,6 +20,7 @@
 #include <QDBusInterface>
 #include <QDBusConnection>
 #include <QDBusReply>
+#include <QDBusServiceWatcher>
 #include <string>
 #include <memory>
 #include <optional>
@@ -190,9 +191,15 @@ signals:
 private slots:
   void onProfileChangedSignal( const QString &profileId );
   void onPowerStateChangedSignal( const QString &state );
+  void onServiceRegistered( const QString &service );
+  void onServiceUnregistered( const QString &service );
 
 private:
+  void connectToDaemon();          ///< (Re)create the interface and subscribe to D-Bus signals
+  void subscribeDbusSignals();     ///< Connect D-Bus signals (idempotent — disconnects first)
+
   std::unique_ptr< QDBusInterface > m_interface;
+  QDBusServiceWatcher *m_serviceWatcher = nullptr;
   bool m_connected = false;
 
   static constexpr const char *DBUS_SERVICE = "com.uniwill.uccd";

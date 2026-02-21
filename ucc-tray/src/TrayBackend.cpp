@@ -39,6 +39,8 @@ TrayBackend::TrayBackend( QObject *parent )
   // Daemon signals
   connect( m_client.get(), &ucc::UccdClient::profileChanged,
            this, &TrayBackend::onDaemonProfileChanged );
+  connect( m_client.get(), &ucc::UccdClient::connectionStatusChanged,
+           this, &TrayBackend::onConnectionStatusChanged );
 
   // Watch the shared settings file so we pick up changes from the GUI immediately
   m_settingsWatcher = new QFileSystemWatcher( this );
@@ -509,6 +511,31 @@ void TrayBackend::onSettingsFileChanged( const QString &path )
     loadProfiles();
     loadLocalProfiles();
   } );
+}
+
+void TrayBackend::onConnectionStatusChanged( bool connected )
+{
+  emit connectedChanged();
+
+  if ( connected )
+  {
+    qInfo() << "[TrayBackend] Reconnected to uccd — refreshing all state";
+    loadCapabilities();
+    loadProfiles();
+    loadLocalProfiles();
+    pollMetrics();
+    pollSlowState();
+
+    // Ensure timers are running (they may have been started already, but
+    // calling start() on a running QTimer simply resets the interval which
+    // is harmless).
+    m_fastTimer->start();
+    m_slowTimer->start();
+  }
+  else
+  {
+    qWarning() << "[TrayBackend] Lost connection to uccd";
+  }
 }
 
 // ---------------------------------------------------------------------------

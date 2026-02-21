@@ -44,6 +44,32 @@ ProfileManager::ProfileManager( QObject *parent )
   // Load local custom keyboard profiles
   loadCustomKeyboardProfilesFromSettings();
 
+  // Always wire daemon signals — they won't fire while disconnected but will
+  // start arriving as soon as uccd appears (see connectionStatusChanged below).
+  connect( m_client.get(), &UccdClient::profileChanged,
+           this, [this]( const QString &profileId ) {
+    onProfileChanged( profileId.toStdString() );
+  } );
+  connect( m_client.get(), &UccdClient::powerStateChanged,
+           this, [this]( const QString &state ) {
+    onPowerStateChanged( state );
+  } );
+
+  // Re-init when uccd appears or disappears
+  connect( m_client.get(), &UccdClient::connectionStatusChanged,
+           this, [this]( bool connected ) {
+    const bool wasConnected = m_connected;
+    m_connected = connected;
+    if ( connected && !wasConnected )
+    {
+      qInfo() << "[ProfileManager] uccd reconnected — reloading data";
+      m_hardwarePowerLimits = m_client->getODMPowerLimits().value_or( std::vector< int >() );
+      loadBuiltinFanProfiles();
+      loadCustomProfilesFromSettings();
+    }
+    emit connectedChanged();
+  } );
+
   if ( m_connected )
   {
     // Fetch hardware power limits immediately
@@ -51,18 +77,6 @@ ProfileManager::ProfileManager( QObject *parent )
 
     // Fetch built-in fan profiles from daemon (id + name)
     loadBuiltinFanProfiles();
-
-    // Connect to profile changed signal
-    connect( m_client.get(), &UccdClient::profileChanged,
-             this, [this]( const QString &profileId ) {
-      onProfileChanged( profileId.toStdString() );
-    } );
-
-    // Connect to power state changed signal
-    connect( m_client.get(), &UccdClient::powerStateChanged,
-             this, [this]( const QString &state ) {
-      onPowerStateChanged( state );
-    } );
 
     // Load custom profiles from local storage
     loadCustomProfilesFromSettings();
