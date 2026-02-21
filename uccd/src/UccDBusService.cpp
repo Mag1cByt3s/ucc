@@ -214,9 +214,13 @@ static std::string profileToJSON( const UccProfile &profile,
     oss << ",\"keyboard\":{}";
   }
 
-  if ( !profile.keyboard.keyboardProfileName.empty() )
+  // Prefer UUID over display name — tray/GUI use the ID for combo-box indexing
   {
-    oss << ",\"selectedKeyboardProfile\":\"" << jsonEscape( profile.keyboard.keyboardProfileName ) << "\"";
+    const std::string &kbRef = !profile.keyboard.keyboardProfileId.empty()
+                              ? profile.keyboard.keyboardProfileId
+                              : profile.keyboard.keyboardProfileName;
+    if ( !kbRef.empty() )
+      oss << ",\"selectedKeyboardProfile\":\"" << jsonEscape( kbRef ) << "\"";
   }
 
   // Charging profile (firmware-level mode, per-profile)

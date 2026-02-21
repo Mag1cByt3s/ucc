@@ -210,6 +210,7 @@ private:
   void loadLocalProfiles();  // custom fan + keyboard profiles from QSettings
   QString resolveFanProfileName( const QString &fanProfileId ) const;
   QString resolveKeyboardProfileName( const QString &kbProfileId ) const;
+  QString resolveKeyboardProfileId( const QString &daemonValue ) const;
 
   std::unique_ptr< ucc::UccdClient > m_client;
   QTimer *m_fastTimer = nullptr;   // ~1 s  — temps, fans

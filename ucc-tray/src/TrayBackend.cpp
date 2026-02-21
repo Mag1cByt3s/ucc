@@ -424,6 +424,9 @@ void TrayBackend::pollSlowState()
 
       // Extract keyboard profile reference — skip if user manually overrode it
       auto kbId = obj[ "selectedKeyboardProfile" ].toString();
+      // The daemon may return a UUID or a display name (backward compat).
+      // Resolve to a canonical UUID so combo-box indexing works correctly.
+      kbId = resolveKeyboardProfileId( kbId );
       if ( !m_keyboardProfileOverride && kbId != m_activeProfileKeyboardId )
       {
         m_activeProfileKeyboardId = kbId;
@@ -726,11 +729,14 @@ void TrayBackend::loadLocalProfiles()
         kpData.append( obj );
       }
     }
+
     if ( kpIds != m_keyboardProfileIds || kpNames != m_keyboardProfileNames )
     {
       m_keyboardProfileIds   = kpIds;
       m_keyboardProfileNames = kpNames;
       m_keyboardProfilesData = kpData;
+      fprintf( stderr, "[TrayBackend] keyboardProfiles updated: %d entries — [%s]\n",
+               (int)kpIds.size(), qPrintable( kpNames.join(", ") ) );
       emit keyboardProfilesChanged();
     }
   }
@@ -765,6 +771,25 @@ QString TrayBackend::resolveKeyboardProfileName( const QString &kbProfileId ) co
     return m_keyboardProfileNames[ idx ];
 
   return kbProfileId;
+}
+
+QString TrayBackend::resolveKeyboardProfileId( const QString &daemonValue ) const
+{
+  if ( daemonValue.isEmpty() )
+    return QString();
+
+  // If it's already a known ID (UUID), return as-is
+  if ( m_keyboardProfileIds.contains( daemonValue ) )
+    return daemonValue;
+
+  // Otherwise the daemon may have returned a display name (backward compat)
+  // — look it up in the names list and return the corresponding ID
+  int idx = m_keyboardProfileNames.indexOf( daemonValue );
+  if ( idx >= 0 )
+    return m_keyboardProfileIds[ idx ];
+
+  // Unknown — return the raw value
+  return daemonValue;
 }
 
 

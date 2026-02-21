@@ -168,16 +168,19 @@ struct UccProfileKeyboard
 {
   std::string keyboardProfileData;  // JSON string containing keyboard backlight states
   std::string keyboardProfileName;  // Name of the keyboard profile for reference
+  std::string keyboardProfileId;    // UUID of the keyboard profile (from top-level selectedKeyboardProfile)
 
   UccProfileKeyboard()
     : keyboardProfileData( "{}" ),
-      keyboardProfileName( "" )
+      keyboardProfileName( "" ),
+      keyboardProfileId( "" )
   {
   }
 
   UccProfileKeyboard( const std::string &data, const std::string &name )
     : keyboardProfileData( data ),
-      keyboardProfileName( name )
+      keyboardProfileName( name ),
+      keyboardProfileId( "" )
   {
   }
 };

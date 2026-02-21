@@ -291,11 +291,13 @@ public:
       profile.keyboard.keyboardProfileName = extractString( keyboardJson, "keyboardProfileName", "" );
     }
 
-    // Fallback: also check top-level "selectedKeyboardProfile" (written by GUI/DBus serialization)
-    if ( profile.keyboard.keyboardProfileName.empty() )
+    // Top-level selectedKeyboardProfile is the UUID written by the GUI
+    std::string topLevelKeyboardProfile = extractString( json, "selectedKeyboardProfile", "" );
+    if ( !topLevelKeyboardProfile.empty() )
     {
-      std::string topLevelKeyboardProfile = extractString( json, "selectedKeyboardProfile", "" );
-      if ( !topLevelKeyboardProfile.empty() )
+      profile.keyboard.keyboardProfileId = topLevelKeyboardProfile;
+      // Fallback: use it as the name too if the embedded keyboard JSON didn't have one
+      if ( profile.keyboard.keyboardProfileName.empty() )
         profile.keyboard.keyboardProfileName = topLevelKeyboardProfile;
     }
 
@@ -678,9 +680,15 @@ public:
       oss << ",\"keyboard\":{}";
     }
 
-    if ( !profile.keyboard.keyboardProfileName.empty() )
+    // Prefer UUID over display name for selectedKeyboardProfile; the tray/GUI use
+    // the ID for combo-box indexing.  Fall back to the human-readable name for
+    // backward compatibility with profiles that predate UUID support.
     {
-      oss << ",\"selectedKeyboardProfile\":\"" << jsonEscape( profile.keyboard.keyboardProfileName ) << "\"";
+      const std::string &kbRef = !profile.keyboard.keyboardProfileId.empty()
+                                ? profile.keyboard.keyboardProfileId
+                                : profile.keyboard.keyboardProfileName;
+      if ( !kbRef.empty() )
+        oss << ",\"selectedKeyboardProfile\":\"" << jsonEscape( kbRef ) << "\"";
     }
 
     // Charging profile (firmware-level charging mode)

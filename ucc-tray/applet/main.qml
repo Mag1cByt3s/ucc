@@ -94,7 +94,6 @@ PlasmoidItem {
                         visible: trayBackend.waterCoolerSupported
                     }
                     PC3.TabButton { text: i18n("Hardware") }
-                    PC3.TabButton { text: i18n("Keyboard") }
                 }
 
                 PC3.ToolButton {
@@ -118,7 +117,6 @@ PlasmoidItem {
             PowerProfileTab { backend: trayBackend }
             WaterCoolerTab  { backend: trayBackend }
             HardwareTab     { backend: trayBackend }
-            KeyboardTab     { backend: trayBackend }
         }
 
         footer: PlasmaExtras.PlasmoidHeading {
