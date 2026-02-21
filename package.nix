@@ -1,7 +1,6 @@
 { lib
 , cmake
 , coreutils
-, extra-cmake-modules
 , gawk
 , kdePackages
 , kf6 ? null
@@ -30,7 +29,7 @@ stdenv.mkDerivation {
 
   nativeBuildInputs = [
     cmake
-    extra-cmake-modules
+    kdePackages.extra-cmake-modules
     pkg-config
     makeWrapper
   ];

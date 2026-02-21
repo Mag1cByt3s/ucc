@@ -65,6 +65,6 @@ target_compile_options( ucc-declarative PRIVATE
   -Wall -Wextra -Wpedantic -Werror
 )
 
-ecm_finalize_qml_module( ucc-declarative )
+ecm_finalize_qml_module( ucc-declarative DESTINATION ${KDE_INSTALL_QMLDIR} )
 
 install( TARGETS ucc-declarative ${KDE_INSTALL_TARGETS_DEFAULT_ARGS} LIBRARY NAMELINK_SKIP )
