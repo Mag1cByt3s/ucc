@@ -51,14 +51,15 @@ in
   config = lib.mkIf cfg.enable {
     nixpkgs.overlays = lib.mkIf (overlay != null) [ overlay ];
 
+    # Add the package to the system profile so plasmashell can discover the
+    # Plasma applet .so (via QT_PLUGIN_PATH) and the QML module
+    # (com.uniwill.ucc.private, via QML2_IMPORT_PATH / QT_QML_IMPORT_PATH).
+    environment.systemPackages = [ cfg.package ];
+
     systemd.tmpfiles.rules = [
       "d /etc/ucc 0755 root root - -"
       "d /etc/ucc/autosave 0755 root root - -"
     ];
-
-    # Autostart the tray applet for all desktop sessions
-    environment.etc."xdg/autostart/ucc-tray.desktop".source =
-      "${cfg.package}/share/xdg/autostart/ucc-tray.desktop";
 
     systemd.services.uccd = {
       description = "Uniwill Control Center Daemon";

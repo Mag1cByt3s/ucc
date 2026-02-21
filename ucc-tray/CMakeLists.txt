@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+#
+# ucc-tray — KDE Plasma system-tray applet for Uniwill Control Center
+#
+# Structure (following plasma-pa pattern):
+#   src/     — QML extension module (com.uniwill.ucc.private) providing TrayBackend
+#   applet/  — Plasma applet package (com.uniwill.ucc) with the QML UI
+#
 
+<<<<<<< HEAD
 cmake_minimum_required( VERSION 3.20 )
 
 project( ucc-tray
@@ -135,3 +143,7 @@ set(UCC_AUTOSTART_DIR "${_ucc_default_autostart_dir}" CACHE STRING
 install( FILES ucc-tray.desktop
   DESTINATION "${UCC_AUTOSTART_DIR}"
 )
+=======
+add_subdirectory( src )
+add_subdirectory( applet )
+>>>>>>> 5a2dad7 (Convert QtQuick based tray application to plasma applet.)

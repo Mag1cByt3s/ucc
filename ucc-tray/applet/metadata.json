@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Uniwill Control Center Contributors"
+            }
+        ],
+        "Category": "Hardware",
+        "Description": "Monitor and control Uniwill laptop hardware",
+        "EnabledByDefault": true,
+        "Icon": "ucc-tray",
+        "Id": "com.uniwill.ucc",
+        "License": "GPL-3.0-or-later",
+        "Name": "Uniwill Control Center"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-NotificationAreaCategory": "Hardware"
+}

@@ -39,11 +39,14 @@ stdenv.mkDerivation {
     kdePackages.qtbase
     kdePackages.qtdeclarative
     kdePackages.qtconnectivity
+    kdePackages.kconfig
+    kdePackages.kcoreaddons
+    kdePackages.kpackage
+    kdePackages.kwindowsystem
+    kdePackages.libplasma
     nlohmann_json
     libxrandr
     systemd
-  ] ++ lib.optionals (kdePackages ? qtquickcontrols2) [
-    kdePackages.qtquickcontrols2
   ] ++ lib.optionals (tuxedo-drivers != null) [
     tuxedo-drivers
   ];
@@ -57,8 +60,6 @@ stdenv.mkDerivation {
 
   postFixup = ''
     wrapProgram $out/bin/ucc-gui \
-      --set QT_QPA_PLATFORM_PLUGIN_PATH "${kdePackages.qtbase}/lib/qt-6/plugins"
-    wrapProgram $out/bin/ucc-tray \
       --set QT_QPA_PLATFORM_PLUGIN_PATH "${kdePackages.qtbase}/lib/qt-6/plugins"
     wrapProgram $out/bin/uccd \
       --prefix PATH : "${lib.makeBinPath [ coreutils gawk gnugrep procps util-linux which ]}"

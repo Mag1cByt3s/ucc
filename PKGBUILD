@@ -3,15 +3,16 @@
 pkgname=ucc
 pkgver=0.1.0
 pkgrel=1
-pkgdesc='Uniwill Control Center - System daemon, GUI and tray applet for Uniwill laptops'
+pkgdesc='Uniwill Control Center - System daemon, GUI and Plasma applet for Uniwill laptops'
 arch=('x86_64')
 url='https://github.com/nanomatters/ucc'
 license=('GPL-3.0-or-later')
 
 # --- Runtime dependencies ---
-# qt6-base:          QtCore, QtGui, QtWidgets, QtDBus (GUI, tray, shared lib, daemon)
+# qt6-base:          QtCore, QtGui, QtWidgets, QtDBus (GUI, shared lib, daemon)
 # qt6-connectivity:  QtBluetooth (daemon BT scanning, GUI BT display)
-# qt6-declarative:   QtQml, QtQuick, QtQuickControls2 (required by root CMakeLists find_package)
+# qt6-declarative:   QtQml, QtQuick (required for Plasma applet QML module)
+# plasma-workspace:  Plasma shell (hosts the applet)
 # systemd-libs:      libsystemd / libudev (uccd links udev)
 # hicolor-icon-theme: icon theme spec directory structure
 # dbus:              system bus for uccd D-Bus service
@@ -19,6 +20,7 @@ depends=(
   'qt6-base'
   'qt6-connectivity'
   'qt6-declarative'
+  'plasma-workspace'
   'systemd-libs'
   'hicolor-icon-theme'
   'dbus'
@@ -26,14 +28,22 @@ depends=(
 
 # --- Build-time dependencies ---
 # cmake:               build system (>= 3.20 required by CMakeLists)
-# extra-cmake-modules: ECM for KDEInstallDirs / KDECMakeSettings
+# extra-cmake-modules: ECM for KDEInstallDirs / KDECMakeSettings / ECMQmlModule
 # ninja:               faster parallel builds
 # pkgconf:             pkg-config used by uccd/CMakeLists (find_package(PkgConfig))
+# plasma-workspace:    PlasmaMacros for plasma_add_applet
+# kconfig:             KF6Config (Plasma link dependency)
+# kcoreaddons:         KF6CoreAddons (Plasma link dependency)
 makedepends=(
   'cmake'
   'extra-cmake-modules'
   'ninja'
   'pkgconf'
+  'plasma-workspace'
+  'kconfig'
+  'kcoreaddons'
+  'kpackage'
+  'kwindowsystem'
 )
 
 # tuxedo-drivers provides the /dev/tuxedo_io kernel interface uccd talks to
@@ -60,7 +70,6 @@ build() {
     -DCMAKE_INSTALL_LIBDIR=lib
     -DBUILD_GUI=ON
     -DBUILD_TRAY=ON
-    -DBUILD_WIDGETS=OFF
   )
   cmake "${cmake_options[@]}"
   cmake --build build

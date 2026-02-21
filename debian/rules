@@ -10,8 +10,7 @@ override_dh_auto_configure:
 	dh_auto_configure -- \
 		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
 		-DBUILD_GUI=ON \
-		-DBUILD_TRAY=ON \
-		-DBUILD_WIDGETS=OFF
+		-DBUILD_TRAY=ON
 
 override_dh_auto_install:
 	@echo "=== [1] Check cmake_install.cmake exists ==="
@@ -19,8 +18,8 @@ override_dh_auto_install:
 	@echo "=== [2] First 80 lines of cmake_install.cmake ==="
 	@head -80 obj-x86_64-linux-gnu/cmake_install.cmake 2>/dev/null || true
 	@echo "=== [3] Check binaries were built ==="
-	@ls -la obj-x86_64-linux-gnu/uccd/uccd obj-x86_64-linux-gnu/ucc-gui/ucc-gui obj-x86_64-linux-gnu/ucc-tray/ucc-tray 2>&1 || true
-	@find obj-x86_64-linux-gnu -name 'libucc-dbus.so*' 2>/dev/null || echo "libucc-dbus.so NOT found in build tree"
+	@ls -la obj-x86_64-linux-gnu/uccd/uccd obj-x86_64-linux-gnu/ucc-gui/ucc-gui obj-x86_64-linux-gnu/ucc-tray/applet/com.uniwill.ucc.so 2>&1 || true
+	@find obj-x86_64-linux-gnu -name 'libucc-dbus.so*' -o -name 'libucc-declarative.so' 2>/dev/null || echo "shared libs NOT found in build tree"
 	@echo "=== [4] Running cmake --install MANUALLY with --verbose ==="
 	DESTDIR=$(CURDIR)/debian/tmp cmake --install obj-x86_64-linux-gnu --verbose 2>&1 || echo "*** cmake --install FAILED with exit code $$? ***"
 	@echo "=== [5] Contents of debian/tmp after install ==="

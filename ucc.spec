@@ -15,8 +15,11 @@ BuildRequires:  gcc-c++
 BuildRequires:  qt6-qtbase-devel >= 6.0
 BuildRequires:  qt6-qtdeclarative-devel
 BuildRequires:  qt6-qtconnectivity-devel
+BuildRequires:  kf6-kconfig-devel
+BuildRequires:  kf6-kcoreaddons-devel
+BuildRequires:  kf6-kpackage-devel
 BuildRequires:  kf6-kwindowsystem-devel
-BuildRequires:  libplasma-devel
+BuildRequires:  libplasma-devel >= 6.0
 BuildRequires:  systemd-devel
 BuildRequires:  libXrandr-devel
 BuildRequires:  libgudev-devel
@@ -25,6 +28,7 @@ Requires:       systemd
 Requires:       qt6-qtbase >= 6.0
 Requires:       qt6-qtdeclarative
 Requires:       qt6-qtconnectivity
+Requires:       plasma-workspace >= 6.0
 Requires:       tuxedo-drivers
 Requires(post): systemd
 Requires(preun): systemd
@@ -36,8 +40,7 @@ suite for Uniwill computers. It provides:
 
 - Daemon (uccd): Background service for system control and monitoring
 - GUI (ucc-gui): Main graphical user interface
-- System Tray (ucc-tray): Quick access tray applet
-- Plasma Widgets: Desktop integration widgets
+- Plasma Applet: KDE system tray applet for quick access
 
 Features include fan control, keyboard backlight management, display settings,
 CPU power management, and water cooler control for supported systems.
@@ -52,8 +55,7 @@ CPU power management, and water cooler control for supported systems.
   -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
   -DCMAKE_INSTALL_RPATH="" \
   -DBUILD_GUI=ON \
-  -DBUILD_TRAY=ON \
-  -DBUILD_WIDGETS=ON
+  -DBUILD_TRAY=ON
 %cmake_build
 
 %install
@@ -80,17 +82,21 @@ systemctl daemon-reload > /dev/null 2>&1 || true
 %doc README.md
 %{_bindir}/uccd
 %{_bindir}/ucc-gui
-%{_bindir}/ucc-tray
 %{_libdir}/libucc-dbus.so*
+# libucc-declarative.so is installed twice by cmake (KDE_INSTALL_TARGETS_DEFAULT_ARGS
+# and ecm_finalize_qml_module). Only the QML module copy is needed.
+%exclude %{_libdir}/libucc-declarative.so
+%{_libdir}/qt6/plugins/plasma/applets/com.uniwill.ucc.so
+%{_libdir}/qt6/qml/com/uniwill/ucc/private/libucc-declarative.so
+%{_libdir}/qt6/qml/com/uniwill/ucc/private/qmldir
+%{_libdir}/qt6/qml/com/uniwill/ucc/private/ucc-declarative.qmltypes
+%{_libdir}/qt6/qml/com/uniwill/ucc/private/kde-qmlmodule.version
 %{_unitdir}/uccd.service
 %{_unitdir}/uccd-sleep.service
 %{_datadir}/dbus-1/system-services/com.uniwill.uccd.service
 %{_datadir}/dbus-1/system.d/com.uniwill.uccd.conf
 %dir %{_sysconfdir}/ucc
 %{_datadir}/applications/ucc-gui.desktop
-%{_datadir}/applications/ucc-tray.desktop
-%{_sysconfdir}/xdg/autostart/ucc-tray.desktop
-# WIDDGET # %{_datadir}/plasma/plasmoids/org.uniwill.ucc.*/
 # Icons (SVG and PNG, all sizes)
 %{_datadir}/icons/hicolor/scalable/apps/ucc-gui.svg
 %{_datadir}/icons/hicolor/scalable/apps/ucc-gui_16.svg
