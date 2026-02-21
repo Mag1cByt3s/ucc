@@ -19,6 +19,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QFileSystemWatcher>
+#include <QtQmlIntegration/qqmlintegration.h>
 #include <memory>
 
 #include "UccdClient.hpp"
@@ -33,6 +34,7 @@
 class TrayBackend : public QObject
 {
   Q_OBJECT
+  QML_ELEMENT
 
   // ── Connection ──
   Q_PROPERTY( bool connected READ connected NOTIFY connectedChanged )
