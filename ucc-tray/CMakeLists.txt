@@ -118,6 +118,20 @@ install( FILES ucc-tray.desktop
 )
 
 # Desktop file for autostart on GNOME/KDE session start
+#
+# Default to the traditional XDG system autostart directory. Some build
+# environments (e.g. KDE/ECM via KDEInstallDirs) may define
+# `KDE_INSTALL_AUTOSTARTDIR`, but it is often relative to the install prefix.
+# Only use it as a default when it is an absolute path.
+set(_ucc_default_autostart_dir "/etc/xdg/autostart")
+if(DEFINED KDE_INSTALL_AUTOSTARTDIR AND IS_ABSOLUTE "${KDE_INSTALL_AUTOSTARTDIR}")
+  set(_ucc_default_autostart_dir "${KDE_INSTALL_AUTOSTARTDIR}")
+endif()
+
+set(UCC_AUTOSTART_DIR "${_ucc_default_autostart_dir}" CACHE STRING
+  "Install directory for the ucc-tray autostart desktop file"
+)
+
 install( FILES ucc-tray.desktop
-  DESTINATION /etc/xdg/autostart
+  DESTINATION "${UCC_AUTOSTART_DIR}"
 )
