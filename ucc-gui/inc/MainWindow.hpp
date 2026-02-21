@@ -126,6 +126,7 @@ namespace ucc
     // Slot: called when DBus connection status changes
     void onUccdConnectionChanged( bool connected );
     void loadProfileDetails( const QString &profileId );
+    QString buildProfileJSON() const;
     void markChanged();
     void updateButtonStates();
     void setupFanControlTab();
@@ -239,5 +240,6 @@ namespace ucc
     // Device capability flags (queried from daemon at startup)
     bool m_waterCoolerSupported = false;
     bool m_cTGPAdjustmentSupported = true;
+    int m_gpuDefaultPowerLimit = 0;  // Default GPU power limit in watts, queried from daemon
   };
 }

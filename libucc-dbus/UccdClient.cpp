@@ -751,11 +751,29 @@ bool UccdClient::setChargeType( const std::string &type )
 
 bool UccdClient::setNVIDIAPowerOffset( [[maybe_unused]] int offset )
 {
+  // NVIDIA cTGP offset is managed through the profile (nvidiaPowerCTRLProfile.cTGPOffset).
+  // There is no separate D-Bus method — apply a profile with the desired offset instead.
+  // This matches TCC behaviour where the offset is always part of the profile.
   return false;
 }
 
 std::optional< int > UccdClient::getNVIDIAPowerOffset()
 {
+  // Read the cTGP offset from the currently active profile
+  if ( auto json = getActiveProfileJSON() )
+  {
+    QJsonDocument doc = QJsonDocument::fromJson( QString::fromStdString( *json ).toUtf8() );
+    if ( doc.isObject() )
+    {
+      QJsonObject obj = doc.object();
+      if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj["nvidiaPowerCTRLProfile"].isObject() )
+      {
+        QJsonObject nvidiaObj = obj["nvidiaPowerCTRLProfile"].toObject();
+        if ( nvidiaObj.contains( "cTGPOffset" ) )
+          return nvidiaObj["cTGPOffset"].toInt();
+      }
+    }
+  }
   return std::nullopt;
 }
 
@@ -764,13 +782,30 @@ std::optional< int > UccdClient::getNVIDIAPowerCTRLMaxPowerLimit()
   return callMethod< int >( "GetNVIDIAPowerCTRLMaxPowerLimit" );
 }
 
+std::optional< int > UccdClient::getNVIDIAPowerCTRLDefaultPowerLimit()
+{
+  return callMethod< int >( "GetNVIDIAPowerCTRLDefaultPowerLimit" );
+}
+
+std::optional< bool > UccdClient::getNVIDIAPowerCTRLAvailable()
+{
+  return callMethod< bool >( "GetNVIDIAPowerCTRLAvailable" );
+}
+
 bool UccdClient::setPrimeProfile( [[maybe_unused]] const std::string &profile )
 {
+  // Prime profile switching is not supported as a standalone D-Bus call.
+  // Prime state is detected automatically by the daemon's HardwareMonitorWorker.
   return false;
 }
 
 std::optional< std::string > UccdClient::getPrimeProfile()
 {
+  if ( hasMethod( m_interface.get(), "GetPrimeState" ) )
+  {
+    if ( auto result = callMethod< QString >( "GetPrimeState" ) )
+      return result->toStdString();
+  }
   return std::nullopt;
 }
 

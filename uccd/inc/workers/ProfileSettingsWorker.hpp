@@ -112,6 +112,10 @@ public:
     logLine( "ProfileSettingsWorker: reapplyProfile() called" );
     applyODMPowerLimits();
     applyODMProfile();
+
+    // Always re-apply NVIDIA cTGP offset on any profile change (matches TCC behaviour)
+    if ( m_nvidiaPowerCTRLAvailable )
+      applyNVIDIACTGPOffset();
   }
 
   std::vector< TDPInfo > getTDPInfo();

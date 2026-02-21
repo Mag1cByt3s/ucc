@@ -3107,7 +3107,13 @@ void UccDBusService::computeDeviceCapabilities()
   {
     // Unknown device: water cooler not available, cTGP defers to hardware detection
     m_dbusData.waterCoolerSupported = false;
-    m_dbusData.cTGPAdjustmentSupported = false;
+    
+    // For unknown devices, check if the hardware file exists (like TCC does)
+    std::error_code ec;
+    const std::string ctgpPath = "/sys/devices/platform/tuxedo_nvidia_power_ctrl/ctgp_offset";
+    bool hardwareExists = std::filesystem::exists( ctgpPath, ec ) && 
+                         std::filesystem::is_regular_file( ctgpPath, ec );
+    m_dbusData.cTGPAdjustmentSupported = hardwareExists;
   }
 
   syslog( LOG_INFO, "Device capabilities: aquaris=%s, cTGP=%s",

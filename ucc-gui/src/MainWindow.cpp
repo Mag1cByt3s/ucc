@@ -106,6 +106,8 @@ MainWindow::MainWindow( QWidget *parent )
     m_waterCoolerSupported = *waterCooler;
   if ( auto ctgp = m_UccdClient->getCTGPAdjustmentSupported() )
     m_cTGPAdjustmentSupported = *ctgp;
+  if ( auto gpuDefault = m_UccdClient->getNVIDIAPowerCTRLDefaultPowerLimit() )
+    m_gpuDefaultPowerLimit = *gpuDefault;
 
   setWindowTitle( "Uniwill Control Center" );
   setGeometry( 100, 100, 900, 700 );
@@ -717,10 +719,11 @@ void MainWindow::setupProfilesPage()
   QLabel *gpuPowerLabel = new QLabel( "Configurable graphics power (TGP)" );
   QHBoxLayout *gpuLayout = new QHBoxLayout();
   m_gpuPowerSlider = new QSlider( Qt::Horizontal );
-  m_gpuPowerSlider->setMinimum( 40 );
+  m_gpuPowerSlider->setMinimum( m_gpuDefaultPowerLimit > 0 ? m_gpuDefaultPowerLimit : 40 );
   m_gpuPowerSlider->setMaximum( 175 );
-  m_gpuPowerSlider->setValue( 175 );
-  m_gpuPowerValue = new QLabel( "175 W" );
+  int gpuInitialValue = m_gpuDefaultPowerLimit > 0 ? m_gpuDefaultPowerLimit : 175;
+  m_gpuPowerSlider->setValue( gpuInitialValue );
+  m_gpuPowerValue = new QLabel( QString::number( gpuInitialValue ) + " W" );
   m_gpuPowerValue->setMinimumWidth( 50 );
   gpuLayout->addWidget( m_gpuPowerSlider, 1 );
   gpuLayout->addWidget( m_gpuPowerValue );
@@ -1658,9 +1661,13 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   {
     QJsonObject gpuObj = obj["nvidiaPowerCTRLProfile"].toObject();
 
-
-    if ( gpuObj.contains( "cTGPOffset" ) )
-      m_gpuPowerSlider->setValue( gpuObj["cTGPOffset"].toInt( 175 ) + 100 ); // Offset value, adjust as needed
+    int offset = gpuObj["cTGPOffset"].toInt( 0 );
+    m_gpuPowerSlider->setValue( offset + m_gpuDefaultPowerLimit );
+  }
+  else
+  {
+    // Profile has no NVIDIA settings — default to no boost (offset 0)
+    m_gpuPowerSlider->setValue( m_gpuDefaultPowerLimit );
   }
 
   // Load Charging profile setting
@@ -1953,24 +1960,145 @@ void MainWindow::updateButtonStates( void)
     m_fanControlTab->updateButtonStates( m_UccdClient->isConnected() );
 }
 
-void MainWindow::onApplyClicked()
+QString MainWindow::buildProfileJSON() const
 {
-  if ( m_selectedProfileIndex >= 0 )
+  QString profileId   = m_profileCombo->currentData().toString();
+  QString profileName = m_profileCombo->currentText();
+
+  QJsonObject profileObj;
+  profileObj["id"]          = profileId;
+  profileObj["name"]        = profileName;
+  profileObj["description"] = m_descriptionEdit->toPlainText();
+
+  // Brightness
+  QJsonObject displayObj;
+  if ( m_setBrightnessCheckBox->isChecked() )
+    displayObj["brightness"] = m_brightnessSlider->value();
+  profileObj["display"] = displayObj;
+
+  // Fan — embed complete fan profile tables
+  QJsonObject fanObj;
+  QString fanProfileId  = m_profileFanProfileCombo->currentData().toString();
+  QString fanProfileJSON = m_profileManager->getFanProfile( fanProfileId );
+  if ( !fanProfileJSON.isEmpty() && fanProfileJSON != "{}" )
   {
-    QString profileName = m_profileCombo->currentText();
-    m_profileManager->setActiveProfileByIndex( m_selectedProfileIndex );
+    QJsonDocument fanDoc = QJsonDocument::fromJson( fanProfileJSON.toUtf8() );
+    if ( fanDoc.isObject() )
+    {
+      QJsonObject fp = fanDoc.object();
+      if ( fp.contains( "tableCPU" ) )           fanObj["tableCPU"]           = fp["tableCPU"];
+      if ( fp.contains( "tableGPU" ) )           fanObj["tableGPU"]           = fp["tableGPU"];
+      if ( fp.contains( "tablePump" ) )          fanObj["tablePump"]          = fp["tablePump"];
+      if ( fp.contains( "tableWaterCoolerFan" ) ) fanObj["tableWaterCoolerFan"] = fp["tableWaterCoolerFan"];
+    }
+  }
+  fanObj["fanProfile"]       = fanProfileId;
+  fanObj["offsetFanspeed"]   = m_offsetFanSpeedSlider->value();
+  fanObj["sameSpeed"]        = m_sameFanSpeedCheckBox   ? m_sameFanSpeedCheckBox->isChecked()   : true;
+  fanObj["autoControlWC"]    = m_autoWaterControlCheckBox ? m_autoWaterControlCheckBox->isChecked() : true;
+  fanObj["enableWaterCooler"] = m_fanControlTab          ? m_fanControlTab->isWaterCoolerEnabled() : true;
+  profileObj["fan"] = fanObj;
 
-    // Re-send the current water cooler enable state to the daemon so that
-    // the profile apply doesn't override the user's current checkbox state.
-    if ( m_fanControlTab )
-      m_fanControlTab->sendWaterCoolerEnable( m_fanControlTab->isWaterCoolerEnabled() );
+  // CPU
+  QJsonObject cpuObj;
+  cpuObj["onlineCores"]                = m_cpuCoresSlider->value();
+  cpuObj["governor"]                   = m_governorCombo->currentData().toString();
+  cpuObj["energyPerformancePreference"] = m_eppCombo ? m_eppCombo->currentData().toString() : QString();
+  cpuObj["scalingMinFrequency"]         = std::clamp( m_minFrequencySlider->value(), m_cpuMinFreqKHz, m_cpuMaxFreqKHz );
+  cpuObj["scalingMaxFrequency"]         = std::clamp( m_maxFrequencySlider->value(), m_cpuMinFreqKHz, m_cpuMaxFreqKHz );
+  profileObj["cpu"] = cpuObj;
 
-    statusBar()->showMessage( "Profile applied: " + profileName );
+  // ODM Power Limits (TDP)
+  QJsonObject odmObj;
+  QJsonArray tdpArray;
+  tdpArray.append( m_odmPowerLimit1Slider->value() );
+  tdpArray.append( m_odmPowerLimit2Slider->value() );
+  tdpArray.append( m_odmPowerLimit3Slider->value() );
+  odmObj["tdpValues"] = tdpArray;
+  profileObj["odmPowerLimits"] = odmObj;
+
+  // GPU (NVIDIA cTGP)
+  QJsonObject nvidiaPowerObj;
+  nvidiaPowerObj["cTGPOffset"] = m_gpuPowerSlider->value() - m_gpuDefaultPowerLimit;
+  profileObj["nvidiaPowerCTRLProfile"] = nvidiaPowerObj;
+
+  // Keyboard — embed complete keyboard profile data
+  QJsonObject keyboardObj;
+  QString keyboardProfileId  = m_profileKeyboardProfileCombo->currentData().toString();
+  QString keyboardProfileJSON = m_profileManager->getKeyboardProfile( keyboardProfileId );
+  if ( !keyboardProfileJSON.isEmpty() && keyboardProfileJSON != "{}" )
+  {
+    QJsonDocument kbDoc = QJsonDocument::fromJson( keyboardProfileJSON.toUtf8() );
+    if ( kbDoc.isObject() )
+      keyboardObj = kbDoc.object();
+    else if ( kbDoc.isArray() )
+      keyboardObj["states"] = kbDoc.array();
   }
   else
   {
-    statusBar()->showMessage( "No profile selected" );
+    if ( auto keyboardStates = m_UccdClient->getKeyboardBacklightStates() )
+      keyboardObj["states"] = QJsonDocument::fromJson( QString::fromStdString( *keyboardStates ).toUtf8() ).array();
   }
+  keyboardObj["keyboardProfileName"] = m_profileKeyboardProfileCombo->currentText();
+  if ( m_keyboardBrightnessSlider )
+    keyboardObj["brightness"] = m_keyboardBrightnessSlider->value();
+  if ( m_keyboardVisualizer )
+    keyboardObj["states"] = m_keyboardVisualizer->getJSONState();
+  profileObj["keyboard"]               = keyboardObj;
+  profileObj["selectedKeyboardProfile"] = keyboardProfileId;
+
+  // Charging
+  if ( m_profileChargingProfileCombo )
+  {
+    QString v = m_profileChargingProfileCombo->currentData().toString();
+    if ( !v.isEmpty() ) profileObj["chargingProfile"] = v;
+  }
+  if ( m_profileChargingPriorityCombo )
+  {
+    QString v = m_profileChargingPriorityCombo->currentData().toString();
+    if ( !v.isEmpty() ) profileObj["chargingPriority"] = v;
+  }
+  if ( m_profileChargeLimitCombo )
+  {
+    QString limitPreset = m_profileChargeLimitCombo->currentData().toString();
+    if ( limitPreset == "full" )
+    {
+      profileObj["chargeType"] = "Standard";
+    }
+    else if ( limitPreset == "reduced" )
+    {
+      profileObj["chargeType"]           = "Custom";
+      profileObj["chargeStartThreshold"] = 60;
+      profileObj["chargeEndThreshold"]   = 90;
+    }
+    else if ( limitPreset == "stationary" )
+    {
+      profileObj["chargeType"]           = "Custom";
+      profileObj["chargeStartThreshold"] = 40;
+      profileObj["chargeEndThreshold"]   = 80;
+    }
+  }
+
+  return QString::fromUtf8( QJsonDocument( profileObj ).toJson() );
+}
+
+void MainWindow::onApplyClicked()
+{
+  if ( m_selectedProfileIndex < 0 )
+  {
+    statusBar()->showMessage( "No profile selected" );
+    return;
+  }
+
+  QString profileJSON = buildProfileJSON();
+  m_profileManager->getClient()->applyProfile( profileJSON.toStdString() );
+
+  // Re-send the current water cooler enable state so that
+  // the profile apply doesn't override the user's checkbox state.
+  if ( m_fanControlTab )
+    m_fanControlTab->sendWaterCoolerEnable( m_fanControlTab->isWaterCoolerEnabled() );
+
+  statusBar()->showMessage( "Profile applied: " + m_profileCombo->currentText() );
 }
 
 void MainWindow::onSaveClicked()
@@ -1981,171 +2109,7 @@ void MainWindow::onSaveClicked()
 
   if ( isCustom )
   {
-    // Save full profile changes for custom profiles
-    // Build updated profile JSON
-    QJsonObject profileObj;
-    profileObj["id"] = profileId;
-    profileObj["name"] = profileName;
-    profileObj["description"] = m_descriptionEdit->toPlainText();
-
-    // Brightness settings
-    QJsonObject displayObj;
-    if ( m_setBrightnessCheckBox->isChecked() )
-    {
-      displayObj["brightness"] = m_brightnessSlider->value();
-    }
-    profileObj["display"] = displayObj;
-
-    // Fan settings - embed complete fan profile data
-    QJsonObject fanObj;
-
-    // Get the full fan profile JSON and embed tableCPU/tableGPU
-    QString fanProfileId = m_profileFanProfileCombo->currentData().toString();
-    QString fanProfileName = m_profileFanProfileCombo->currentText();
-    QString fanProfileJSON = m_profileManager->getFanProfile(fanProfileId);
-
-    if (!fanProfileJSON.isEmpty() && fanProfileJSON != "{}")
-    {
-      QJsonDocument fanDoc = QJsonDocument::fromJson(fanProfileJSON.toUtf8());
-      if (fanDoc.isObject())
-      {
-        QJsonObject fanProfileObj = fanDoc.object();
-
-        // Embed fan curve tables directly in the profile
-        if (fanProfileObj.contains("tableCPU"))
-          fanObj["tableCPU"] = fanProfileObj["tableCPU"];
-
-        if (fanProfileObj.contains("tableGPU"))
-          fanObj["tableGPU"] = fanProfileObj["tableGPU"];
-
-        if (fanProfileObj.contains("tablePump"))
-          fanObj["tablePump"] = fanProfileObj["tablePump"];
-
-        if (fanProfileObj.contains("tableWaterCoolerFan"))
-          fanObj["tableWaterCoolerFan"] = fanProfileObj["tableWaterCoolerFan"];
-      }
-    }
-
-    // Store fan profile ID using the key the daemon expects
-    fanObj["fanProfile"] = fanProfileId;
-    fanObj["offsetFanspeed"] = m_offsetFanSpeedSlider->value();
-    // Persist same-speed setting
-    fanObj["sameSpeed"] = m_sameFanSpeedCheckBox ? m_sameFanSpeedCheckBox->isChecked() : true;
-    fanObj["autoControlWC"] = m_autoWaterControlCheckBox ? m_autoWaterControlCheckBox->isChecked() : true;
-    fanObj["enableWaterCooler"] = m_fanControlTab ? m_fanControlTab->isWaterCoolerEnabled() : true;
-
-    profileObj["fan"] = fanObj;
-
-    // CPU settings
-    QJsonObject cpuObj;
-    cpuObj["onlineCores"] = m_cpuCoresSlider->value();
-    cpuObj["governor"] = m_governorCombo->currentData().toString();
-    cpuObj["energyPerformancePreference"] = m_eppCombo ? m_eppCombo->currentData().toString() : QString();
-    cpuObj["scalingMinFrequency"] = std::clamp( m_minFrequencySlider->value(), m_cpuMinFreqKHz, m_cpuMaxFreqKHz );
-    cpuObj["scalingMaxFrequency"] = std::clamp( m_maxFrequencySlider->value(), m_cpuMinFreqKHz, m_cpuMaxFreqKHz );
-    profileObj["cpu"] = cpuObj;
-
-  // ODM Power Limit (TDP) settings
-  QJsonObject odmObj;
-  QJsonArray tdpArray;
-  tdpArray.append( m_odmPowerLimit1Slider->value() );
-  tdpArray.append( m_odmPowerLimit2Slider->value() );
-  tdpArray.append( m_odmPowerLimit3Slider->value() );
-  odmObj["tdpValues"] = tdpArray;
-  profileObj["odmPowerLimits"] = odmObj;
-
-  // GPU settings
-  QJsonObject gpuObj;
-  gpuObj["cTGPOffset"] = m_gpuPowerSlider->value() - 100; // Reverse the offset
-  QJsonObject nvidiaPowerObj;
-  nvidiaPowerObj["cTGPOffset"] = gpuObj["cTGPOffset"];
-  profileObj["nvidiaPowerCTRLProfile"] = nvidiaPowerObj;
-
-  // Keyboard settings - embed complete keyboard profile data
-  QJsonObject keyboardObj;
-
-  QString keyboardProfileId = m_profileKeyboardProfileCombo->currentData().toString();
-  QString keyboardProfileName = m_profileKeyboardProfileCombo->currentText();
-
-  // Get the selected keyboard profile data
-  QString keyboardProfileJSON = m_profileManager->getKeyboardProfile(keyboardProfileId);
-  if (!keyboardProfileJSON.isEmpty() && keyboardProfileJSON != "{}") {
-    QJsonDocument kbDoc = QJsonDocument::fromJson(keyboardProfileJSON.toUtf8());
-    if (kbDoc.isObject()) {
-      keyboardObj = kbDoc.object();
-    } else if (kbDoc.isArray()) {
-      keyboardObj["states"] = kbDoc.array();
-    }
-  } else {
-    // Fallback: get current keyboard backlight states from daemon
-    if (auto keyboardStates = m_UccdClient->getKeyboardBacklightStates()) {
-      keyboardObj["states"] = QJsonDocument::fromJson(QString::fromStdString(*keyboardStates).toUtf8()).array();
-    }
-  }
-
-  // Store the name for reference/display
-  keyboardObj["keyboardProfileName"] = keyboardProfileName;
-
-  // Include keyboard brightness in the profile
-  if ( m_keyboardBrightnessSlider )
-  {
-    keyboardObj["brightness"] = m_keyboardBrightnessSlider->value();
-  }
-
-  // Include key colors from visualizer if available
-  if ( m_keyboardVisualizer )
-  {
-    keyboardObj["states"] = m_keyboardVisualizer->getJSONState();
-  }
-
-  profileObj["keyboard"] = keyboardObj;
-
-  // Embed the selected keyboard profile ID at profile level
-  profileObj["selectedKeyboardProfile"] = keyboardProfileId;
-
-  // Charging profile setting
-  if ( m_profileChargingProfileCombo )
-  {
-    QString chargingProfile = m_profileChargingProfileCombo->currentData().toString();
-    if ( !chargingProfile.isEmpty() )
-      profileObj["chargingProfile"] = chargingProfile;
-  }
-
-  // Charging priority setting
-  if ( m_profileChargingPriorityCombo )
-  {
-    QString chargingPriority = m_profileChargingPriorityCombo->currentData().toString();
-    if ( !chargingPriority.isEmpty() )
-      profileObj["chargingPriority"] = chargingPriority;
-  }
-
-  // Charge limit setting (stored as chargeType + thresholds)
-  if ( m_profileChargeLimitCombo )
-  {
-    QString limitPreset = m_profileChargeLimitCombo->currentData().toString();
-    if ( limitPreset == "full" )
-    {
-      profileObj["chargeType"] = "Standard";
-    }
-    else if ( limitPreset == "reduced" )
-    {
-      profileObj["chargeType"] = "Custom";
-      profileObj["chargeStartThreshold"] = 60;
-      profileObj["chargeEndThreshold"] = 90;
-    }
-    else if ( limitPreset == "stationary" )
-    {
-      profileObj["chargeType"] = "Custom";
-      profileObj["chargeStartThreshold"] = 40;
-      profileObj["chargeEndThreshold"] = 80;
-    }
-  }
-
-  // Convert to JSON string and save
-  QJsonDocument doc( profileObj );
-  QString profileJSON = QString::fromUtf8( doc.toJson() );
-
-  m_profileManager->saveProfile( profileJSON );
+    m_profileManager->saveProfile( buildProfileJSON() );
   }
 
   // For both custom and built-in profiles, update stateMap based on mains/battery button states

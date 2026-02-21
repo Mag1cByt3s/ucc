@@ -338,6 +338,16 @@ void ProfileManager::saveProfile( const QString &profileJSON )
       qWarning() << "Failed to save profile to daemon:" << profileName;
     else
       qDebug() << "Profile saved to daemon:" << profileName;
+
+    // If this profile is currently active, re-apply it so changes take effect immediately
+    if ( profileId == m_activeProfileId )
+    {
+      bool applied = m_client->applyProfile( profileJSON.toStdString() );
+      if ( !applied )
+        qWarning() << "Failed to re-apply active profile after save:" << profileName;
+      else
+        qDebug() << "Re-applied active profile after save:" << profileName;
+    }
   }
 
   updateAllProfiles();
