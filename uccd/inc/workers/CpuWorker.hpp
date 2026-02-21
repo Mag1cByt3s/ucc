@@ -111,7 +111,7 @@ public:
 
   /**
    * @brief Re-apply CPU settings from active profile
-   * 
+   *
    * Call this when the profile changes to re-apply CPU settings
    */
   void reapplyProfile()
@@ -126,7 +126,7 @@ public:
 
   /**
    * @brief Get available CPU governors
-   * 
+   *
    * @return Vector of available governor names, or nullopt if unavailable
    */
   std::optional< std::vector< std::string > > getAvailableGovernors()
@@ -139,7 +139,7 @@ public:
 
   /**
    * @brief Get available energy performance preferences
-   * 
+   *
    * @return Vector of available EPP names, or nullopt if unavailable
    */
   std::optional< std::vector< std::string > > getAvailableEPPs()
@@ -264,7 +264,7 @@ private:
     if ( not available.has_value() )
       return false;
 
-    return std::find( available->begin(), available->end(), governor ) != available->end();
+    return std::ranges::find( *available, governor ) != available->end();
   }
 
   /**
@@ -280,7 +280,7 @@ private:
     if ( not available.has_value() )
       return false;
 
-    return std::find( available->begin(), available->end(), epp ) != available->end();
+    return std::ranges::find( *available, epp ) != available->end();
   }
 
   /**
@@ -392,7 +392,7 @@ private:
             }
           }
 
-          const auto expectedGovernor = not profile.cpu.governor.empty() ? std::optional< std::string >( profile.cpu.governor ) 
+          const auto expectedGovernor = not profile.cpu.governor.empty() ? std::optional< std::string >( profile.cpu.governor )
                                                                          : getDefaultGovernor();
           if ( expectedGovernor.has_value() and isGovernorAvailable( *expectedGovernor ) )
           {

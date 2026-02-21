@@ -340,7 +340,7 @@ const std::vector< UccProfile > legacyProfiles = { legacyDefault, legacyCoolAndB
 // device-specific default profiles
 
 // device-specific default profiles
-const std::map< UniwillDeviceID, std::vector< UccProfile > > deviceProfiles = 
+const std::map< UniwillDeviceID, std::vector< UccProfile > > deviceProfiles =
 {
   { UniwillDeviceID::IBP14G6_TUX, { maxEnergySave, silent, office } },
   { UniwillDeviceID::IBP14G6_TRX, { maxEnergySave, silent, office } },

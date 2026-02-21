@@ -110,9 +110,8 @@ bool ProfileSettingsWorker::applyChargingProfile( const std::string &profileDesc
       SysfsNode< std::string >( CHARGING_PROFILE ).read().value_or( "" );
     const auto profilesAvailable = getChargingProfilesAvailable();
 
-    auto it = std::find( profilesAvailable.begin(), profilesAvailable.end(), profileToSet );
-
-    if ( not profileToSet.empty() and profileToSet != currentProfile and it != profilesAvailable.end() )
+    if ( auto it = std::ranges::find( profilesAvailable, profileToSet );
+         not profileToSet.empty() and profileToSet != currentProfile and it != profilesAvailable.end() )
     {
       if ( SysfsNode< std::string >( CHARGING_PROFILE ).write( profileToSet ) )
       {
@@ -140,13 +139,11 @@ bool ProfileSettingsWorker::applyChargingPriority( const std::string &priorityDe
   try
   {
     const std::string prioToSet = m_currentChargingPriority;
-    const std::string currentPrio =
-      SysfsNode< std::string >( CHARGING_PRIORITY ).read().value_or( "" );
+    const std::string currentPrio = SysfsNode< std::string >( CHARGING_PRIORITY ).read().value_or( "" );
     const auto priosAvailable = getChargingPrioritiesAvailable();
 
-    auto it = std::find( priosAvailable.begin(), priosAvailable.end(), prioToSet );
-
-    if ( not prioToSet.empty() and prioToSet != currentPrio and it != priosAvailable.end() )
+    if ( auto it = std::ranges::find( priosAvailable, prioToSet );
+         not prioToSet.empty() and prioToSet != currentPrio and it != priosAvailable.end() )
     {
       if ( SysfsNode< std::string >( CHARGING_PRIORITY ).write( prioToSet ) )
       {
@@ -464,8 +461,8 @@ void ProfileSettingsWorker::applyPlatformProfile(
     return;
   }
 
-  auto it = std::find( availableProfiles.begin(), availableProfiles.end(), chosenProfileName );
-  if ( it == availableProfiles.end() )
+  if ( auto it = std::ranges::find( availableProfiles, chosenProfileName );
+       it == availableProfiles.end() )
   {
     syslog( LOG_WARNING, "ProfileSettingsWorker: Profile '%s' not available",
             chosenProfileName.c_str() );
@@ -500,7 +497,7 @@ void ProfileSettingsWorker::applyProfileViaAPI( const std::string &chosenProfile
 
   std::string profileToApply = chosenProfileName;
 
-  auto it = std::find( availableProfiles.begin(), availableProfiles.end(), profileToApply );
+  auto it = std::ranges::find( availableProfiles, profileToApply );
   if ( it == availableProfiles.end() )
   {
     profileToApply = getDefaultProfileViaAPI();
@@ -509,7 +506,7 @@ void ProfileSettingsWorker::applyProfileViaAPI( const std::string &chosenProfile
             chosenProfileName.c_str(), profileToApply.c_str() );
   }
 
-  it = std::find( availableProfiles.begin(), availableProfiles.end(), profileToApply );
+  it = std::ranges::find( availableProfiles, profileToApply );
   if ( it == availableProfiles.end() )
   {
     syslog( LOG_WARNING, "ProfileSettingsWorker: No valid profile found" );
@@ -635,9 +632,8 @@ void ProfileSettingsWorker::initializeChargingSettings() noexcept
 {
   if ( hasChargingProfile() )
   {
-    auto currentProfile = SysfsNode< std::string >( CHARGING_PROFILE ).read().value_or( "" );
-
-    if ( not currentProfile.empty() )
+    if ( auto currentProfile = SysfsNode< std::string >( CHARGING_PROFILE ).read().value_or( "" );
+         not currentProfile.empty() )
     {
       m_currentChargingProfile = currentProfile;
       syslog( LOG_INFO, "Initialized charging profile: %s", m_currentChargingProfile.c_str() );
@@ -646,9 +642,8 @@ void ProfileSettingsWorker::initializeChargingSettings() noexcept
 
   if ( hasChargingPriority() )
   {
-    auto currentPrio = SysfsNode< std::string >( CHARGING_PRIORITY ).read().value_or( "" );
-
-    if ( not currentPrio.empty() )
+    if ( auto currentPrio = SysfsNode< std::string >( CHARGING_PRIORITY ).read().value_or( "" );
+         not currentPrio.empty() )
     {
       m_currentChargingPriority = currentPrio;
       syslog( LOG_INFO, "Initialized charging priority: %s", m_currentChargingPriority.c_str() );

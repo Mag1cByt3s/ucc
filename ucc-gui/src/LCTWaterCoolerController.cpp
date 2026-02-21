@@ -63,8 +63,8 @@ bool LCTWaterCoolerController::startDiscovery()
 
     // Query daemon for availability; if available, present a single logical device
     if (m_dbus && m_dbus->isValid()) {
-        QDBusReply<bool> avail = m_dbus->call(QStringLiteral("GetWaterCoolerAvailable"));
-        if (avail.isValid() && avail.value()) {
+        if (QDBusReply<bool> avail = m_dbus->call(QStringLiteral("GetWaterCoolerAvailable"));
+            avail.isValid() && avail.value()) {
             DeviceInfo info;
             info.uuid = QStringLiteral("local");
             info.name = QStringLiteral("System Water Cooler");
@@ -107,8 +107,8 @@ bool LCTWaterCoolerController::connectToDevice(const QString &deviceUuid)
         return false;
     }
 
-    QDBusReply<bool> reply = m_dbus->call(QStringLiteral("GetWaterCoolerConnected"));
-    if (reply.isValid() && reply.value()) {
+    if (QDBusReply<bool> reply = m_dbus->call(QStringLiteral("GetWaterCoolerConnected"));
+        reply.isValid() && reply.value()) {
         // Already connected
         m_isConnected = true;
         emit connected();

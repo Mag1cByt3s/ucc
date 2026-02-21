@@ -223,8 +223,7 @@ void MainWindow::connectFanControlTab()
   connect( m_fanControlTab, &FanControlTab::fanProfileRenamed,
            this, [this]( const QString &oldName, const QString &newName ) {
     if ( m_profileFanProfileCombo ) {
-      int idx = m_profileFanProfileCombo->findText( oldName );
-      if ( idx != -1 )
+      if ( int idx = m_profileFanProfileCombo->findText( oldName ); idx != -1 )
         m_profileFanProfileCombo->setItemText( idx, newName );
     }
   } );
@@ -1150,8 +1149,8 @@ void MainWindow::onTabChanged( int index )
         m_keyboardVisualizer->loadCurrentStates( *states );
 
         // Read brightness from hardware states and sync slider
-        QJsonDocument statesDoc = QJsonDocument::fromJson( QString::fromStdString( *states ).toUtf8() );
-        if ( statesDoc.isArray() && !statesDoc.array().isEmpty() )
+        if ( QJsonDocument statesDoc = QJsonDocument::fromJson( QString::fromStdString( *states ).toUtf8() );
+             statesDoc.isArray() && !statesDoc.array().isEmpty() )
         {
           int hwBrightness = statesDoc.array()[0].toObject()["brightness"].toInt( -1 );
           qDebug() << "[KBD TAB] hw brightness:" << hwBrightness
@@ -1176,14 +1175,12 @@ void MainWindow::onTabChanged( int index )
     reloadKeyboardProfiles();
 
     // Auto-load the keyboard profile from the active profile's settings
-    QString activeProfileId = m_profileManager->activeProfileId();
-    if ( !activeProfileId.isEmpty() )
+    if ( QString activeProfileId = m_profileManager->activeProfileId(); !activeProfileId.isEmpty() )
     {
-      QString profileJson = m_profileManager->getProfileDetails( activeProfileId );
-      if ( !profileJson.isEmpty() )
+      if ( QString profileJson = m_profileManager->getProfileDetails( activeProfileId );
+           !profileJson.isEmpty() )
       {
-        QJsonDocument doc = QJsonDocument::fromJson( profileJson.toUtf8() );
-        if ( doc.isObject() )
+        if ( QJsonDocument doc = QJsonDocument::fromJson( profileJson.toUtf8() ); doc.isObject() )
         {
           QJsonObject obj = doc.object();
           QString keyboardProfileId;
@@ -1300,8 +1297,7 @@ void MainWindow::onAllProfilesChanged()
   m_selectedProfileIndex = m_profileManager->activeProfileIndex();
 
   // Load the active profile details
-  QString activeProfileId = m_profileManager->activeProfileId();
-  if ( !activeProfileId.isEmpty() )
+  if ( QString activeProfileId = m_profileManager->activeProfileId(); !activeProfileId.isEmpty() )
   {
     loadProfileDetails( activeProfileId );
   }
@@ -1533,9 +1529,7 @@ void MainWindow::loadProfileDetails( const QString &profileId )
 
     if ( cpuObj.contains( "governor" ) )
     {
-      QString governor = cpuObj["governor"].toString();
-      int index = m_governorCombo->findData( governor );
-      if ( index >= 0 )
+      if ( int index = m_governorCombo->findData( cpuObj["governor"].toString() ); index >= 0 )
         m_governorCombo->setCurrentIndex( index );
       else
         m_governorCombo->setCurrentIndex( 0 ); // default to first
@@ -1543,9 +1537,7 @@ void MainWindow::loadProfileDetails( const QString &profileId )
 
     if ( cpuObj.contains( "energyPerformancePreference" ) && m_eppCombo )
     {
-      QString epp = cpuObj["energyPerformancePreference"].toString();
-      int index = m_eppCombo->findData( epp );
-      if ( index >= 0 )
+      if ( int index = m_eppCombo->findData( cpuObj["energyPerformancePreference"].toString() ); index >= 0 )
         m_eppCombo->setCurrentIndex( index );
       else
         m_eppCombo->setCurrentIndex( 0 );
@@ -1678,9 +1670,7 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   // Load Charging profile setting
   if ( m_profileChargingProfileCombo && obj.contains( "chargingProfile" ) )
   {
-    QString chargingProfile = obj["chargingProfile"].toString();
-    int idx = m_profileChargingProfileCombo->findData( chargingProfile );
-    if ( idx >= 0 )
+    if ( int idx = m_profileChargingProfileCombo->findData( obj["chargingProfile"].toString() ); idx >= 0 )
       m_profileChargingProfileCombo->setCurrentIndex( idx );
     else
       m_profileChargingProfileCombo->setCurrentIndex( 0 );
@@ -1693,9 +1683,7 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   // Load Charging priority setting
   if ( m_profileChargingPriorityCombo && obj.contains( "chargingPriority" ) )
   {
-    QString chargingPriority = obj["chargingPriority"].toString();
-    int idx = m_profileChargingPriorityCombo->findData( chargingPriority );
-    if ( idx >= 0 )
+    if ( int idx = m_profileChargingPriorityCombo->findData( obj["chargingPriority"].toString() ); idx >= 0 )
       m_profileChargingPriorityCombo->setCurrentIndex( idx );
     else
       m_profileChargingPriorityCombo->setCurrentIndex( 0 );
@@ -1786,11 +1774,10 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   // the hardware brightness with stale saved values.
 
   // Load power state activation settings
-  QString settingsJson = m_profileManager->getSettingsJSON();
-  if ( !settingsJson.isEmpty() )
+  if ( QString settingsJson = m_profileManager->getSettingsJSON(); !settingsJson.isEmpty() )
   {
-    QJsonDocument settingsDoc = QJsonDocument::fromJson( settingsJson.toUtf8() );
-    if ( settingsDoc.isObject() )
+    if ( QJsonDocument settingsDoc = QJsonDocument::fromJson( settingsJson.toUtf8() );
+         settingsDoc.isObject() )
     {
       QJsonObject settingsObj = settingsDoc.object();
       if ( settingsObj.contains( "stateMap" ) && settingsObj["stateMap"].isObject() )
@@ -2161,8 +2148,7 @@ void MainWindow::onAddProfileClicked()
     statusBar()->showMessage( QString("Profile '%1' created successfully").arg(profileName) );
 
     // Switch to the newly created profile
-    int newIndex = m_profileCombo->findText(profileName);
-    if (newIndex != -1) {
+    if (int newIndex = m_profileCombo->findText(profileName); newIndex != -1) {
       m_profileCombo->setCurrentIndex(newIndex);
     }
   }
@@ -2213,8 +2199,7 @@ void MainWindow::onCopyProfileClicked()
   m_profileManager->saveProfile(newJson);
 
   // Switch
-  int newIndex = m_profileCombo->findText(newName);
-  if (newIndex != -1) {
+  if (int newIndex = m_profileCombo->findText(newName); newIndex != -1) {
     m_profileCombo->setCurrentIndex(newIndex);
   }
 
@@ -2596,10 +2581,10 @@ void MainWindow::onCopyFanProfileClicked()
     return;
 
   // Get the current profile name and strip " [Built-in]" suffix if present
-  QString currentName = m_fanControlTab->fanProfileCombo()->currentText(); 
+  QString currentName = m_fanControlTab->fanProfileCombo()->currentText();
 
   if ( currentName.endsWith(" [Built-in]") )
-    currentName = currentName.left( currentName.size() - 11 ); // 11 is length of " [Built-in]" 
+    currentName = currentName.left( currentName.size() - 11 ); // 11 is length of " [Built-in]"
 
   // Get the current profile data
   QString json = m_profileManager->getFanProfile( currentProfileId );
@@ -2818,7 +2803,8 @@ void MainWindow::saveFanPoints()
 
   // Get CPU points from the editor
   QJsonArray cpuArr;
-  if (m_fanControlTab->cpuEditor()) {
+  if ( m_fanControlTab->cpuEditor() )
+  {
     const auto& cpuPoints = m_fanControlTab->cpuEditor()->points();
     for (const auto &p : cpuPoints) {
       QJsonObject o;
@@ -2853,6 +2839,7 @@ void MainWindow::saveFanPoints()
       wcFanArr.append(o);
     }
   }
+
   obj["tableWaterCoolerFan"] = wcFanArr;
 
   // Get pump points from the editor
@@ -2886,14 +2873,5 @@ void MainWindow::saveFanPoints()
   // Save into selected custom profile (by ID)
   m_profileManager->setFanProfile( currentId, currentName, json );
 }
-
-
-
-
-
-
-
-
-
 
 } // namespace ucc

@@ -31,6 +31,7 @@
 #include <libudev.h>
 #include <functional>
 #include <algorithm>
+#include <ranges>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QCoreApplication>
@@ -705,7 +706,7 @@ QString UccDBusInterfaceAdaptor::GetProfilesJSON()
 QString UccDBusInterfaceAdaptor::GetCustomProfilesJSON()
 {
   std::lock_guard< std::mutex > lock( m_data.dataMutex );
-  //std::cout << "[DBus] GetCustomProfilesJSON called, returning " 
+  //std::cout << "[DBus] GetCustomProfilesJSON called, returning "
   //          << m_data.customProfilesJSON.length() << " bytes" << std::endl;
   return QString::fromStdString( m_data.customProfilesJSON );
 }
@@ -751,7 +752,7 @@ bool UccDBusInterfaceAdaptor::AddCustomProfile( const QString &profileJSON )
       profile.id = generateProfileId();
     }
 
-    std::cout << "[Profile] Adding custom profile '" << profile.name 
+    std::cout << "[Profile] Adding custom profile '" << profile.name
               << "' (id: " << profile.id << ")" << std::endl;
 
     bool result = m_service->addCustomProfile( profile );
@@ -815,7 +816,7 @@ bool UccDBusInterfaceAdaptor::UpdateCustomProfile( const QString &profileJSON )
   try
   {
     const std::string jsonStr = profileJSON.toStdString();
-    std::cout << "[Profile] Received profile JSON (first 200 chars): " 
+    std::cout << "[Profile] Received profile JSON (first 200 chars): "
               << jsonStr.substr(0, 200) << "..." << std::endl;
 
     // Parse the profile JSON and update it
@@ -827,7 +828,7 @@ bool UccDBusInterfaceAdaptor::UpdateCustomProfile( const QString &profileJSON )
       return false; // Must have an ID to update
     }
 
-    std::cout << "[Profile] Updating custom profile '" << profile.name 
+    std::cout << "[Profile] Updating custom profile '" << profile.name
               << "' (id: " << profile.id << ")" << std::endl;
     std::cout << "[Profile]   Fan control: " << (profile.fan.useControl ? "enabled" : "disabled") << std::endl;
     std::cout << "[Profile]   Fan profile: " << profile.fan.fanProfile << std::endl;
@@ -889,7 +890,7 @@ bool UccDBusInterfaceAdaptor::SaveCustomProfile( const QString &profileJSON )
     }
 
     // Check if a profile with the same name already exists in memory
-    auto existingProfileIt = std::find_if( m_service->m_customProfiles.begin(), m_service->m_customProfiles.end(),
+    auto existingProfileIt = std::ranges::find_if( m_service->m_customProfiles,
                                           [&profile]( const UccProfile &p ) { return p.name == profile.name; } );
 
     // Also check settings for profiles with the same name (in case parsing failed on load)
@@ -1037,9 +1038,9 @@ bool UccDBusInterfaceAdaptor::SaveCustomProfile( const QString &profileJSON )
     }
 
     // Remove marked entries
-    auto it = std::remove_if( m_service->m_customProfiles.begin(), m_service->m_customProfiles.end(),
+    if ( auto it = std::remove_if( m_service->m_customProfiles.begin(), m_service->m_customProfiles.end(),
                              [](const UccProfile &p) { return p.id.empty(); } );
-    if ( it != m_service->m_customProfiles.end() )
+         it != m_service->m_customProfiles.end() )
     {
       m_service->m_customProfiles.erase( it, m_service->m_customProfiles.end() );
     }
@@ -1830,7 +1831,7 @@ UccDBusService::UccDBusService()
     m_io,
     [this]() { return m_activeProfile; },
     [this]() { return m_settings.fanControlEnabled; },
-    [this]( size_t fanIndex, int64_t timestamp, int speed ) 
+    [this]( size_t fanIndex, int64_t timestamp, int speed )
     {
       {
         std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
@@ -2422,7 +2423,7 @@ void UccDBusService::loadProfiles()
   std::cout << "[loadProfiles] After fillDeviceSpecificDefaults, checking TDP values:" << std::endl;
   for ( size_t i = 0; i < m_defaultProfiles.size() && i < 3; ++i )
   {
-    std::cout << "[loadProfiles]   Default profile " << i << " (" << m_defaultProfiles[i].id 
+    std::cout << "[loadProfiles]   Default profile " << i << " (" << m_defaultProfiles[i].id
               << ") has " << m_defaultProfiles[i].odmPowerLimits.tdpValues.size() << " TDP values";
     if ( !m_defaultProfiles[i].odmPowerLimits.tdpValues.empty() )
     {
@@ -2520,9 +2521,9 @@ void UccDBusService::initializeProfiles()
                                                        defaultScalingMax );
 
   std::cout << "[DBus] Updated profile JSONs:" << std::endl;
-  std::cout << "[DBus]   customProfilesJSON: " << m_dbusData.customProfilesJSON.length() << " bytes, " 
+  std::cout << "[DBus]   customProfilesJSON: " << m_dbusData.customProfilesJSON.length() << " bytes, "
             << m_customProfiles.size() << " profiles" << std::endl;
-  std::cout << "[DBus]   defaultProfilesJSON: " << m_dbusData.defaultProfilesJSON.length() << " bytes, " 
+  std::cout << "[DBus]   defaultProfilesJSON: " << m_dbusData.defaultProfilesJSON.length() << " bytes, "
             << m_defaultProfiles.size() << " profiles" << std::endl;
 
 }
@@ -2891,10 +2892,9 @@ bool UccDBusService::deleteCustomProfile( const std::string &profileId )
   std::cout << "[ProfileManager] Deleting profile '" << profileId << "' from memory" << std::endl;
 
   // Remove from in-memory profiles
-  auto it = std::remove_if( m_customProfiles.begin(), m_customProfiles.end(),
+  if ( auto it = std::remove_if( m_customProfiles.begin(), m_customProfiles.end(),
                            [&profileId]( const UccProfile &p ) { return p.id == profileId; } );
-
-  if ( it != m_customProfiles.end() )
+       it != m_customProfiles.end() )
   {
     m_customProfiles.erase( it, m_customProfiles.end() );
 
@@ -2933,10 +2933,9 @@ bool UccDBusService::updateCustomProfile( const UccProfile &profile )
   }
 
   // Update in-memory profile
-  auto it = std::find_if( m_customProfiles.begin(), m_customProfiles.end(),
+  if ( auto it = std::ranges::find_if( m_customProfiles,
                          [&profile]( const UccProfile &p ) { return p.id == profile.id; } );
-
-  if ( it != m_customProfiles.end() )
+       it != m_customProfiles.end() )
   {
     *it = profile;
 
@@ -3042,8 +3041,7 @@ std::optional< UniwillDeviceID > UccDBusService::identifyDevice()
   dmiSKUDeviceMap[ "SIRIUS1602" ] = UniwillDeviceID::SIRIUS1602;
 
   // check for sku match
-  auto skuIt = dmiSKUDeviceMap.find( productSKU );
-  if ( skuIt != dmiSKUDeviceMap.end() )
+  if ( auto skuIt = dmiSKUDeviceMap.find( productSKU ); skuIt != dmiSKUDeviceMap.end() )
   {
     return skuIt->second;
   }
@@ -3065,8 +3063,7 @@ std::optional< UniwillDeviceID > UccDBusService::identifyDevice()
     // ignore parse errors
   }
 
-  auto uwidIt = uwidDeviceMap.find( modelId );
-  if ( uwidIt != uwidDeviceMap.end() )
+  if ( auto uwidIt = uwidDeviceMap.find( modelId ); uwidIt != uwidDeviceMap.end() )
   {
     return uwidIt->second;
   }
@@ -3111,11 +3108,11 @@ void UccDBusService::computeDeviceCapabilities()
   {
     // Unknown device: water cooler not available, cTGP defers to hardware detection
     m_dbusData.waterCoolerSupported = false;
-    
+
     // For unknown devices, check if the hardware file exists (like TCC does)
     std::error_code ec;
     const std::string ctgpPath = "/sys/devices/platform/tuxedo_nvidia_power_ctrl/ctgp_offset";
-    bool hardwareExists = std::filesystem::exists( ctgpPath, ec ) && 
+    bool hardwareExists = std::filesystem::exists( ctgpPath, ec ) &&
                          std::filesystem::is_regular_file( ctgpPath, ec );
     m_dbusData.cTGPAdjustmentSupported = hardwareExists;
   }
@@ -3127,9 +3124,7 @@ void UccDBusService::computeDeviceCapabilities()
 
 void UccDBusService::loadSettings()
 {
-  auto loadedSettings = m_settingsManager.readSettings();
-
-  if ( loadedSettings.has_value() )
+  if ( auto loadedSettings = m_settingsManager.readSettings(); loadedSettings.has_value() )
   {
     m_settings = *loadedSettings;
     std::cout << "[Settings] Loaded existing settings" << std::endl;
@@ -3220,7 +3215,7 @@ void UccDBusService::loadSettings()
 
     if ( not profileExists )
     {
-      std::cout << "[Settings] Profile ID '" << profileId << "' for state '" 
+      std::cout << "[Settings] Profile ID '" << profileId << "' for state '"
                 << stateKey << "' not found, removing assignment" << std::endl;
       m_settings.stateMap.erase( stateKey );
       settingsChanged = true;
@@ -3484,8 +3479,8 @@ void UccDBusService::applyProfileForCurrentState()
   };
 
   // Try persistent (custom) profiles first
-  auto profileIt = m_settings.profiles.find( profileId );
-  if ( profileIt != m_settings.profiles.end() )
+  if ( auto profileIt = m_settings.profiles.find( profileId );
+       profileIt != m_settings.profiles.end() )
   {
     try
     {
@@ -3524,7 +3519,7 @@ void UccDBusService::serializeProfilesJSON()
   // Debug: Check TDP values before serialization
   for ( size_t i = 0; i < m_defaultProfiles.size() && i < 3; ++i )
   {
-    std::cout << "[serializeProfilesJSON]   Profile " << i << " (" << m_defaultProfiles[i].id 
+    std::cout << "[serializeProfilesJSON]   Profile " << i << " (" << m_defaultProfiles[i].id
               << ") has " << m_defaultProfiles[i].odmPowerLimits.tdpValues.size() << " TDP values" << std::endl;
     if ( !m_defaultProfiles[i].odmPowerLimits.tdpValues.empty() )
     {
@@ -3614,7 +3609,7 @@ void UccDBusService::fillDeviceSpecificDefaults( std::vector< UccProfile > &prof
     std::cout << "[fillDeviceSpecificDefaults] TDP info available: " << tdpInfo.size() << " entries" << std::endl;
     for ( size_t i = 0; i < tdpInfo.size(); ++i )
     {
-      std::cout << "[fillDeviceSpecificDefaults]   TDP[" << i << "]: min=" << tdpInfo[i].min 
+      std::cout << "[fillDeviceSpecificDefaults]   TDP[" << i << "]: min=" << tdpInfo[i].min
                 << ", max=" << tdpInfo[i].max << ", current=" << tdpInfo[i].current << std::endl;
     }
   }
@@ -3625,7 +3620,7 @@ void UccDBusService::fillDeviceSpecificDefaults( std::vector< UccProfile > &prof
 
   for ( auto &profile : profiles )
   {
-    std::cout << "[fillDeviceSpecificDefaults] Filling profile: " << profile.id 
+    std::cout << "[fillDeviceSpecificDefaults] Filling profile: " << profile.id
               << ", current TDP values: " << profile.odmPowerLimits.tdpValues.size() << std::endl;
 
     // Fill CPU frequency defaults
@@ -3676,7 +3671,7 @@ void UccDBusService::snapProfileFrequencies( UccProfile &profile )
 void UccDBusService::loadAutosave()
 {
   m_autosave = m_autosaveManager.readAutosave();
-  std::cout << "[Autosave] Loaded autosave (displayBrightness: " 
+  std::cout << "[Autosave] Loaded autosave (displayBrightness: "
             << m_autosave.displayBrightness << "%)" << std::endl;
 }
 

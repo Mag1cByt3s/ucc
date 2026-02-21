@@ -20,6 +20,7 @@
 #include <vector>
 #include <optional>
 #include <algorithm>
+#include <ranges>
 #include <cmath>
 
 enum class ScalingDriver
@@ -159,13 +160,13 @@ public:
 
     for ( int32_t possibleIndex : *possibleCores )
     {
-      if ( std::find( presentCores->begin(), presentCores->end(), possibleIndex ) != presentCores->end() )
+      if ( std::ranges::find( *presentCores, possibleIndex ) != presentCores->end() )
       {
         coreIndexToAdd.push_back( possibleIndex );
       }
     }
 
-    std::sort( coreIndexToAdd.begin(), coreIndexToAdd.end() );
+    std::ranges::sort( coreIndexToAdd );
 
     for ( int32_t coreIndex : coreIndexToAdd )
     {
@@ -431,7 +432,7 @@ public:
       if ( not availableGovernors.has_value() )
         continue;
 
-      if ( std::find( availableGovernors->begin(), availableGovernors->end(), *governor ) != availableGovernors->end() )
+      if ( std::ranges::find( *availableGovernors, *governor ) != availableGovernors->end() )
       {
         core.scalingGovernor.write( *governor );
       }
@@ -460,7 +461,7 @@ public:
       if ( not availablePreferences.has_value() )
         continue;
 
-      if ( std::find( availablePreferences->begin(), availablePreferences->end(), *preference ) != availablePreferences->end() )
+      if ( std::ranges::find( *availablePreferences, *preference ) != availablePreferences->end() )
       {
         core.energyPerformancePreference.write( *preference );
       }

@@ -327,8 +327,8 @@ QColor ucc::KeyboardVisualizerWidget::applyBrightness( const QColor &color, int 
 
 void ucc::KeyboardVisualizerWidget::loadCurrentStates( const std::string &statesJSON )
 {
-  QJsonDocument doc = QJsonDocument::fromJson( QString::fromStdString( statesJSON ).toUtf8() );
-  if ( doc.isArray() )
+  if ( QJsonDocument doc = QJsonDocument::fromJson( QString::fromStdString( statesJSON ).toUtf8() );
+       doc.isArray() )
   {
     updateFromJSON( doc.array() );
   }

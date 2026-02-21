@@ -18,6 +18,9 @@
 #include <QFile>
 #include <QDebug>
 
+#include <algorithm>
+#include <ranges>
+
 // ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
@@ -288,16 +291,14 @@ void TrayBackend::setActiveFanProfile( const QString &fanProfileId )
 
 void TrayBackend::setActiveKeyboardProfile( const QString &keyboardProfileId )
 {
-  for ( const auto &val : m_keyboardProfilesData )
+  auto it = std::ranges::find_if( m_keyboardProfilesData, [&]( const QJsonValue &val ) {
+    return val.toObject()[ "id" ].toString() == keyboardProfileId;
+  } );
+  if ( it != m_keyboardProfilesData.end() )
   {
-    auto obj = val.toObject();
-    if ( obj[ "id" ].toString() == keyboardProfileId )
-    {
-      QString json = obj[ "json" ].toString();
-      if ( !json.isEmpty() )
-        m_client->setKeyboardBacklight( json.toStdString() );
-      break;
-    }
+    auto json = it->toObject()[ "json" ].toString();
+    if ( !json.isEmpty() )
+      m_client->setKeyboardBacklight( json.toStdString() );
   }
   m_keyboardProfileOverride = true;
   m_activeProfileKeyboardId = keyboardProfileId;
@@ -336,11 +337,10 @@ void TrayBackend::pollMetrics()
 {
   bool changed = false;
 
-  auto update = [&]( auto &field, auto optVal ) {
+  auto update = [&]<typename F, typename O>( F &field, O optVal ) {
     if ( optVal )
     {
-      using T = std::decay_t< decltype( field ) >;
-      T val = static_cast< T >( *optVal );
+      auto val = static_cast< std::decay_t< F > >( *optVal );
       if ( field != val )
       {
         field = val;
@@ -442,11 +442,12 @@ void TrayBackend::pollSlowState()
   // Power state
   if ( auto ps = m_client->getPowerState() )
   {
-    QString raw = QString::fromStdString( *ps );
-    QString s = raw == "power_ac"  ? "AC"
-              : raw == "power_bat" ? "Battery"
-              : raw == "power_wc"  ? "AC w/ Water Cooler"
-              : raw;
+    auto raw = QString::fromStdString( *ps );
+    using namespace Qt::StringLiterals;
+    auto s = raw == "power_ac"_L1  ? u"AC"_s
+           : raw == "power_bat"_L1 ? u"Battery"_s
+           : raw == "power_wc"_L1  ? u"AC w/ Water Cooler"_s
+           : raw;
     if ( s != m_powerState )
     {
       m_powerState = s;
@@ -661,7 +662,6 @@ void TrayBackend::loadCapabilities()
     if ( was != m_waterCoolerSupported )
       emit waterCoolerSupportedChanged();
   }
-
 }
 
 // ---------------------------------------------------------------------------
@@ -752,10 +752,9 @@ void TrayBackend::loadLocalProfiles()
 QString TrayBackend::resolveFanProfileName( const QString &fanProfileId ) const
 {
   if ( fanProfileId.isEmpty() )
-    return QString();
+    return {};
 
-  int idx = m_fanProfileIds.indexOf( fanProfileId );
-  if ( idx >= 0 )
+  if ( auto idx = m_fanProfileIds.indexOf( fanProfileId ); idx >= 0 )
     return m_fanProfileNames[ idx ];
 
   return fanProfileId;
@@ -764,10 +763,9 @@ QString TrayBackend::resolveFanProfileName( const QString &fanProfileId ) const
 QString TrayBackend::resolveKeyboardProfileName( const QString &kbProfileId ) const
 {
   if ( kbProfileId.isEmpty() )
-    return QString();
+    return {};
 
-  int idx = m_keyboardProfileIds.indexOf( kbProfileId );
-  if ( idx >= 0 )
+  if ( auto idx = m_keyboardProfileIds.indexOf( kbProfileId ); idx >= 0 )
     return m_keyboardProfileNames[ idx ];
 
   return kbProfileId;
@@ -776,7 +774,7 @@ QString TrayBackend::resolveKeyboardProfileName( const QString &kbProfileId ) co
 QString TrayBackend::resolveKeyboardProfileId( const QString &daemonValue ) const
 {
   if ( daemonValue.isEmpty() )
-    return QString();
+    return {};
 
   // If it's already a known ID (UUID), return as-is
   if ( m_keyboardProfileIds.contains( daemonValue ) )
@@ -784,12 +782,10 @@ QString TrayBackend::resolveKeyboardProfileId( const QString &daemonValue ) cons
 
   // Otherwise the daemon may have returned a display name (backward compat)
   // — look it up in the names list and return the corresponding ID
-  int idx = m_keyboardProfileNames.indexOf( daemonValue );
-  if ( idx >= 0 )
+  if ( auto idx = m_keyboardProfileNames.indexOf( daemonValue ); idx >= 0 )
     return m_keyboardProfileIds[ idx ];
 
   // Unknown — return the raw value
   return daemonValue;
 }
-
 

@@ -119,7 +119,7 @@ void ensure_config_directory()
       {
         syslog( LOG_INFO, "Created configuration directory: %s", config_dir.data() );
         // Set permissions to 755 (rwxr-xr-x)
-        fs::permissions( config_dir, fs::perms::owner_all | fs::perms::group_read | 
+        fs::permissions( config_dir, fs::perms::owner_all | fs::perms::group_read |
                          fs::perms::group_exec | fs::perms::others_read | fs::perms::others_exec );
       }
     }
@@ -146,7 +146,7 @@ int check_single_instance()
 
     if ( existing_pid > 0 && kill( existing_pid, 0 ) == 0 )
     {
-      std::cerr << "Error: Another instance of the daemon is already running (PID " 
+      std::cerr << "Error: Another instance of the daemon is already running (PID "
                 << existing_pid << ")." << std::endl;
       return 1;
     }

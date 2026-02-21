@@ -330,8 +330,7 @@ void SystemMonitor::initializeChargingState()
   // Charging profiles (firmware-level modes)
   if ( auto json = m_client->getChargingProfilesAvailable() )
   {
-    QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) );
-    if ( doc.isArray() )
+    if ( QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) ); doc.isArray() )
     {
       QStringList profiles;
       for ( const auto &v : doc.array() )
@@ -346,8 +345,7 @@ void SystemMonitor::initializeChargingState()
 
   if ( auto profile = m_client->getCurrentChargingProfile() )
   {
-    QString p = QString::fromStdString( *profile );
-    if ( m_currentChargingProfile != p )
+    if ( QString p = QString::fromStdString( *profile ); m_currentChargingProfile != p )
     {
       m_currentChargingProfile = p;
       emit currentChargingProfileChanged();
@@ -357,8 +355,7 @@ void SystemMonitor::initializeChargingState()
   // Charging priority (USB-C PD)
   if ( auto json = m_client->getChargingPrioritiesAvailable() )
   {
-    QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) );
-    if ( doc.isArray() )
+    if ( QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) ); doc.isArray() )
     {
       QStringList priorities;
       for ( const auto &v : doc.array() )
@@ -373,8 +370,7 @@ void SystemMonitor::initializeChargingState()
 
   if ( auto priority = m_client->getCurrentChargingPriority() )
   {
-    QString p = QString::fromStdString( *priority );
-    if ( m_currentChargingPriority != p )
+    if ( QString p = QString::fromStdString( *priority ); m_currentChargingPriority != p )
     {
       m_currentChargingPriority = p;
       emit currentChargingPriorityChanged();
@@ -385,8 +381,8 @@ void SystemMonitor::initializeChargingState()
   bool thresholdsAvail = false;
   if ( auto json = m_client->getChargeEndAvailableThresholds() )
   {
-    QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) );
-    if ( doc.isArray() and not doc.array().isEmpty() )
+    if ( QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) );
+         doc.isArray() and not doc.array().isEmpty() )
       thresholdsAvail = true;
   }
   if ( m_chargeThresholdsAvailable != thresholdsAvail )
@@ -417,8 +413,7 @@ void SystemMonitor::initializeChargingState()
 
     if ( auto type = m_client->getChargeType() )
     {
-      QString t = QString::fromStdString( *type );
-      if ( m_chargeType != t )
+      if ( QString t = QString::fromStdString( *type ); m_chargeType != t )
       {
         m_chargeType = t;
         emit chargeTypeChanged();

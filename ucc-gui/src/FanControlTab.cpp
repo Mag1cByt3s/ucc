@@ -52,14 +52,14 @@ FanControlTab::FanControlTab( UccdClient *client,
     connect( m_waterCoolerPollTimer, &QTimer::timeout, this, [this]() {
       // Only poll if water cooler is actually enabled
       if ( not m_waterCoolerDbus ) return;
-      bool wcEnabled = m_waterCoolerEnableCheckBox ? m_waterCoolerEnableCheckBox->isChecked() : false;
-      if ( !wcEnabled ) {
+      if ( bool wcEnabled = m_waterCoolerEnableCheckBox ? m_waterCoolerEnableCheckBox->isChecked() : false;
+           !wcEnabled ) {
         // If water cooler becomes disabled, force disconnect
         onDisconnected();
         return;
       }
-      QDBusReply< bool > conn = m_waterCoolerDbus->call( QStringLiteral( "GetWaterCoolerConnected" ) );
-      if ( conn.isValid() && conn.value() )
+      if ( QDBusReply< bool > conn = m_waterCoolerDbus->call( QStringLiteral( "GetWaterCoolerConnected" ) );
+           conn.isValid() && conn.value() )
         onConnected();
       else
         onDisconnected();
@@ -575,8 +575,8 @@ void FanControlTab::onColorPickerClicked()
   RGBState mode = static_cast< RGBState >( m_ledModeCombo->currentData().toInt() );
   if ( m_ledOnOffCheckBox->isChecked() && m_waterCoolerDbus )
   {
-    QDBusReply< bool > conn = m_waterCoolerDbus->call( QStringLiteral( "GetWaterCoolerConnected" ) );
-    if ( conn.isValid() && conn.value() )
+    if ( QDBusReply< bool > conn = m_waterCoolerDbus->call( QStringLiteral( "GetWaterCoolerConnected" ) );
+         conn.isValid() && conn.value() )
       m_waterCoolerDbus->call( QStringLiteral( "SetWaterCoolerLEDColor" ),
                                m_currentRed, m_currentGreen, m_currentBlue, static_cast< int >( mode ) );
   }

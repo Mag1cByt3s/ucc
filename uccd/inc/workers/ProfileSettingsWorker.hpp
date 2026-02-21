@@ -28,6 +28,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <ranges>
 #include <memory>
 #include <optional>
 #include <sstream>

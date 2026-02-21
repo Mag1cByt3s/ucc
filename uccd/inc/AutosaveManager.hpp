@@ -38,7 +38,7 @@ struct TccAutosave
 
 /**
  * @brief Manages autosave data persistence
- * 
+ *
  * Handles reading/writing autosave data (display brightness, etc.)
  * Mirrors TypeScript ConfigHandler autosave functionality.
  */

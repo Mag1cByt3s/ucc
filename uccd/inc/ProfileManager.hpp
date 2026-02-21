@@ -35,7 +35,7 @@
 
 /**
  * @brief Manages TCC profile loading, saving, and manipulation
- * 
+ *
  * Handles reading/writing profiles from/to JSON files, profile validation,
  * and merging with default profiles. Mirrors TypeScript ConfigHandler functionality.
  */
@@ -96,8 +96,8 @@ public:
     auto defaultProfiles = getDefaultProfiles();
     auto customProfiles = getCustomProfilesNoThrow();
 
-    defaultProfiles.insert( defaultProfiles.end(), 
-                            customProfiles.begin(), 
+    defaultProfiles.insert( defaultProfiles.end(),
+                            customProfiles.begin(),
                             customProfiles.end() );
     return defaultProfiles;
   }
@@ -108,8 +108,8 @@ public:
    * @param id Profile ID to find
    * @return Pointer to profile if found, nullptr otherwise
    */
-  [[nodiscard]] static const UccProfile *findProfileById( 
-    const std::vector< UccProfile > &profiles, 
+  [[nodiscard]] static const UccProfile *findProfileById(
+    const std::vector< UccProfile > &profiles,
     const std::string &id ) noexcept
   {
     for ( const auto &profile : profiles )
@@ -128,8 +128,8 @@ public:
    * @param name Profile name to find
    * @return Pointer to profile if found, nullptr otherwise
    */
-  [[nodiscard]] static const UccProfile *findProfileByName( 
-    const std::vector< UccProfile > &profiles, 
+  [[nodiscard]] static const UccProfile *findProfileByName(
+    const std::vector< UccProfile > &profiles,
     const std::string &name ) noexcept
   {
     for ( const auto &profile : profiles )
@@ -225,7 +225,7 @@ public:
       profile.fan.enableWaterCooler = extractBool( fanJson, "enableWaterCooler", ucc::WATER_COOLER_INITIAL_STATE );
 
       // Debug: log the parsed fan offset and sameSpeed
-      std::cout << "[ProfileManager] Parsed profile '" << profile.name 
+      std::cout << "[ProfileManager] Parsed profile '" << profile.name
                 << "' offsetFanspeed: " << profile.fan.offsetFanspeed
                 << " sameSpeed: " << ( profile.fan.sameSpeed ? "true" : "false" ) << std::endl;
 
@@ -248,7 +248,7 @@ public:
 
       if ( profile.fan.hasEmbeddedTables() )
       {
-        std::cout << "[ProfileManager] Profile '" << profile.name 
+        std::cout << "[ProfileManager] Profile '" << profile.name
                   << "' has embedded fan tables: CPU=" << profile.fan.tableCPU.size()
                   << " GPU=" << profile.fan.tableGPU.size()
                   << " Pump=" << profile.fan.tablePump.size()
@@ -406,8 +406,7 @@ public:
     syslog( LOG_INFO, "[ProfileManager] State '%s' maps to profile: %s", stateKey.c_str(), profileId.c_str() );
 
     // Try saved (custom/persistent) profiles first
-    auto savedProfileIt = savedProfiles.find( profileId );
-    if ( savedProfileIt != savedProfiles.end() )
+    if ( auto savedProfileIt = savedProfiles.find( profileId ); savedProfileIt != savedProfiles.end() )
     {
       try
       {

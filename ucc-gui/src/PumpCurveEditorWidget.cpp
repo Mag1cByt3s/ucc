@@ -3,6 +3,7 @@
 #include <QPalette>
 #include <QMouseEvent>
 #include <algorithm>
+#include <ranges>
 
 PumpCurveEditorWidget::PumpCurveEditorWidget(QWidget *parent)
     : QWidget(parent)
@@ -50,8 +51,7 @@ void PumpCurveEditorWidget::setPoints(const QVector<Point>& pts) {
 }
 
 void PumpCurveEditorWidget::sortPoints() {
-    std::sort(m_points.begin(), m_points.end(),
-              [](const Point& a, const Point& b) { return a.temp < b.temp; });
+    std::ranges::sort(m_points, {}, &Point::temp);
     // Re-assign levels 1..3 in temperature order
     for (int i = 0; i < m_points.size(); ++i)
         m_points[i].level = i + 1;

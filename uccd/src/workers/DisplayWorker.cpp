@@ -19,6 +19,7 @@
 #include <iostream>
 #include <sstream>
 #include <algorithm>
+#include <ranges>
 #include <cctype>
 
 namespace fs = std::filesystem;
@@ -480,7 +481,7 @@ std::optional< DisplayInfo > DisplayWorker::parseXrandrOutput( const std::string
             double rate = std::stod( rateStr );
 
             // Avoid duplicates
-            if ( std::find( mode.refreshRates.begin(), mode.refreshRates.end(), rate ) == mode.refreshRates.end() )
+            if ( std::ranges::find( mode.refreshRates, rate ) == mode.refreshRates.end() )
               mode.refreshRates.push_back( rate );
           }
 

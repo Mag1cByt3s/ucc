@@ -4,6 +4,7 @@
 #include <QMouseEvent>
 #include <QMenu>
 #include <algorithm>
+#include <ranges>
 
 FanCurveEditorWidget::FanCurveEditorWidget(QWidget *parent)
     : QWidget(parent)
@@ -47,7 +48,7 @@ void FanCurveEditorWidget::clearCrosshair()
 }
 
 void FanCurveEditorWidget::sortPoints() {
-    std::sort(m_points.begin(), m_points.end(), [](const Point& a, const Point& b) { return a.temp < b.temp; });
+    std::ranges::sort(m_points, {}, &Point::temp);
 }
 
 QPointF FanCurveEditorWidget::toWidget(const Point& pt) const {
@@ -356,7 +357,7 @@ void FanCurveEditorWidget::mouseMoveEvent(QMouseEvent* e) {
     // Enforce monotonicity from each selected point
     // Process from lowest to highest index
     QList<int> sorted = m_selectedIndices.values();
-    std::sort(sorted.begin(), sorted.end());
+    std::ranges::sort(sorted);
     for (int idx : sorted) {
         enforceMonotonicity(idx);
     }

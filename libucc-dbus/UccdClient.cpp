@@ -134,15 +134,13 @@ void UccdClient::connectToDaemon()
   // just create a QDBusInterface, because with a D-Bus activation .service
   // file the bus would auto-start uccd during the introspection call that
   // QDBusInterface performs in its constructor.
+  if ( auto *busIface = QDBusConnection::systemBus().interface();
+       !busIface || !busIface->isServiceRegistered( QLatin1String( DBUS_SERVICE ) ) )
   {
-    auto *busIface = QDBusConnection::systemBus().interface();
-    if ( !busIface || !busIface->isServiceRegistered( QLatin1String( DBUS_SERVICE ) ) )
-    {
-      m_connected = false;
-      m_interface.reset();  // no interface while disconnected
-      qWarning() << "[UccdClient] uccd D-Bus service not registered on the system bus";
-      return;
-    }
+    m_connected = false;
+    m_interface.reset();  // no interface while disconnected
+    qWarning() << "[UccdClient] uccd D-Bus service not registered on the system bus";
+    return;
   }
 
   // The service is running — safe to introspect without triggering activation.
@@ -824,14 +822,11 @@ std::optional< int > UccdClient::getNVIDIAPowerOffset()
   // Read the cTGP offset from the currently active profile
   if ( auto json = getActiveProfileJSON() )
   {
-    QJsonDocument doc = QJsonDocument::fromJson( QString::fromStdString( *json ).toUtf8() );
-    if ( doc.isObject() )
+    if ( QJsonDocument doc = QJsonDocument::fromJson( QString::fromStdString( *json ).toUtf8() ); doc.isObject() )
     {
-      QJsonObject obj = doc.object();
-      if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj["nvidiaPowerCTRLProfile"].isObject() )
+      if ( QJsonObject obj = doc.object(); obj.contains( "nvidiaPowerCTRLProfile" ) && obj["nvidiaPowerCTRLProfile"].isObject() )
       {
-        QJsonObject nvidiaObj = obj["nvidiaPowerCTRLProfile"].toObject();
-        if ( nvidiaObj.contains( "cTGPOffset" ) )
+        if ( QJsonObject nvidiaObj = obj["nvidiaPowerCTRLProfile"].toObject(); nvidiaObj.contains( "cTGPOffset" ) )
           return nvidiaObj["cTGPOffset"].toInt();
       }
     }
@@ -885,8 +880,7 @@ std::optional< std::string > UccdClient::getKeyboardBacklightInfo()
 {
   if ( hasMethod( m_interface.get(), "GetKeyboardBacklightCapabilitiesJSON" ) )
   {
-    auto caps = callMethod< QString >( "GetKeyboardBacklightCapabilitiesJSON" );
-    if ( caps )
+    if ( auto caps = callMethod< QString >( "GetKeyboardBacklightCapabilitiesJSON" ); caps )
     {
       return caps->toStdString();
     }
@@ -899,8 +893,7 @@ std::optional< std::string > UccdClient::getKeyboardBacklightStates()
 {
   if ( hasMethod( m_interface.get(), "GetKeyboardBacklightStatesJSON" ) )
   {
-    auto states = callMethod< QString >( "GetKeyboardBacklightStatesJSON" );
-    if ( states )
+    if ( auto states = callMethod< QString >( "GetKeyboardBacklightStatesJSON" ); states )
     {
       return states->toStdString();
     }
@@ -1059,8 +1052,8 @@ std::optional< int > UccdClient::getIGpuTemperature()
 
 std::optional< int > UccdClient::getCpuFrequency()
 {
-  QFile file( "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq" );
-  if ( file.open( QIODevice::ReadOnly ) )
+  if ( QFile file( "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq" );
+       file.open( QIODevice::ReadOnly ) )
   {
     QString content = QString::fromLatin1( file.readAll() ).trimmed();
     bool ok;
@@ -1159,7 +1152,7 @@ std::optional< int > UccdClient::getGpuFanSpeedPercent()
     return *gpu2;
   }
   return std::nullopt;
-} 
+}
 
 // Water cooler control
 bool UccdClient::setWaterCoolerFanSpeed( int dutyCyclePercent )

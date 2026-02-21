@@ -150,8 +150,7 @@ void ProfileManager::updateProfiles()
   // GetActiveProfileJSON only reports the *running* profile which may differ.
   if ( m_activeProfileId.isEmpty() && !m_powerState.isEmpty() )
   {
-    QString mapped = resolveStateMapToProfileId( m_powerState );
-    if ( !mapped.isEmpty() )
+    if ( QString mapped = resolveStateMapToProfileId( m_powerState ); !mapped.isEmpty() )
     {
       m_activeProfileId = mapped;
       emit activeProfileChanged();
@@ -161,7 +160,8 @@ void ProfileManager::updateProfiles()
   // Fallback: ask daemon for currently running profile (e.g. fresh install, no stateMap yet)
   if ( m_activeProfileId.isEmpty() )
   {
-    try {
+    try
+    {
       if ( auto json = m_client->getActiveProfileJSON() )
       {
         QJsonDocument doc = QJsonDocument::fromJson( QString::fromStdString( *json ).toUtf8() );

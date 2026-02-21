@@ -24,6 +24,7 @@
 #include <iostream>
 #include <sstream>
 #include <algorithm>
+#include <ranges>
 #include <chrono>
 
 using namespace std::chrono_literals;
@@ -86,7 +87,7 @@ public:
 
     if ( m_capabilities.zones > 0 )
     {
-      std::cout << "[KeyboardBacklight] Detected " << m_capabilities.zones 
+      std::cout << "[KeyboardBacklight] Detected " << m_capabilities.zones
                 << " zone(s), max brightness: " << m_capabilities.maxBrightness << std::endl;
 
       // Publish capabilities as JSON
@@ -111,7 +112,7 @@ public:
       // Apply if control is enabled
       if ( m_getControlEnabled() )
       {
-        std::cout << "[KeyboardBacklight] Applying initial states (brightness: " 
+        std::cout << "[KeyboardBacklight] Applying initial states (brightness: "
                   << m_capabilities.maxBrightness << ")" << std::endl;
         applyStates( defaultStates );
         m_currentStates = defaultStates;
@@ -237,7 +238,7 @@ private:
     // If we found per-key LEDs, we're done
     if ( m_ledPaths.size() > 3 )
     {
-      std::cout << "[KeyboardBacklight] Detected per-key RGB keyboard with " 
+      std::cout << "[KeyboardBacklight] Detected per-key RGB keyboard with "
                 << m_ledPaths.size() << " zones" << std::endl;
 
       SysfsNode< int > maxBrightness( m_ledPaths[0] + "/max_brightness" );
@@ -278,7 +279,7 @@ private:
       m_capabilities.maxGreen = 0xFF;
       m_capabilities.maxBlue = 0xFF;
 
-      std::cout << "[KeyboardBacklight] Detected " << m_capabilities.zones 
+      std::cout << "[KeyboardBacklight] Detected " << m_capabilities.zones
                 << " zone RGB keyboard backlight" << std::endl;
     }
   }
@@ -338,14 +339,11 @@ private:
         }
 
         // Sort by zone number
-        std::sort( foundLEDs.begin(), foundLEDs.end(),
-                  []( const auto &a, const auto &b ) { return a.second < b.second; } );
+        std::ranges::sort( foundLEDs, []( const auto &a, const auto &b ) { return a.second < b.second; } );
 
         // Add sorted paths
         for ( const auto &led : foundLEDs )
-        {
           m_ledPaths.push_back( led.first );
-        }
 
         if ( !m_ledPaths.empty() )
           return;  // Found per-key LEDs
@@ -556,8 +554,8 @@ private:
     if ( !fs::exists( multiIntensityPath, ec ) )
       return;
 
-    std::string value = std::to_string( red ) + " " + 
-                       std::to_string( green ) + " " + 
+    std::string value = std::to_string( red ) + " " +
+                       std::to_string( green ) + " " +
                        std::to_string( blue );
 
     std::ofstream file( multiIntensityPath, std::ios::app );

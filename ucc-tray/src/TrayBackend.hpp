@@ -196,7 +196,6 @@ signals:
   void fanProfilesChanged();
   void keyboardProfilesChanged();
 
-
 private slots:
   void pollMetrics();
   void pollSlowState();

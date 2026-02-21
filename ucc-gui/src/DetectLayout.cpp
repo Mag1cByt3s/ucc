@@ -136,7 +136,7 @@ QString detectKeyboardLayout()
       // Check for supported layouts
       QStringList supportedLayouts = {"tr", "fr", "es", "it", "ar", "de", "us", "en"};
       for (const QString &layout : supportedLayouts) {
-        if (output.contains(layout) || 
+        if (output.contains(layout) ||
             (layout == "tr" && (output.contains("turkish") || output.contains("türkçe"))) ||
             (layout == "fr" && (output.contains("french") || output.contains("français"))) ||
             (layout == "es" && (output.contains("spanish") || output.contains("español"))) ||
