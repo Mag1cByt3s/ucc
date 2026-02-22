@@ -36,6 +36,7 @@ stdenv.mkDerivation {
 
   buildInputs = [
     kdePackages.qtbase
+    kdePackages.qtcharts
     kdePackages.qtdeclarative
     kdePackages.qtconnectivity
     kdePackages.kconfig

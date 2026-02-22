@@ -18,6 +18,7 @@ license=('GPL-3.0-or-later')
 # dbus:              system bus for uccd D-Bus service
 depends=(
   'qt6-base'
+  'qt6-charts'
   'qt6-connectivity'
   'qt6-declarative'
   'plasma-workspace'

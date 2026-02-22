@@ -15,6 +15,7 @@ BuildRequires:  gcc-c++
 BuildRequires:  qt6-qtbase-devel >= 6.0
 BuildRequires:  qt6-qtdeclarative-devel
 BuildRequires:  qt6-qtconnectivity-devel
+BuildRequires:  qt6-qtcharts-devel
 BuildRequires:  kf6-kconfig-devel
 BuildRequires:  kf6-kcoreaddons-devel
 BuildRequires:  kf6-kpackage-devel
@@ -28,6 +29,7 @@ Requires:       systemd
 Requires:       qt6-qtbase >= 6.0
 Requires:       qt6-qtdeclarative
 Requires:       qt6-qtconnectivity
+Requires:       qt6-qtcharts
 Requires:       plasma-workspace >= 6.0
 Requires:       tuxedo-drivers
 Requires(post): systemd
