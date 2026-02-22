@@ -70,7 +70,6 @@ and packaging files for more details.
 
 - `BUILD_GUI=ON/OFF` - Build main GUI application (default: ON)
 - `BUILD_TRAY=ON/OFF` - Build system tray applet (default: ON)
-- `BUILD_WIDGETS=ON/OFF` - Build Plasma widgets (default: ON)
 
 Example:
 ```bash
@@ -90,19 +89,6 @@ The project uses a clean separation of headers and sources:
 ```bash
 ucc-gui
 ```
-
-### System Tray
-```bash
-ucc-tray
-```
-
-The tray applet can be added to autostart via the desktop file:
-`~/.config/autostart/ucc-tray.desktop`
-
-### Plasma Widgets
-After installation, widgets can be added through Plasma's widget manager:
-- Right-click on desktop → Add Widgets
-- Search for "UCC System Monitor" or "UCC Profile Switcher"
 
 ## Architecture
 
@@ -138,4 +124,8 @@ GPL-3.0-or-later
 ![screenshot 4](screenshots/4.png)
 
 ![screenshot 5](screenshots/5.png)
+
+![screenshot 6](screenshots/6.png)
+
+![screenshot 7](screenshots/7.png)
 
