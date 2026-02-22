@@ -16,6 +16,7 @@
 #include "MainWindow.hpp"
 #include "ProfileManager.hpp"
 #include "SystemMonitor.hpp"
+#include "MonitorTab.hpp"
 
 #include "FanControlTab.hpp"
 #include "FanCurveEditorWidget.hpp"
@@ -166,6 +167,11 @@ void MainWindow::setupUI()
 
   // Place the Fan Control tab directly after Profiles and rename it
   setupFanControlTab();
+
+  // Add Monitoring graph tab
+  m_monitorTab = new MonitorTab( m_UccdClient.get(), this );
+  m_tabs->addTab( m_monitorTab, "Monitor" );
+
   setupKeyboardBacklightPage();
   setupHardwarePage();
 }
@@ -1117,12 +1123,17 @@ void MainWindow::updateFanCrosshairs()
 void MainWindow::onTabChanged( int index )
 {
   const int fanTabIndex = m_fanControlTab ? m_tabs->indexOf( m_fanControlTab ) : -1;
+  const int monitorTabIndex = m_monitorTab ? m_tabs->indexOf( m_monitorTab ) : -1;
 
   // Enable monitoring when dashboard (0) or fan control tab is visible
   bool needsMonitoring = ( index == 0 || index == fanTabIndex );
   qDebug() << "Tab changed to" << index << "- Monitoring active:" << needsMonitoring
            << "(fan tab =" << fanTabIndex << ")";
   m_systemMonitor->setMonitoringActive( needsMonitoring );
+
+  // Activate / deactivate the Monitor tab's incremental fetch
+  if ( m_monitorTab )
+    m_monitorTab->setMonitoringActive( index == monitorTabIndex );
 
   // Update or clear fan curve crosshairs
   if ( index == fanTabIndex )

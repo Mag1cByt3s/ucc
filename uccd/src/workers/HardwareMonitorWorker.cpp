@@ -290,7 +290,7 @@ private:
 // ============================================================================
 
 HardwareMonitorWorker::HardwareMonitorWorker(
-  std::function< void( const std::string & ) > cpuPowerUpdateCallback,
+  CpuPowerCallback cpuPowerUpdateCallback,
   std::function< bool() > getSensorDataCollectionStatus,
   std::function< void( const std::string & ) > setPrimeStateCallback )
   : DaemonWorker( std::chrono::milliseconds( 800 ), false )
@@ -322,6 +322,11 @@ void HardwareMonitorWorker::setWebcamCallbacks( WebcamHwReader reader, WebcamSta
 {
   m_webcamHwReader = std::move( reader );
   m_webcamStatusCallback = std::move( callback );
+}
+
+void HardwareMonitorWorker::setCpuFrequencyCallback( CpuFrequencyCallback callback ) noexcept
+{
+  m_cpuFrequencyCallback = std::move( callback );
 }
 
 bool HardwareMonitorWorker::isPrimeSupported() const noexcept
@@ -358,6 +363,9 @@ void HardwareMonitorWorker::onWork()
       m_gpuDataCallback( getIGpuValues(), getDGpuValues() );
   }
   catch ( ... ) { /* ignore callback exceptions */ }
+
+  // --- CPU frequency: every cycle (≈ 800ms) ---
+  updateCpuFrequency();
 
   // --- CPU power: every 3rd cycle (≈ 2400ms, close to original 2000ms) ---
   if ( m_cycleCounter % 3 == 0 )
@@ -691,11 +699,12 @@ void HardwareMonitorWorker::updateCpuPower()
 {
   std::ostringstream jsonStream;
   jsonStream << "{";
+  double rawPower = -1.0;
 
   if ( m_getSensorDataCollectionStatus() )
   {
-    double powerDraw = getCpuCurrentPower();
-    jsonStream << "\"powerDraw\":" << powerDraw;
+    rawPower = getCpuCurrentPower();
+    jsonStream << "\"powerDraw\":" << rawPower;
 
     double maxPowerLimit = getCpuMaxPowerLimit();
     if ( maxPowerLimit > 0 )
@@ -707,7 +716,7 @@ void HardwareMonitorWorker::updateCpuPower()
   }
 
   jsonStream << "}";
-  m_cpuPowerUpdateCallback( jsonStream.str() );
+  m_cpuPowerUpdateCallback( jsonStream.str(), rawPower );
 }
 
 double HardwareMonitorWorker::getCpuCurrentPower()
@@ -853,4 +862,32 @@ std::string HardwareMonitorWorker::transformPrimeStatus( const std::string &stat
     return "on-demand";
   else
     return "off";
+}
+
+// ============================================================================
+// CPU frequency
+// ============================================================================
+
+void HardwareMonitorWorker::updateCpuFrequency() noexcept
+{
+  if ( !m_cpuFrequencyCallback )
+    return;
+
+  try
+  {
+    std::ifstream ifs( "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq" );
+    if ( ifs.is_open() )
+    {
+      int freqKHz = -1;
+      ifs >> freqKHz;
+      if ( freqKHz > 0 )
+      {
+        m_cpuFrequencyCallback( freqKHz / 1000 );
+        return;
+      }
+    }
+  }
+  catch ( ... ) { /* ignore */ }
+
+  m_cpuFrequencyCallback( -1 );
 }

@@ -1638,6 +1638,33 @@ bool UccDBusInterfaceAdaptor::GetCTGPAdjustmentSupported()
   return m_data.cTGPAdjustmentSupported;
 }
 
+// --- Monitoring history D-Bus methods ---
+
+QByteArray UccDBusInterfaceAdaptor::GetMonitorDataSince( qlonglong sinceTimestampMs )
+{
+  if ( !m_service )
+    return QByteArray{};
+  const auto raw = m_service->m_metricsStore.querySinceBinary( sinceTimestampMs );
+  return QByteArray( reinterpret_cast< const char * >( raw.data() ),
+                     static_cast< qsizetype >( raw.size() ) );
+}
+
+void UccDBusInterfaceAdaptor::SetMonitorHistoryHorizon( int seconds )
+{
+  if ( m_service )
+    m_service->m_metricsStore.setHorizon( seconds );
+}
+
+int UccDBusInterfaceAdaptor::GetMonitorHistoryHorizon()
+{
+  return m_service ? m_service->m_metricsStore.horizonSeconds() : 0;
+}
+
+int UccDBusInterfaceAdaptor::GetCpuFrequencyMHz()
+{
+  return m_data.cpuFrequencyMHz.load();
+}
+
 // signal emitters
 // These may be called from the DaemonWorker thread, but the adaptor lives in
 // the main thread.  Use QMetaObject::invokeMethod with a queued connection so
@@ -1802,9 +1829,14 @@ UccDBusService::UccDBusService()
 
   // initialize hardware monitor worker (merged GPU info + CPU power + Prime)
   m_hardwareMonitorWorker = std::make_unique< HardwareMonitorWorker >(
-    [this]( const std::string &json ) {
-      std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
-      m_dbusData.cpuPowerValuesJSON = json;
+    [this]( const std::string &json, double cpuPowerWatts ) {
+      {
+        std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
+        m_dbusData.cpuPowerValuesJSON = json;
+      }
+      // Push CPU power to history store
+      if ( cpuPowerWatts > -1.0 )
+        m_metricsStore.push( MetricId::CpuPower, cpuPowerWatts );
     },
     [this]() { return m_dbusData.sensorDataCollectionStatus.load(); },
     [this]( const std::string &primeState ) {
@@ -1826,6 +1858,15 @@ UccDBusService::UccDBusService()
     }
   );
 
+  // CPU frequency monitoring via HardwareMonitorWorker (every cycle ≈ 800ms)
+  m_hardwareMonitorWorker->setCpuFrequencyCallback(
+    [this]( int frequencyMHz ) {
+      m_dbusData.cpuFrequencyMHz = frequencyMHz;
+      if ( frequencyMHz > 0 )
+        m_metricsStore.push( MetricId::CpuFrequency, static_cast< double >( frequencyMHz ) );
+    }
+  );
+
   // initialize fan control worker
   m_fanControlWorker = std::make_unique< FanControlWorker >(
     m_io,
@@ -1839,6 +1880,12 @@ UccDBusService::UccDBusService()
         if ( fanIndex < m_dbusData.fans.size() )
           m_dbusData.fans[fanIndex].speed.set( timestamp, speed );
       }
+
+      // Push fan duty to history store
+      if ( fanIndex == 0 )
+        m_metricsStore.push( MetricId::CpuFanDuty, timestamp, speed );
+      else if ( fanIndex == 1 )
+        m_metricsStore.push( MetricId::GpuFanDuty, timestamp, speed );
     },
     [this]( size_t fanIndex, int64_t timestamp, int temp )
     {
@@ -1847,6 +1894,12 @@ UccDBusService::UccDBusService()
         if ( fanIndex < m_dbusData.fans.size() )
           m_dbusData.fans[ fanIndex ].temp.set( timestamp, temp );
       }
+
+      // Push temperature to history store
+      if ( fanIndex == 0 )
+        m_metricsStore.push( MetricId::CpuTemp, timestamp, temp );
+      else if ( fanIndex == 1 )
+        m_metricsStore.push( MetricId::GpuTemp, timestamp, temp );
 
       // Auto-control water cooler fan and pump voltage based on CPU temperature
       if ( m_dbusData.waterCoolerConnected.load() && m_activeProfile.fan.autoControlWC && fanIndex == 0 )
@@ -1888,6 +1941,9 @@ UccDBusService::UccDBusService()
           const int wcFanSpeed = fp.getWaterCoolerFanSpeedForTemp( snappedTemp );
           m_waterCoolerWorker->setFanSpeed( wcFanSpeed );
 
+          // Push water cooler fan duty to history store
+          m_metricsStore.push( MetricId::WaterCoolerFanDuty, timestamp, wcFanSpeed );
+
           // Temperature LED mode: compute gradient color from fan speed
           if ( m_waterCoolerLedMode.load() == static_cast< int32_t >( ucc::RGBState::Temperature ) )
           {
@@ -1902,6 +1958,10 @@ UccDBusService::UccDBusService()
           // Auto-control pump voltage
           const ucc::PumpVoltage pumpSpeedValue = fp.getPumpSpeedForTemp( temp );
           m_waterCoolerWorker->setPumpVoltage( static_cast<int>(pumpSpeedValue) );
+
+          // Push water cooler pump level to history store
+          m_metricsStore.push( MetricId::WaterCoolerPumpLevel, timestamp,
+            static_cast< double >( static_cast< int >( pumpSpeedValue ) ) );
 
           // std::cout << "[Auto WC] Temp: " << temp << "°C, Fan: " << wcFanSpeed
           //           << "%, Pump Voltage: " << static_cast<int>(pumpSpeedValue) << std::endl;
@@ -1987,12 +2047,27 @@ void UccDBusService::setupGpuDataCallback()
       m_dbusData.iGpuInfoValuesJSON = igpuInfoToJSON( iGpuInfo );
       m_dbusData.dGpuInfoValuesJSON = dgpuInfoToJSON( dGpuInfo );
 
+      // Push GPU metrics to history store (outside dataMutex — store has its own lock)
+      const auto now = std::chrono::duration_cast< std::chrono::milliseconds >(
+        std::chrono::system_clock::now().time_since_epoch() ).count();
+
+      if ( dGpuInfo.m_temp > -1.0 )
+        m_metricsStore.push( MetricId::GpuTemp, now, dGpuInfo.m_temp );
+      if ( dGpuInfo.m_coreFrequency > -1.0 )
+        m_metricsStore.push( MetricId::GpuFrequency, now, dGpuInfo.m_coreFrequency );
+      if ( dGpuInfo.m_powerDraw > -1.0 )
+        m_metricsStore.push( MetricId::GpuPower, now, dGpuInfo.m_powerDraw );
+
+      if ( iGpuInfo.m_temp > -1.0 )
+        m_metricsStore.push( MetricId::IGpuTemp, now, iGpuInfo.m_temp );
+      if ( iGpuInfo.m_coreFrequency > -1.0 )
+        m_metricsStore.push( MetricId::IGpuFrequency, now, iGpuInfo.m_coreFrequency );
+      if ( iGpuInfo.m_powerDraw > -1.0 )
+        m_metricsStore.push( MetricId::IGpuPower, now, iGpuInfo.m_powerDraw );
+
       // Expose dGPU temperature through fan data for UI compatibility
       if ( dGpuInfo.m_temp > -1.0 and m_dbusData.fans.size() > 1 )
       {
-        const auto now = std::chrono::duration_cast< std::chrono::milliseconds >(
-          std::chrono::system_clock::now().time_since_epoch() ).count();
-
         m_dbusData.fans[ 1 ].temp.set(
           static_cast< int64_t >( now ),
           static_cast< int32_t >( std::lround( dGpuInfo.m_temp ) ) );

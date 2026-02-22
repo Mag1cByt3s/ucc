@@ -44,6 +44,7 @@
 #include "SettingsManager.hpp"
 #include "AutosaveManager.hpp"
 #include "TccSettings.hpp"
+#include "MetricsHistoryStore.hpp"
 #include "tuxedo_io_lib/tuxedo_io_api.hh"
 
 // Forward declarations
@@ -149,6 +150,7 @@ public:
   std::atomic< bool > waterCoolerScanningEnabled;
   std::atomic< bool > waterCoolerSupported;
   std::atomic< bool > cTGPAdjustmentSupported;
+  std::atomic< int32_t > cpuFrequencyMHz;
 
   std::mutex dataMutex;
 
@@ -203,7 +205,8 @@ public:
         waterCoolerConnected( false ),
         waterCoolerScanningEnabled( ucc::WATER_COOLER_INITIAL_STATE ),
         waterCoolerSupported( false ),
-        cTGPAdjustmentSupported( true )
+        cTGPAdjustmentSupported( true ),
+        cpuFrequencyMHz( -1 )
   {
   }
 };
@@ -360,6 +363,12 @@ public slots:
   // device capability methods
   bool GetWaterCoolerSupported();
   bool GetCTGPAdjustmentSupported();
+
+  // monitoring history methods
+  QByteArray GetMonitorDataSince( qlonglong sinceTimestampMs );
+  void SetMonitorHistoryHorizon( int seconds );
+  int GetMonitorHistoryHorizon();
+  int GetCpuFrequencyMHz();
 
 signals:
   void ProfileChanged( const QString &profileId );
@@ -542,6 +551,9 @@ private:
 
   // periodic validation counters
   uint32_t m_nvidiaValidationCounter = 0;
+
+  // monitoring history ring buffer (daemon-side storage for graph tab)
+  MetricsHistoryStore m_metricsStore;
 
   // controllers
   FnLockController m_fnLockController;

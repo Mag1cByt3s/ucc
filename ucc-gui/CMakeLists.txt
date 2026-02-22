@@ -23,6 +23,7 @@ find_package( Qt6 REQUIRED COMPONENTS
   Widgets
   DBus
   Bluetooth
+  Charts
 )
 
 # Application sources
@@ -53,6 +54,8 @@ set( UCC_GUI_SOURCES
   inc/DetectLayout.hpp
   src/AssignKeyZones.cpp
   inc/AssignKeyZones.hpp
+  src/MonitorTab.cpp
+  inc/MonitorTab.hpp
 )
 
 set( UCC_GUI_LIBRARIES
@@ -61,6 +64,7 @@ set( UCC_GUI_LIBRARIES
   Qt6::Widgets
   Qt6::DBus
   Qt6::Bluetooth
+  Qt6::Charts
   ucc-dbus
 )
 

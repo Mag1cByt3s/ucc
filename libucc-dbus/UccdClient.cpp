@@ -1052,18 +1052,8 @@ std::optional< int > UccdClient::getIGpuTemperature()
 
 std::optional< int > UccdClient::getCpuFrequency()
 {
-  if ( QFile file( "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq" );
-       file.open( QIODevice::ReadOnly ) )
-  {
-    QString content = QString::fromLatin1( file.readAll() ).trimmed();
-    bool ok;
-    int freq = content.toInt( &ok );
-    if ( ok )
-    {
-      return freq / 1000;
-    }
-  }
-  return std::nullopt;
+  // Read from daemon (sysfs reading moved to HardwareMonitorWorker)
+  return callMethod< int >( "GetCpuFrequencyMHz" );
 }
 
 std::optional< int > UccdClient::getGpuFrequency()
@@ -1199,6 +1189,23 @@ std::optional< int > UccdClient::getWaterCoolerPumpLevel()
 
   // No method available
   return std::nullopt;
+}
+
+// --- Monitoring history ---
+
+std::optional< QByteArray > UccdClient::getMonitorDataSince( qint64 sinceTimestampMs )
+{
+  return callMethod< QByteArray >( "GetMonitorDataSince", static_cast< qlonglong >( sinceTimestampMs ) );
+}
+
+bool UccdClient::setMonitorHistoryHorizon( int seconds )
+{
+  return callVoidMethod( "SetMonitorHistoryHorizon", seconds );
+}
+
+std::optional< int > UccdClient::getMonitorHistoryHorizon()
+{
+  return callMethod< int >( "GetMonitorHistoryHorizon" );
 }
 
 void UccdClient::subscribeProfileChanged( [[maybe_unused]] ProfileChangedCallback callback )

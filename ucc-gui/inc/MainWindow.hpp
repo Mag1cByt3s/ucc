@@ -44,6 +44,7 @@
 #include "DashboardTab.hpp"
 #include "HardwareTab.hpp"
 #include "FanControlTab.hpp"
+#include "MonitorTab.hpp"
 
 namespace ucc
 {
@@ -149,6 +150,9 @@ namespace ucc
 
     // Hardware tab
     HardwareTab *m_hardwareTab = nullptr;
+
+    // Monitor tab
+    MonitorTab *m_monitorTab = nullptr;
 
     // Profiles widgets
     QComboBox *m_profileCombo = nullptr;

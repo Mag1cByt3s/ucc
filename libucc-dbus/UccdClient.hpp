@@ -173,6 +173,11 @@ public:
   bool setWaterCoolerLEDColor( int r, int g, int b, int mode );  // RGBState enum cast to int
   bool turnOffWaterCoolerLED();
 
+  // Monitoring history
+  std::optional< QByteArray > getMonitorDataSince( qint64 sinceTimestampMs );
+  bool setMonitorHistoryHorizon( int seconds );
+  std::optional< int > getMonitorHistoryHorizon();
+
   // Signal Subscription
   using ProfileChangedCallback = std::function< void( const std::string &profileId ) >;
   using PowerStateChangedCallback = std::function< void( const std::string &state ) >;

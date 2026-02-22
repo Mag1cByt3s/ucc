@@ -789,3 +789,4 @@ QString TrayBackend::resolveKeyboardProfileId( const QString &daemonValue ) cons
   return daemonValue;
 }
 
+

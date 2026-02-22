@@ -202,13 +202,25 @@ public:
   using GpuDataCallback = std::function< void( const IGpuInfo &, const DGpuInfo & ) >;
 
   /**
+   * @brief Callback function type for CPU power data updates
+   * @param json JSON string with power data
+   * @param cpuPowerWatts Current CPU power draw in watts (or -1.0 if unavailable)
+   */
+  using CpuPowerCallback = std::function< void( const std::string &json, double cpuPowerWatts ) >;
+
+  /**
+   * @brief Callback function type for CPU frequency updates (MHz)
+   */
+  using CpuFrequencyCallback = std::function< void( int frequencyMHz ) >;
+
+  /**
    * @brief Constructor
-   * @param cpuPowerUpdateCallback Called with CPU power JSON when updated
+   * @param cpuPowerUpdateCallback Called with CPU power JSON + raw watts when updated
    * @param getSensorDataCollectionStatus Returns whether sensor data collection is enabled
    * @param setPrimeStateCallback Called with prime state string when updated
    */
   explicit HardwareMonitorWorker(
-    std::function< void( const std::string & ) > cpuPowerUpdateCallback,
+    CpuPowerCallback cpuPowerUpdateCallback,
     std::function< bool() > getSensorDataCollectionStatus,
     std::function< void( const std::string & ) > setPrimeStateCallback );
 
@@ -250,6 +262,16 @@ public:
   void setWebcamCallbacks( WebcamHwReader reader, WebcamStatusCallback callback ) noexcept;
 
   /**
+   * @brief Set callback for CPU frequency updates
+   *
+   * Called every cycle (~800ms) with the current CPU frequency in MHz.
+   * Must be called before start().
+   *
+   * @param callback Function called with frequency in MHz (or -1 if unavailable)
+   */
+  void setCpuFrequencyCallback( CpuFrequencyCallback callback ) noexcept;
+
+  /**
    * @brief Check if NVIDIA Prime is supported on this system
    * @return true if Prime is supported
    */
@@ -282,8 +304,11 @@ private:
   bool m_RAPLConstraint0Status;
   bool m_RAPLConstraint1Status;
   bool m_RAPLConstraint2Status;
-  std::function< void( const std::string & ) > m_cpuPowerUpdateCallback;
+  CpuPowerCallback m_cpuPowerUpdateCallback;
   std::function< bool() > m_getSensorDataCollectionStatus;
+
+  // --- CPU frequency callback ---
+  CpuFrequencyCallback m_cpuFrequencyCallback;
 
   // --- Prime state ---
   std::function< void( const std::string & ) > m_setPrimeState;
@@ -329,4 +354,7 @@ private:
 
   // Webcam methods
   void updateWebcamStatus() noexcept;
+
+  // CPU frequency methods
+  void updateCpuFrequency() noexcept;
 };
