@@ -206,10 +206,11 @@ void MonitorTab::setMonitoringActive( bool active )
 {
   if ( active )
   {
-    // Clear all existing series data to avoid overlapping time ranges
+    // Clear all in-memory buffers and series to avoid overlapping time ranges
     // (which cause crossed lines when the same timestamps appear twice).
     for ( auto &[key, info] : m_seriesMap )
     {
+      info.buffer.clear();
       info.series->clear();
 
       QVariant uv = info.series->property( "_uniSeries" );
@@ -266,11 +267,11 @@ void MonitorTab::setupUI()
     QPen pen( md.color );
     pen.setWidth( 1 );
     series->setPen( pen );
-    series->setProperty( "_unit", QLatin1String( metricGroupUnit( md.group ) ) );
+    series->setProperty( "_unit", QString::fromUtf8( metricGroupUnit( md.group ) ) );
 
     connect( cb, &QCheckBox::toggled, series, &QLineSeries::setVisible );
 
-    m_seriesMap[ md.key ] = { series, cb, md.label, md.color };
+    m_seriesMap[ md.key ] = { series, cb, md.label, md.color, {} };
   }
 
   m_unifiedCheckBox = new QCheckBox( "Unified Graph" );
@@ -363,10 +364,11 @@ void MonitorTab::setTimeWindow( int seconds )
     mw->statusBar()->showMessage( text, 3000 );
   }
 
-  // Clear all existing points and re-fetch from the new horizon so that
+  // Clear all in-memory buffers and re-fetch from the new horizon so that
   // widening the window loads fresh history and narrowing immediately trims.
   for ( auto &[key, info] : m_seriesMap )
   {
+    info.buffer.clear();
     info.series->clear();
     QVariant uv = info.series->property( "_uniSeries" );
     if ( uv.isValid() )
@@ -449,7 +451,7 @@ void MonitorTab::createUnifiedSeries()
     // Store reverse-scale and unit on the shadow series
     const double fwdScale = metricToNormalisedScale( md.group );
     ns->setProperty( "_realScale", 1.0 / fwdScale );
-    ns->setProperty( "_unit",      QLatin1String( metricGroupUnit( md.group ) ) );
+    ns->setProperty( "_unit", QString::fromUtf8( metricGroupUnit( md.group ) ) );
 
     // Store the shadow series on the original for applyBinaryData/trimSeries
     m_seriesMap[ md.key ].series->setProperty( "_uniSeries",
@@ -464,18 +466,15 @@ void MonitorTab::createUnifiedSeries()
 
     // Copy existing raw data into the shadow series (normalised)
     // so the unified chart is immediately populated with all visible history.
-    auto *rawSeries = m_seriesMap[ md.key ].series;
+    auto &rawBuffer = m_seriesMap[ md.key ].buffer;
     const double scale = metricToNormalisedScale( md.group );
-    if ( rawSeries->count() > 0 )
+    if ( !rawBuffer.isEmpty() )
     {
       QList< QPointF > pts;
-      pts.reserve( rawSeries->count() );
-      for ( int j = 0; j < rawSeries->count(); ++j )
-      {
-        const QPointF &pt = rawSeries->at( j );
+      pts.reserve( rawBuffer.size() );
+      for ( const auto &pt : rawBuffer )
         pts.append( QPointF( pt.x(), pt.y() * scale ) );
-      }
-      ns->append( pts );
+      ns->replace( pts );
     }
   }
 
@@ -487,11 +486,13 @@ void MonitorTab::destroyUnifiedSeries()
   if ( !m_unifiedSeriesActive )
     return;  // Already destroyed
 
-  // Remove all visible series from the unified chart (keep invisible anchor)
-  for ( auto *abstractSeries : m_unifiedChart->series() )
+  // Remove all shadow series from the unified chart (keep invisible anchor).
+  // The anchor has no name and is not visible; shadow series always have names.
+  const auto allSeries = m_unifiedChart->series();   // snapshot (QList copy)
+  for ( auto *abstractSeries : allSeries )
   {
-    if ( !abstractSeries->isVisible() )
-      continue;                       // keep the invisible anchor series
+    if ( !abstractSeries->isVisible() && abstractSeries->name().isEmpty() )
+      continue;   // invisible anchor — keep
     m_unifiedChart->removeSeries( abstractSeries );
     delete abstractSeries;
   }
@@ -705,9 +706,24 @@ void MonitorTab::fetchData()
   if ( !result.has_value() || result->isEmpty() )
     return;
 
+  // ── Suspend painting on ALL chart views during the batch update ────
+  m_tempChartView->setUpdatesEnabled( false );
+  m_dutyChartView->setUpdatesEnabled( false );
+  m_powerChartView->setUpdatesEnabled( false );
+  m_freqChartView->setUpdatesEnabled( false );
+  m_unifiedChartView->setUpdatesEnabled( false );
+
   applyBinaryData( *result );
   trimSeries();
+  commitSeries();
   updateAxes();
+
+  // ── Resume painting — triggers a single composite repaint ─────────
+  m_tempChartView->setUpdatesEnabled( true );
+  m_dutyChartView->setUpdatesEnabled( true );
+  m_powerChartView->setUpdatesEnabled( true );
+  m_freqChartView->setUpdatesEnabled( true );
+  m_unifiedChartView->setUpdatesEnabled( true );
 }
 
 // ---------------------------------------------------------------------------
@@ -735,23 +751,17 @@ void MonitorTab::applyBinaryData( const QByteArray &data )
   //   per non-empty metric: uint8_t metricId, uint32_t count,
   //                         count × { int64_t timestampMs, double value }  (16 bytes each)
   //
-  // IMPORTANT: We must NOT call series->append(x, y) in a loop — each
-  // individual append triggers a full chart repaint, which freezes the UI
-  // when catching up on a large history backfill.  Instead we accumulate all
-  // new points into per-series QList<QPointF> buffers and do a single bulk
-  // append() per series at the end (one repaint per series, not one per point).
+  // Points are appended to in-memory buffers only.  The actual QLineSeries
+  // objects are updated in commitSeries() via a single replace() call,
+  // which emits exactly one signal per series instead of one per append +
+  // one per trim.
 
   static constexpr size_t kPointSize = sizeof( int64_t ) + sizeof( double );  // 16
-
-  // Per-metric point batches (indexed by MetricId / kMetrics position).
-  QList< QPointF > rawBatch[ METRIC_COUNT ];
-  QList< QPointF > uniBatch[ METRIC_COUNT ];
 
   const auto *p   = reinterpret_cast< const uint8_t * >( data.constData() );
   const auto *end = p + data.size();
   qint64 maxTs = m_lastTimestamp;
 
-  // ---- Pass 1: parse binary blob into per-metric point lists ----
   while ( p < end )
   {
     if ( p + 1 + sizeof( uint32_t ) > end )
@@ -768,10 +778,6 @@ void MonitorTab::applyBinaryData( const QByteArray &data )
 
     const bool valid = ( metricId < METRIC_COUNT )
                        && ( m_seriesMap.count( kMetrics[ metricId ].key ) > 0 );
-    const double uniScale = valid
-        ? m_seriesMap[ kMetrics[ metricId ].key ].series
-              ->property( "_uniScale" ).toDouble()
-        : 0.0;
 
     for ( uint32_t j = 0; j < count; ++j )
     {
@@ -783,30 +789,11 @@ void MonitorTab::applyBinaryData( const QByteArray &data )
 
       if ( valid )
       {
-        const qreal x = static_cast< qreal >( ts );
-        rawBatch[ metricId ].append( QPointF( x, val ) );
-        uniBatch[ metricId ].append( QPointF( x, val * uniScale ) );
+        m_seriesMap[ kMetrics[ metricId ].key ].buffer.append(
+            QPointF( static_cast< qreal >( ts ), val ) );
         if ( ts > maxTs )
           maxTs = ts;
       }
-    }
-  }
-
-  // ---- Pass 2: bulk-append into series (one repaint per series) ----
-  for ( int i = 0; i < METRIC_COUNT; ++i )
-  {
-    if ( rawBatch[ i ].isEmpty() )
-      continue;
-
-    auto *seriesPtr = m_seriesMap[ kMetrics[ i ].key ].series;
-    seriesPtr->append( rawBatch[ i ] );
-
-    QVariant uv = seriesPtr->property( "_uniSeries" );
-    if ( uv.isValid() )
-    {
-      auto *uni = qobject_cast< QLineSeries * >( uv.value< QObject * >() );
-      if ( uni )
-        uni->append( uniBatch[ i ] );
     }
   }
 
@@ -820,25 +807,44 @@ void MonitorTab::trimSeries()
   const qint64 now = QDateTime::currentMSecsSinceEpoch();
   const qreal cutoff = static_cast< qreal >( now - static_cast< qint64 >( m_windowSeconds ) * 1000 );
 
-  auto trimOne = []( QLineSeries *s, qreal cutoff ) {
-    // Count how many leading points are stale, then remove them all at once.
-    int stale = 0;
-    while ( stale < s->count() && s->at( stale ).x() < cutoff )
-      ++stale;
-    if ( stale > 0 )
-      s->removePoints( 0, stale );
-  };
-
+  // Trim leading stale points from in-memory buffers only.
+  // The QLineSeries objects are updated in commitSeries().
   for ( auto &[key, info] : m_seriesMap )
   {
-    trimOne( info.series, cutoff );
+    auto &buf = info.buffer;
+    int stale = 0;
+    while ( stale < buf.size() && buf[ stale ].x() < cutoff )
+      ++stale;
+    if ( stale > 0 )
+      buf.remove( 0, stale );
+  }
+}
 
+void MonitorTab::commitSeries()
+{
+  // Push in-memory buffers into QLineSeries via a single replace() call.
+  // This emits exactly ONE pointsReplaced signal per series, instead of
+  // separate pointsAdded + pointsRemoved signals from append() + removePoints().
+
+  for ( int i = 0; i < METRIC_COUNT; ++i )
+  {
+    auto &info = m_seriesMap[ kMetrics[ i ].key ];
+    info.series->replace( info.buffer );
+
+    // Update unified shadow series if active — build normalised list on the fly
     QVariant uv = info.series->property( "_uniSeries" );
     if ( uv.isValid() )
     {
       auto *uni = qobject_cast< QLineSeries * >( uv.value< QObject * >() );
       if ( uni )
-        trimOne( uni, cutoff );
+      {
+        const double scale = metricToNormalisedScale( kMetrics[ i ].group );
+        QList< QPointF > scaled;
+        scaled.reserve( info.buffer.size() );
+        for ( const auto &pt : info.buffer )
+          scaled.append( QPointF( pt.x(), pt.y() * scale ) );
+        uni->replace( scaled );
+      }
     }
   }
 }
@@ -848,18 +854,25 @@ void MonitorTab::updateAxes()
   const QDateTime now = QDateTime::currentDateTime();
   const QDateTime start = now.addSecs( -m_windowSeconds );
 
-  auto setRange = [&]( QDateTimeAxis *axis ) {
-    if ( axis )
-    {
-      axis->setRange( start, now );
-    }
-  };
+  // Only update axes for the currently visible chart view — the invisible
+  // ones will be updated when they become visible again.
+  const bool perGroup = ( m_chartStack->currentIndex() == 0 );
 
-  setRange( m_tempXAxis );
-  setRange( m_dutyXAxis );
-  setRange( m_powerXAxis );
-  setRange( m_freqXAxis );
-  setRange( m_unifiedXAxis );
+  if ( perGroup )
+  {
+    auto setRange = [&]( QDateTimeAxis *axis ) {
+      if ( axis ) axis->setRange( start, now );
+    };
+    setRange( m_tempXAxis );
+    setRange( m_dutyXAxis );
+    setRange( m_powerXAxis );
+    setRange( m_freqXAxis );
+  }
+  else
+  {
+    if ( m_unifiedXAxis )
+      m_unifiedXAxis->setRange( start, now );
+  }
 }
 
 // ---------------------------------------------------------------------------

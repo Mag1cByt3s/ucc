@@ -105,8 +105,11 @@ private:
   /** Install hover callout on every series in the given chart view. */
   void installHoverCallout( QChart *chart );
 
-  /** Decode the binary payload returned by GetMonitorDataSince and append to series. */
+  /** Decode the binary payload returned by GetMonitorDataSince and append to buffers. */
   void applyBinaryData( const QByteArray &data );
+
+  /** Push in-memory buffers into QLineSeries via replace() (single repaint per series). */
+  void commitSeries();
 
   /** Hide per-group chart views when all metrics in that group are disabled. */
   void updateGroupChartVisibility();
@@ -135,10 +138,11 @@ private:
   // --- Data model ---
   struct SeriesInfo
   {
-    QLineSeries *series = nullptr;
-    QCheckBox   *toggle = nullptr;
-    QString      label;
-    QColor       color;
+    QLineSeries    *series = nullptr;
+    QCheckBox      *toggle = nullptr;
+    QString         label;
+    QColor          color;
+    QList< QPointF > buffer;   ///< In-memory point buffer (source of truth)
   };
 
   // One entry per metric key string (e.g. "cpuTemp")
