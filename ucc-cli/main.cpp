@@ -1407,28 +1407,8 @@ static int cmdChargingSetThresholds( ucc::UccdClient &c, int start, int end )
 
 static int cmdGpuInfo( ucc::UccdClient &c )
 {
-  std::puts( "=== GPU Info ===" );
-
-  auto info = c.getGpuInfo();
-  if ( info )
-  {
-    QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *info ) );
-    if ( doc.isObject() )
-    {
-      QJsonObject obj = doc.object();
-      for ( auto it = obj.begin(); it != obj.end(); ++it )
-      {
-        QString key = it.key();
-        QJsonValue val = it.value();
-        if ( val.isString() )
-          std::printf( "  %-24s %s\n", key.toStdString().c_str(), val.toString().toStdString().c_str() );
-        else if ( val.isDouble() )
-          std::printf( "  %-24s %g\n", key.toStdString().c_str(), val.toDouble() );
-        else if ( val.isBool() )
-          std::printf( "  %-24s %s\n", key.toStdString().c_str(), val.toBool() ? "yes" : "no" );
-      }
-    }
-  }
+  std::puts( "=== GPU (dGPU) ===" );
+  std::puts( "" );
 
   // Live sensors
   printVal( "Temperature:",         c.getGpuTemperature(), "°C" );
@@ -1447,6 +1427,12 @@ static int cmdGpuInfo( ucc::UccdClient &c )
   printVal( "Max power limit:",     ctgpMax, "W" );
   printVal( "Default power limit:", ctgpDef, "W" );
   printVal( "cTGP offset:",         ctgpOff, "W" );
+
+  std::puts( "\n=== iGPU ===" );
+  std::puts( "" );
+  printVal( "Temperature:",         c.getIGpuTemperature(), "°C" );
+  printVal( "Frequency:",           c.getIGpuFrequency(), "MHz" );
+  printVal( "Power:",               c.getIGpuPower(), "W" );
 
   return 0;
 }

@@ -451,7 +451,26 @@ bool HardwareMonitorWorker::checkAmdDGpuHwmonPath() noexcept
 
 std::string HardwareMonitorWorker::getIntelIGpuDrmPathImpl() const noexcept
 {
-  return "";
+  try
+  {
+    std::string intelIGpuPattern = GpuDeviceDetector().getIntelIGpuPatternPublic();
+
+    // Find the DRM card directory whose device uevent contains a matching Intel PCI ID.
+    // Matches both i915 (pre-Lunar Lake) and xe (Lunar Lake+) kernel drivers.
+    std::string command =
+        "grep -lP 'PCI_ID=" + intelIGpuPattern + "' "
+        "/sys/bus/pci/devices/*/drm/card*/device/uevent 2>/dev/null "
+        "| sed 's|/device/uevent$||' | head -1";
+
+    std::string output = TccUtils::executeCommand( command );
+
+    while ( not output.empty() and ( output.back() == '\n' or output.back() == '\r' or
+                                     output.back() == ' ' or output.back() == '\t' ) )
+      output.pop_back();
+
+    return output;
+  }
+  catch ( ... ) { return ""; }
 }
 
 std::string HardwareMonitorWorker::getAmdIGpuHwmonPathImpl() const noexcept
@@ -520,6 +539,18 @@ IGpuInfo HardwareMonitorWorker::getIntelIGpuValues( const IGpuInfo &base ) const
   if ( not m_intelIGpuDrmPath.has_value() )
     return values;
 
+  values.m_vendor = "intel";
+  const std::string &drmPath = m_intelIGpuDrmPath.value();
+
+  // Current GPU frequency (MHz) — directly readable from DRM sysfs
+  if ( auto curFreq = SysfsNode< int64_t >( drmPath + "/gt_act_freq_mhz" ).read(); curFreq and *curFreq > 0 )
+    values.m_coreFrequency = static_cast< double >( *curFreq );
+
+  // Max GPU frequency (MHz)
+  if ( auto maxFreq = SysfsNode< int64_t >( drmPath + "/gt_RP0_freq_mhz" ).read(); maxFreq and *maxFreq > 0 )
+    values.m_maxCoreFrequency = static_cast< double >( *maxFreq );
+
+  // Power draw via Intel RAPL
   if ( m_intelGpuPowerController )
     values.m_powerDraw = m_intelGpuPowerController->getCurrentPower();
 
