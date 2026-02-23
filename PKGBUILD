@@ -39,6 +39,7 @@ makedepends=(
   'cmake'
   'extra-cmake-modules'
   'ninja'
+  'nlohmann-json'
   'pkgconf'
   'plasma-workspace'
   'kconfig'
