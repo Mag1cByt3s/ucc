@@ -364,21 +364,31 @@ void MonitorTab::setTimeWindow( int seconds )
     mw->statusBar()->showMessage( text, 3000 );
   }
 
-  // Clear all in-memory buffers and re-fetch from the new horizon so that
-  // widening the window loads fresh history and narrowing immediately trims.
-  for ( auto &[key, info] : m_seriesMap )
+  if ( m_paused )
   {
-    info.buffer.clear();
-    info.series->clear();
-    QVariant uv = info.series->property( "_uniSeries" );
-    if ( uv.isValid() )
-      if ( auto *uni = qobject_cast< QLineSeries * >( uv.value< QObject * >() ) )
-        uni->clear();
+    // When paused we cannot re-fetch, so just shift the visible axis range.
+    // Do NOT trim or clear buffers — the data must survive zoom-in so that a
+    // subsequent zoom-out can reveal it again.
+    updateAxes();
   }
-  const qint64 now = QDateTime::currentMSecsSinceEpoch();
-  m_lastTimestamp = now - static_cast< qint64 >( m_windowSeconds ) * 1000;
-  fetchData();
-  updateAxes();
+  else
+  {
+    // Clear all in-memory buffers and re-fetch from the new horizon so that
+    // widening the window loads fresh history and narrowing immediately trims.
+    for ( auto &[key, info] : m_seriesMap )
+    {
+      info.buffer.clear();
+      info.series->clear();
+      QVariant uv = info.series->property( "_uniSeries" );
+      if ( uv.isValid() )
+        if ( auto *uni = qobject_cast< QLineSeries * >( uv.value< QObject * >() ) )
+          uni->clear();
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    m_lastTimestamp = now - static_cast< qint64 >( m_windowSeconds ) * 1000;
+    fetchData();
+    updateAxes();
+  }
 
   // Persist only the time window value
   QSettings settings( QDir::homePath() + "/.config/uccrc", QSettings::IniFormat );
