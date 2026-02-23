@@ -35,7 +35,7 @@ Depends: ${shlibs:Depends}, ${misc:Depends},
 Description: Uniwill Control Center
  Uniwill Control Center (UCC) is a comprehensive system control application
  suite for Uniwill (Tuxedo, XMG etc.) computers. Includes the system daemon,
- graphical user interface and KDE Plasma system-tray applet.
+ graphical user interface, command-line tool and KDE Plasma system-tray applet.
  .
  Features:
   - Fan control management

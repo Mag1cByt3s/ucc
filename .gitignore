@@ -4,4 +4,6 @@ dist
 *.bak
 result
 result-*
-
+.qtcreator
+*.user
+build-local.sh

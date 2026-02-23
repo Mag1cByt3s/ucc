@@ -1,0 +1,351 @@
+.\" ucc-cli.1 — man page for ucc-cli
+.\" SPDX-License-Identifier: GPL-3.0-or-later
+.TH UCC-CLI 1 "February 2026" "ucc-cli 0.1.0" "Uniwill Control Center"
+.SH NAME
+ucc-cli \- command-line interface for Uniwill Control Center
+.SH SYNOPSIS
+.B ucc-cli
+.I command
+.RI [ options ]
+.SH DESCRIPTION
+.B ucc-cli
+is a command-line client for the Uniwill Control Center daemon
+.RB ( uccd ).
+It communicates over D-Bus to query and control CPU/GPU performance profiles,
+fan curves, keyboard backlighting, display brightness, webcam, Fn Lock,
+water cooler hardware, and battery charging settings on Uniwill laptops.
+.PP
+The daemon must be running for any command to succeed.
+Check with
+.BR "systemctl status uccd" .
+.SH COMMANDS
+.SS General
+.TP
+.B status
+Print a full system dashboard: active profile, CPU/GPU temperatures,
+frequencies, power draw, fan speeds, hardware toggles, water cooler state,
+and charging information.
+Use
+.B \-\-json
+for machine-readable output.
+.TP
+.B monitor \fR[\fB\-n\fR \fICOUNT\fR] [\fB\-i\fR \fISECS\fR]
+Continuously print a compact one-line summary of CPU and GPU metrics
+(temperature, frequency, power, fan speed).
+Defaults to running indefinitely at 2-second intervals.
+.RS
+.TP
+.BI \-n " COUNT"
+Stop after
+.I COUNT
+samples (0 = infinite).
+.TP
+.BI \-i " SECS"
+Polling interval in seconds (default: 2).
+.RE
+.SS Profile Management
+.TP
+.B profile list
+List all built-in and custom profiles with their UUIDs and names.
+.TP
+.B profile get
+Print the active profile as indented JSON.
+.TP
+.B profile set \fIPROFILE_ID\fR
+Activate the profile identified by
+.IR PROFILE_ID .
+.TP
+.B profile defaults
+Print the built-in profiles as JSON.
+.TP
+.B profile customs
+Print the custom profiles as JSON.
+.TP
+.B profile apply \fIJSON\fR
+Apply a complete profile from a JSON string.
+.TP
+.B profile save \fIJSON\fR
+Save a custom profile (creates or updates).
+.TP
+.B profile delete \fIPROFILE_ID\fR
+Delete a custom profile.
+.SS State Map
+The state map controls automatic profile switching when the power source
+changes (AC, battery, or water cooler).
+.TP
+.B statemap get
+Print the current settings / state map as JSON.
+.TP
+.B statemap set \fISTATE\fR \fIPROFILE_ID\fR
+Assign a profile to a power state.
+Valid states:
+.BR power_ac ,
+.BR power_bat ,
+.BR power_wc .
+.SS Fan Control
+.TP
+.B fan list
+List available fan profiles (built-in and custom) with their UUIDs.
+.TP
+.B fan get \fIFAN_PROFILE_ID\fR
+Print the fan profile's curve data as JSON (keys:
+.BR tableCPU ,
+.BR tableGPU ,
+.BR tablePump ,
+.BR tableWaterCoolerFan ).
+.TP
+.B fan set \fIFAN_PROFILE_ID\fR
+Activate a fan profile by its UUID.
+The profile's curve keys are remapped and applied to the daemon.
+Works with both built-in and custom fan profiles.
+.TP
+.B fan apply \fIJSON\fR
+Apply fan curves directly.
+The JSON must contain keys:
+.BR cpu ,
+.BR gpu ,
+.BR pump ,
+.BR waterCoolerFan
+(each an array of temperature\[->]duty-percent points).
+.TP
+.B fan revert
+Revert fan curves to the profile stored in the daemon.
+.SS Keyboard Backlight
+.TP
+.B keyboard info
+Print keyboard backlight capabilities (zone count, max brightness, max RGB values).
+.TP
+.B keyboard get
+Print the current per-zone backlight state as a JSON array.
+.TP
+.B keyboard set \fIJSON\fR
+Set per-zone backlight states from a JSON array.
+Each element:
+.nf
+  { "mode": 0, "brightness": N, "red": R, "green": G, "blue": B }
+.fi
+.TP
+.B keyboard color \fIR\fR \fIG\fR \fIB\fR [\fIBRIGHTNESS\fR]
+Set a uniform colour across all keyboard zones.
+.IR R ,
+.IR G ,
+.I B
+are 0\-255.
+.I BRIGHTNESS
+defaults to 128.
+.TP
+.B keyboard profiles
+List custom keyboard profiles (from local settings) with their UUIDs and names.
+.TP
+.B keyboard activate \fIPROFILE_ID\fR
+Activate a custom keyboard profile by its UUID.
+The profile's backlight data is sent to the daemon.
+.SS Hardware Controls
+.TP
+.B brightness get
+Print the current display brightness (0\-100).
+.TP
+.B brightness set \fIVALUE\fR
+Set display brightness (0\-100).
+.TP
+.B webcam get
+Print webcam status (\fBenabled\fR or \fBdisabled\fR).
+.TP
+.B webcam set \fIon\fR|\fIoff\fR
+Enable or disable the webcam.
+.TP
+.B fnlock get
+Print Fn Lock status (\fBon\fR or \fBoff\fR).
+.TP
+.B fnlock set \fIon\fR|\fIoff\fR
+Enable or disable Fn Lock.
+.SS Water Cooler
+These commands control the Uniwill LCT water cooling system (if supported).
+.TP
+.B watercooler status
+Print water cooler state: supported, enabled, fan speed and pump level
+(only shown when the cooler is enabled and connected).
+.TP
+.B watercooler enable
+Enable the water cooler (starts BLE scanning).
+.TP
+.B watercooler disable
+Disable the water cooler.
+.TP
+.B watercooler fan \fIPERCENT\fR
+Set the water cooler fan duty cycle (0\-100%).
+.TP
+.B watercooler pump \fICODE\fR
+Set the pump voltage.
+.IR CODE :
+0 = 11 V, 1 = 12 V, 2 = 7 V, 3 = 8 V, 4 = off.
+.TP
+.B watercooler led \fIR\fR \fIG\fR \fIB\fR \fIMODE\fR
+Set the water cooler LED colour and mode.
+.IR R ,
+.IR G ,
+.I B
+are 0\-255.
+.IR MODE :
+0 = static, 1 = breathe, 2 = colorful, 3 = breathe-color.
+.TP
+.B watercooler led-off
+Turn off the water cooler LED.
+.SS Charging
+.TP
+.B charging status
+Print charging profile, priority, type, and charge thresholds.
+Only shown if the hardware supports charging control.
+.TP
+.B charging set-profile \fIDESCRIPTOR\fR
+Set the firmware-level charging profile.
+.TP
+.B charging set-priority \fIDESCRIPTOR\fR
+Set the USB-C PD charging priority.
+.TP
+.B charging set-thresholds \fISTART\fR \fIEND\fR
+Set the battery charge start and end thresholds (percent).
+.SS System Information
+.TP
+.B cpu
+Show CPU info: core count, temperature, frequency, power, available
+governors and energy-performance preferences.
+.TP
+.B gpu
+Show GPU info, NVIDIA power control details, and cTGP offset.
+.TP
+.B power-limits
+Show ODM power limits.
+.SH GLOBAL OPTIONS
+.TP
+.B \-\-json
+Output machine-readable JSON instead of human-readable text.
+Currently applies to the
+.B status
+command.
+.TP
+.BR \-\-help ", " \-h
+Print usage information and exit.
+.TP
+.BR \-\-version ", " \-v
+Print version and exit.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Command error (bad arguments, D-Bus method failure).
+.TP
+.B 2
+Cannot connect to the uccd daemon.
+.SH ENVIRONMENT
+.B ucc-cli
+communicates with the
+.B com.uniwill.uccd
+D-Bus service on the system bus.
+The daemon is typically managed via systemd:
+.PP
+.RS
+.nf
+systemctl start uccd
+systemctl enable uccd
+.fi
+.RE
+.SH FILES
+.TP
+.I ~/.config/uccrc
+Local user configuration (custom profiles, fan profiles, keyboard profiles,
+state map).
+Shared with
+.B ucc-gui
+and
+.BR ucc-tray .
+.SH EXAMPLES
+Show a live monitoring dashboard:
+.PP
+.RS
+.nf
+ucc-cli status
+.fi
+.RE
+.PP
+Monitor CPU/GPU every 1 second, 10 samples:
+.PP
+.RS
+.nf
+ucc-cli monitor -i 1 -n 10
+.fi
+.RE
+.PP
+List and activate a profile:
+.PP
+.RS
+.nf
+ucc-cli profile list
+ucc-cli profile set 01234567-abcd-ef01-2345-6789abcdef01
+.fi
+.RE
+.PP
+Set keyboard to solid red at full brightness:
+.PP
+.RS
+.nf
+ucc-cli keyboard color 255 0 0 255
+.fi
+.RE
+.PP
+Get full status as JSON (for scripting):
+.PP
+.RS
+.nf
+ucc-cli status --json | jq .cpu.temperature
+.fi
+.RE
+.PP
+Set charge thresholds to start at 40% and stop at 80%:
+.PP
+.RS
+.nf
+ucc-cli charging set-thresholds 40 80
+.fi
+.RE
+.PP
+Control water cooler LED (green, breathe mode):
+.PP
+.RS
+.nf
+ucc-cli watercooler led 0 255 0 1
+.fi
+.RE
+.PP
+Activate a fan profile:
+.PP
+.RS
+.nf
+ucc-cli fan list
+ucc-cli fan set 01234567-abcd-ef01-2345-6789abcdef01
+.fi
+.RE
+.PP
+List and activate a keyboard profile:
+.PP
+.RS
+.nf
+ucc-cli keyboard profiles
+ucc-cli keyboard activate 01234567-abcd-ef01-2345-6789abcdef01
+.fi
+.RE
+.SH SEE ALSO
+.BR uccd (8),
+.BR ucc-gui (1),
+.BR systemctl (1),
+.BR dbus-send (1)
+.SH BUGS
+Report bugs at
+.UR https://github.com/nanomatters/ucc/issues
+.UE .
+.SH LICENSE
+GNU General Public License v3.0 or later.
+.SH AUTHORS
+Uniwill Control Center contributors.

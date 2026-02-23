@@ -131,10 +131,11 @@ arch: dist
 	@echo "Building Arch Linux package..."
 	@mkdir -p dist/arch
 	@cp PKGBUILD dist/arch/
+	@cp ucc.install dist/arch/
 	@cd dist/arch && \
 		sed -i "s/pkgver=.*/pkgver=$(VERSION)/" PKGBUILD && \
 		sed -i "s/pkgrel=.*/pkgrel=1/" PKGBUILD && \
-		cp ../$(ARCHIVE) . && \
+		cp ../$(ARCHIVE) ./ucc-$(VERSION).tar.gz && \
 		BUILDDIR=$$(pwd)/build SRCDEST=$$(pwd) makepkg -sf --noconfirm
 	@echo "Arch package created in dist/arch/"
 

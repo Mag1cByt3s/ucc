@@ -3,7 +3,7 @@
 pkgname=ucc
 pkgver=0.1.0
 pkgrel=1
-pkgdesc='Uniwill Control Center - System daemon, GUI and Plasma applet for Uniwill laptops'
+pkgdesc='Uniwill Control Center - System daemon, GUI, CLI tool and Plasma applet for Uniwill laptops'
 arch=('x86_64')
 url='https://github.com/nanomatters/ucc'
 license=('GPL-3.0-or-later')
@@ -71,6 +71,8 @@ build() {
     -DCMAKE_INSTALL_LIBDIR=lib
     -DBUILD_GUI=ON
     -DBUILD_TRAY=ON
+    -DBUILD_GNOME=ON
+    -DBUILD_CLI=ON
   )
   cmake "${cmake_options[@]}"
   cmake --build build

@@ -55,6 +55,8 @@ stdenv.mkDerivation {
     "-DCMAKE_BUILD_TYPE=Release"
     "-DBUILD_GUI=ON"
     "-DBUILD_TRAY=ON"
+    "-DBUILD_GNOME=ON"
+    "-DBUILD_CLI=ON"
     "-DUCC_AUTOSTART_DIR=share/xdg/autostart"
   ];
 
@@ -82,7 +84,7 @@ stdenv.mkDerivation {
   '';
 
   meta = with lib; {
-    description = "Uniwill Control Center - System control application suite";
+    description = "Uniwill Control Center - System control application suite (daemon, GUI, CLI, Plasma applet)";
     homepage = "https://github.com/nanomatters/ucc";
     license = licenses.gpl3Plus;
     platforms = platforms.linux;

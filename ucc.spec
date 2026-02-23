@@ -42,6 +42,7 @@ suite for Uniwill computers. It provides:
 
 - Daemon (uccd): Background service for system control and monitoring
 - GUI (ucc-gui): Main graphical user interface
+- CLI (ucc-cli): Command-line interface for scripting and headless use
 - Plasma Applet: KDE system tray applet for quick access
 
 Features include fan control, keyboard backlight management, display settings,
@@ -57,8 +58,10 @@ CPU power management, and water cooler control for supported systems.
   -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
   -DCMAKE_INSTALL_RPATH="" \
   -DBUILD_GUI=ON \
-  -DBUILD_TRAY=ON
-%cmake_build
+  -DBUILD_TRAY=ON \
+  -DBUILD_GNOME=ON \
+  -DBUILD_CLI=ON
+%cmake_build -j
 
 %install
 %cmake_install
@@ -84,6 +87,7 @@ systemctl daemon-reload > /dev/null 2>&1 || true
 %doc README.md
 %{_bindir}/uccd
 %{_bindir}/ucc-gui
+%{_bindir}/ucc-cli
 %{_libdir}/libucc-dbus.so*
 # libucc-declarative.so is installed twice by cmake (KDE_INSTALL_TARGETS_DEFAULT_ARGS
 # and ecm_finalize_qml_module). Only the QML module copy is needed.
@@ -128,3 +132,10 @@ systemctl daemon-reload > /dev/null 2>&1 || true
 %{_datadir}/icons/hicolor/128x128/apps/ucc-tray.png
 %{_datadir}/pixmaps/ucc-gui.svg
 %{_datadir}/pixmaps/ucc-tray.svg
+%{_mandir}/man1/ucc-cli.1*
+%{_datadir}/bash-completion/completions/ucc-cli
+# GNOME Shell extension
+%{_datadir}/gnome-shell/extensions/ucc@uniwill.com/metadata.json
+%{_datadir}/gnome-shell/extensions/ucc@uniwill.com/extension.js
+%{_datadir}/gnome-shell/extensions/ucc@uniwill.com/uccdClient.js
+%{_datadir}/gnome-shell/extensions/ucc@uniwill.com/stylesheet.css

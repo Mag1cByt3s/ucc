@@ -1,0 +1,255 @@
+/*
+ * UCC GNOME Shell Extension stylesheet
+ *
+ * Uses GNOME Shell's CSS dialect (St/Clutter CSS, not full web CSS).
+ */
+
+/* ── Tab bar ── */
+
+.ucc-tab-bar {
+    spacing: 4px;
+    padding: 4px 8px;
+}
+
+.ucc-tab-button {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 11px;
+    color: #ccc;
+    background-color: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ucc-tab-button:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.ucc-tab-button:checked {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* ── Tab content ── */
+
+.ucc-tab-content {
+    padding: 6px 12px;
+    spacing: 4px;
+    min-width: 300px;
+}
+
+/* ── Section titles ── */
+
+.ucc-section-title {
+    font-size: 10px;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    padding-top: 6px;
+    padding-bottom: 2px;
+}
+
+/* ── Metric rows ── */
+
+.ucc-grid {
+    spacing: 2px;
+}
+
+.ucc-metric-row {
+    padding: 1px 0;
+}
+
+.ucc-metric-name {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8);
+    min-width: 120px;
+}
+
+.ucc-metric-value {
+    font-size: 12px;
+    font-weight: bold;
+    color: #fff;
+    min-width: 100px;
+    text-align: right;
+}
+
+/* ── Profile ── */
+
+.ucc-active-profile {
+    font-size: 13px;
+    font-weight: bold;
+    color: #fff;
+    padding: 4px 0;
+}
+
+.ucc-profile-scroll {
+    max-height: 400px;
+}
+
+/* ── Chooser list (radio-dot style, like GNOME Power Mode / Wi-Fi) ── */
+
+.ucc-chooser-list {
+    spacing: 1px;
+    padding: 2px 0;
+}
+
+.ucc-chooser-row {
+    padding: 6px 8px;
+    border-radius: 6px;
+    spacing: 8px;
+    transition-duration: 100ms;
+}
+
+.ucc-chooser-row:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.ucc-chooser-active {
+    background-color: rgba(53, 132, 228, 0.15);
+}
+
+.ucc-chooser-active:hover {
+    background-color: rgba(53, 132, 228, 0.25);
+}
+
+.ucc-chooser-dot {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.ucc-chooser-active .ucc-chooser-dot {
+    color: rgb(53, 132, 228);
+}
+
+.ucc-chooser-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.ucc-chooser-active .ucc-chooser-label {
+    color: #fff;
+    font-weight: bold;
+}
+
+.ucc-profile-list {
+    spacing: 2px;
+}
+
+.ucc-profile-btn {
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #ddd;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: left;
+}
+
+.ucc-profile-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.ucc-profile-btn:checked {
+    background-color: rgba(53, 132, 228, 0.3);
+    color: #fff;
+    border-color: rgba(53, 132, 228, 0.5);
+}
+
+/* ── Hardware toggles ── */
+
+.ucc-hw-row {
+    padding: 4px 0;
+    spacing: 8px;
+}
+
+.ucc-toggle {
+    padding: 3px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: bold;
+    min-width: 40px;
+    color: #aaa;
+    background-color: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ucc-toggle:checked {
+    background-color: rgba(53, 132, 228, 0.4);
+    color: #fff;
+    border-color: rgba(53, 132, 228, 0.6);
+}
+
+.ucc-slider-value {
+    font-size: 11px;
+    color: #ccc;
+    min-width: 40px;
+    text-align: right;
+    padding-left: 6px;
+}
+
+/* ── Combo buttons (pump voltage) ── */
+
+.ucc-combo-row {
+    spacing: 4px;
+    padding: 2px 0;
+}
+
+.ucc-combo-btn {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #ccc;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ucc-combo-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.ucc-combo-btn:checked {
+    background-color: rgba(53, 132, 228, 0.3);
+    color: #fff;
+    border-color: rgba(53, 132, 228, 0.5);
+}
+
+/* ── Open Control Center button ── */
+
+.ucc-open-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: bold;
+    color: #fff;
+    background-color: rgba(53, 132, 228, 0.3);
+    border: 1px solid rgba(53, 132, 228, 0.4);
+    margin-top: 8px;
+}
+
+.ucc-open-btn:hover {
+    background-color: rgba(53, 132, 228, 0.5);
+}
+
+/* ── Footer ── */
+
+.ucc-footer {
+    padding: 2px 8px;
+    spacing: 8px;
+}
+
+.ucc-conn-label {
+    font-size: 11px;
+}
+
+.ucc-connected {
+    color: rgba(46, 194, 126, 0.9);
+}
+
+.ucc-disconnected {
+    color: rgba(224, 27, 36, 0.9);
+}
+
+.ucc-power-label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+}

@@ -61,7 +61,9 @@ find_package( Plasma REQUIRED )
 
 # Options
 option( BUILD_GUI "Build the main GUI application" ON )
+option( BUILD_CLI "Build the command-line interface" ON )
 option( BUILD_TRAY "Build the system tray applet" ON )
+option( BUILD_GNOME "Install the GNOME Shell extension" ON )
 
 # Include directories
 include_directories( ${CMAKE_SOURCE_DIR}/include )
@@ -75,6 +77,10 @@ if( BUILD_GUI )
   add_subdirectory( ucc-gui )
 endif()
 
+if( BUILD_CLI )
+  add_subdirectory( ucc-cli )
+endif()
+
 if( BUILD_TRAY )
   add_subdirectory( ucc-tray )
 endif()
@@ -82,6 +88,18 @@ endif()
 # Install SVG icons to /usr/share/pixmaps for legacy compatibility
 install(FILES icons/ucc-gui.svg DESTINATION share/pixmaps)
 install(FILES icons/ucc-tray.svg DESTINATION share/pixmaps)
+
+# Install GNOME Shell extension
+if( BUILD_GNOME )
+  set( _gnome_ext_dir "share/gnome-shell/extensions/ucc@uniwill.com" )
+  install( FILES
+    ucc-gnome/metadata.json
+    ucc-gnome/extension.js
+    ucc-gnome/uccdClient.js
+    ucc-gnome/stylesheet.css
+    DESTINATION ${_gnome_ext_dir}
+  )
+endif()
 
 # Icon install (all sizes)
 install(FILES
@@ -130,7 +148,9 @@ message(STATUS "")
 message(STATUS "  Components:")
 message(STATUS "    DBus Library:   ON")
 message(STATUS "    GUI App:        ${BUILD_GUI}")
+message(STATUS "    CLI Tool:       ${BUILD_CLI}")
 message(STATUS "    Tray Applet:    ${BUILD_TRAY}")
+message(STATUS "    GNOME Ext:      ${BUILD_GNOME}")
 message(STATUS "")
 message(STATUS "  Install prefix:   ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "===================================================")
