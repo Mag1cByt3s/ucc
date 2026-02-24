@@ -76,7 +76,8 @@ public:
     std::atomic< int32_t > &nvidiaPowerCTRLDefaultPowerLimit,
     std::atomic< int32_t > &nvidiaPowerCTRLMaxPowerLimit,
     std::atomic< bool > &nvidiaPowerCTRLAvailable,
-    std::atomic< bool > &cTGPAdjustmentSupported )
+    std::atomic< bool > &cTGPAdjustmentSupported,
+    bool skipAcpiPlatformProfile = false )
     : m_ioApi( ioApi ),
       m_getActiveProfile( std::move( getActiveProfileCallback ) ),
       m_setOdmProfilesAvailable( std::move( setOdmProfilesAvailableCallback ) ),
@@ -87,7 +88,8 @@ public:
       m_nvidiaPowerCTRLDefaultPowerLimit( nvidiaPowerCTRLDefaultPowerLimit ),
       m_nvidiaPowerCTRLMaxPowerLimit( nvidiaPowerCTRLMaxPowerLimit ),
       m_nvidiaPowerCTRLAvailable( nvidiaPowerCTRLAvailable ),
-      m_cTGPAdjustmentSupported( cTGPAdjustmentSupported )
+      m_cTGPAdjustmentSupported( cTGPAdjustmentSupported ),
+      m_skipAcpiPlatformProfile( skipAcpiPlatformProfile )
   {
   }
 
@@ -266,6 +268,7 @@ private:
   std::function< void( const std::string & ) > m_setOdmPowerLimitsJSON;
   std::function< void( const std::string & ) > m_logFunction;
   ODMProfileType m_odmProfileType = ODMProfileType::None;
+  bool m_skipAcpiPlatformProfile = false;
 
   // --- Sysfs path constants ---
 

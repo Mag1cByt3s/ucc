@@ -1807,6 +1807,13 @@ UccDBusService::UccDBusService()
   );
 
   // initialize profile settings worker (replaces ODMPowerLimitWorker, ODMProfileWorker, ChargingWorker, YCbCr420WorkaroundWorker)
+  // Quirk: some devices (e.g. IBP Gen10 AMD) have a non-functional ACPI platform_profile —
+  // skip it and fall through to the Tuxedo IO API instead (synced from TCC f71acd86, a1b2f6b4).
+  const bool skipAcpiPlatformProfile =
+    m_deviceId.has_value() and
+    ( m_deviceId.value() == UniwillDeviceID::IBPG10AMD or
+      m_deviceId.value() == UniwillDeviceID::IBM15A10 );
+
   m_profileSettingsWorker = std::make_unique< ProfileSettingsWorker >(
     m_io,
     [this]() -> UccProfile { return m_activeProfile; },
@@ -1824,10 +1831,16 @@ UccDBusService::UccDBusService()
     m_dbusData.nvidiaPowerCTRLDefaultPowerLimit,
     m_dbusData.nvidiaPowerCTRLMaxPowerLimit,
     m_dbusData.nvidiaPowerCTRLAvailable,
-    m_dbusData.cTGPAdjustmentSupported
+    m_dbusData.cTGPAdjustmentSupported,
+    skipAcpiPlatformProfile
   );
 
   // initialize hardware monitor worker (merged GPU info + CPU power + Prime)
+  // Quirk: IBM15A10 has a display mux — prime-select is only supported when
+  // the eDP display is NOT wired to the NVIDIA GPU (synced from TCC PrimeWorker).
+  const bool isDisplayMuxDevice =
+    m_deviceId.has_value() and m_deviceId.value() == UniwillDeviceID::IBM15A10;
+
   m_hardwareMonitorWorker = std::make_unique< HardwareMonitorWorker >(
     [this]( const std::string &json, double cpuPowerWatts ) {
       {
@@ -1842,7 +1855,8 @@ UccDBusService::UccDBusService()
     [this]( const std::string &primeState ) {
       std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
       m_dbusData.primeState = primeState;
-    }
+    },
+    isDisplayMuxDevice
   );
 
   // webcam monitoring via HardwareMonitorWorker (replaces former WebcamWorker)
@@ -3112,6 +3126,9 @@ std::optional< UniwillDeviceID > UccDBusService::identifyDevice()
   dmiSKUDeviceMap[ "STELLARIS16I07" ] = UniwillDeviceID::STELLARIS16I07;
   dmiSKUDeviceMap[ "XNE16A25" ] = UniwillDeviceID::XNE16A25;
   dmiSKUDeviceMap[ "XNE16E25" ] = UniwillDeviceID::XNE16E25;
+  dmiSKUDeviceMap[ "GEMINI17I04" ] = UniwillDeviceID::GEMINI17I04;
+  dmiSKUDeviceMap[ "GEMINIGEN4I" ] = UniwillDeviceID::GEMINI17I04;
+  dmiSKUDeviceMap[ "IBM15A10" ] = UniwillDeviceID::IBM15A10;
   dmiSKUDeviceMap[ "SIRIUS1601" ] = UniwillDeviceID::SIRIUS1601;
   dmiSKUDeviceMap[ "SIRIUS1602" ] = UniwillDeviceID::SIRIUS1602;
 

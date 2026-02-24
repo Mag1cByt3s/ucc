@@ -292,7 +292,8 @@ private:
 HardwareMonitorWorker::HardwareMonitorWorker(
   CpuPowerCallback cpuPowerUpdateCallback,
   std::function< bool() > getSensorDataCollectionStatus,
-  std::function< void( const std::string & ) > setPrimeStateCallback )
+  std::function< void( const std::string & ) > setPrimeStateCallback,
+  bool isDisplayMuxDevice )
   : DaemonWorker( std::chrono::milliseconds( 800 ), false )
   , m_gpuDetector()
   , m_deviceCounts( m_gpuDetector.detectGpuDevices() )
@@ -307,6 +308,8 @@ HardwareMonitorWorker::HardwareMonitorWorker(
   , m_getSensorDataCollectionStatus( std::move( getSensorDataCollectionStatus ) )
   , m_setPrimeState( std::move( setPrimeStateCallback ) )
   , m_primeSupported( false )
+  , m_isDisplayMuxDevice( isDisplayMuxDevice )
+  , m_displayConnectedToNvidia( false )
   , m_cycleCounter( 0 )
 {
 }
@@ -797,6 +800,14 @@ void HardwareMonitorWorker::initPrime()
 {
   // Wait for requires_offloading file to be updated after boot
   std::this_thread::sleep_for( std::chrono::milliseconds( 2000 ) );
+
+  if ( m_isDisplayMuxDevice )
+  {
+    m_displayConnectedToNvidia = getDisplayConnectedToNvidia();
+    syslog( LOG_INFO, "HardwareMonitorWorker: Display mux device — display connected to NVIDIA: %s",
+            m_displayConnectedToNvidia ? "yes" : "no" );
+  }
+
   updatePrimeStatus();
 }
 
@@ -818,6 +829,11 @@ void HardwareMonitorWorker::updatePrimeStatus() noexcept
 
 bool HardwareMonitorWorker::checkPrimeSupported() const noexcept
 {
+  // On display-mux devices (e.g. IBM15A10), prime-select is not supported
+  // when the eDP display is physically wired to the NVIDIA GPU.
+  if ( m_isDisplayMuxDevice )
+    return not m_displayConnectedToNvidia;
+
   const bool offloadingStatus = std::filesystem::exists(
     "/var/lib/ubuntu-drivers-common/requires_offloading" );
 
@@ -893,6 +909,62 @@ std::string HardwareMonitorWorker::transformPrimeStatus( const std::string &stat
     return "on-demand";
   else
     return "off";
+}
+
+bool HardwareMonitorWorker::getDisplayConnectedToNvidia() const noexcept
+{
+  namespace fs = std::filesystem;
+
+  try
+  {
+    const std::string drmPath = "/sys/class/drm/";
+    std::error_code ec;
+
+    if ( not fs::exists( drmPath, ec ) )
+      return false;
+
+    for ( const auto &entry : fs::directory_iterator( drmPath, ec ) )
+    {
+      const std::string name = entry.path().filename().string();
+
+      // Look for eDP connector entries (e.g. card0-eDP-1, card1-eDP-2)
+      if ( name.find( "eDP" ) == std::string::npos )
+        continue;
+
+      const std::string vendorPath = entry.path().string() + "/device/device/vendor";
+      const std::string statusPath = entry.path().string() + "/status";
+
+      std::ifstream vendorFile( vendorPath );
+      std::ifstream statusFile( statusPath );
+
+      if ( not vendorFile.is_open() or not statusFile.is_open() )
+        continue;
+
+      std::string vendorId, status;
+      std::getline( vendorFile, vendorId );
+      std::getline( statusFile, status );
+
+      // Trim whitespace
+      while ( not vendorId.empty() and ( vendorId.back() == '\n' or vendorId.back() == ' ' ) )
+        vendorId.pop_back();
+      while ( not status.empty() and ( status.back() == '\n' or status.back() == ' ' ) )
+        status.pop_back();
+
+      // 0x10de = NVIDIA vendor ID
+      if ( vendorId == "0x10de" and status == "connected" )
+      {
+        syslog( LOG_INFO, "HardwareMonitorWorker: eDP display '%s' connected to NVIDIA GPU",
+                name.c_str() );
+        return true;
+      }
+    }
+  }
+  catch ( const std::exception &e )
+  {
+    syslog( LOG_WARNING, "HardwareMonitorWorker: getDisplayConnectedToNvidia failed: %s", e.what() );
+  }
+
+  return false;
 }
 
 // ============================================================================

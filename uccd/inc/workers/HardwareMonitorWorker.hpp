@@ -249,7 +249,8 @@ public:
   explicit HardwareMonitorWorker(
     CpuPowerCallback cpuPowerUpdateCallback,
     std::function< bool() > getSensorDataCollectionStatus,
-    std::function< void( const std::string & ) > setPrimeStateCallback );
+    std::function< void( const std::string & ) > setPrimeStateCallback,
+    bool isDisplayMuxDevice = false );
 
   ~HardwareMonitorWorker() override;
 
@@ -340,6 +341,8 @@ private:
   // --- Prime state ---
   std::function< void( const std::string & ) > m_setPrimeState;
   bool m_primeSupported;
+  bool m_isDisplayMuxDevice;         ///< Device with NVIDIA display mux (e.g. IBM15A10)
+  bool m_displayConnectedToNvidia;   ///< Whether eDP display is wired to the NVIDIA GPU
 
   // --- Webcam state ---
   WebcamHwReader m_webcamHwReader;
@@ -378,6 +381,7 @@ private:
   [[nodiscard]] bool checkPrimeSupported() const noexcept;
   [[nodiscard]] std::string checkPrimeStatus() const noexcept;
   [[nodiscard]] std::string transformPrimeStatus( const std::string &status ) const noexcept;
+  [[nodiscard]] bool getDisplayConnectedToNvidia() const noexcept;
 
   // Webcam methods
   void updateWebcamStatus() noexcept;

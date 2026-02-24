@@ -153,9 +153,7 @@ void DisplayWorker::onStart()
 
 void DisplayWorker::onWork()
 {
-  // --- Backlight work (every cycle = 3000ms) ---
   reenumerateBacklightDrivers();
-  persistBrightness();
 
   // --- Refresh rate work (every 2nd cycle ≈ 6000ms, close to original 5000ms) ---
   m_refreshRateCycleCounter++;
@@ -178,8 +176,6 @@ void DisplayWorker::onWork()
 
 void DisplayWorker::onExit()
 {
-  // Persist brightness one last time on exit
-  persistBrightness();
 }
 
 // ============================================================================
@@ -236,32 +232,13 @@ void DisplayWorker::applyBacklightFromProfile()
 
   const UccProfile activeProfile = m_getActiveProfile();
 
-  // If profile has display brightness setting enabled, apply it
+  // Only apply brightness if the profile explicitly enables it
   if ( activeProfile.display.useBrightness and activeProfile.display.brightness >= 0 )
   {
     m_backlightController->setBrightness( activeProfile.display.brightness );
     syslog( LOG_INFO, "DisplayWorker: Applied profile brightness %d%%",
             activeProfile.display.brightness );
-    return;
   }
-
-  // Otherwise, restore from autosave
-  int32_t autosaveBrightness = m_getAutosaveBrightness();
-  if ( autosaveBrightness >= 0 )
-  {
-    m_backlightController->setBrightness( autosaveBrightness );
-    syslog( LOG_INFO, "DisplayWorker: Restored autosave brightness %d%%", autosaveBrightness );
-  }
-}
-
-void DisplayWorker::persistBrightness()
-{
-  if ( not m_backlightController )
-    return;
-
-  int currentBrightness = m_backlightController->getBrightness();
-  if ( currentBrightness >= 0 )
-    m_setAutosaveBrightness( currentBrightness );
 }
 
 void DisplayWorker::reenumerateBacklightDrivers()

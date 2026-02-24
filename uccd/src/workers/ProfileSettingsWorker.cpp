@@ -377,12 +377,17 @@ void ProfileSettingsWorker::detectODMProfileType()
     return;
   }
 
-  if ( SysfsNode< std::string >( ACPI_PLATFORM_PROFILE ).isAvailable() and
+  if ( not m_skipAcpiPlatformProfile and
+       SysfsNode< std::string >( ACPI_PLATFORM_PROFILE ).isAvailable() and
        SysfsNode< std::string >( ACPI_PLATFORM_PROFILE_CHOICES ).isAvailable() )
   {
     m_odmProfileType = ODMProfileType::AcpiPlatformProfile;
     syslog( LOG_INFO, "ProfileSettingsWorker: Using ACPI platform_profile" );
     return;
+  }
+  else if ( m_skipAcpiPlatformProfile )
+  {
+    syslog( LOG_INFO, "ProfileSettingsWorker: Skipping ACPI platform_profile (device quirk)" );
   }
 
   std::vector< std::string > availableProfiles;

@@ -149,7 +149,6 @@ private:
 
   void initBacklight();
   void applyBacklightFromProfile();
-  void persistBrightness();
   void reenumerateBacklightDrivers();
 
   // --- Refresh rate state ---
