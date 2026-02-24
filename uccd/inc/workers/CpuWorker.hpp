@@ -359,35 +359,56 @@ private:
   {
     const UccProfile profile = m_getActiveProfile();
     {
+      // Determine acpi-cpufreq fallback flag once — mirrors setGovernorScalingMaxFrequency
+      bool acpiFallback = false;
+      if ( m_cpuCtrl.boost.isAvailable() )
+      {
+        for ( const auto &firstCore : m_cpuCtrl.cores )
+        {
+          if ( auto driverStr = firstCore.scalingDriver.read() )
+          {
+            acpiFallback = ( *driverStr == "acpi-cpufreq" );
+            break;
+          }
+        }
+      }
+
       // validate scaling frequencies match profile
       for ( const auto &core : m_cpuCtrl.cores )
       {
         if ( core.coreIndex == 0 or core.online.read().value_or( false ) )
         {
-          // check minimum frequency
+          // check minimum frequency — compare against the per-core clamped+snapped value
+          // that setGovernorScalingMinFrequency() actually wrote, not the raw profile target
+          // (which would differ for E-cores / lower-binned P-cores)
           if ( profile.cpu.scalingMinFrequency.has_value() )
           {
             auto currentMin = core.scalingMinFreq.read();
+            auto expectedMin = CpuController::computeEffectiveMinFreq( core, profile.cpu.scalingMinFrequency );
 
-            if ( currentMin.has_value() and *currentMin != *profile.cpu.scalingMinFrequency )
+            if ( currentMin.has_value() and expectedMin.has_value() and *currentMin != *expectedMin )
             {
               logLine( "CpuWorker: Unexpected value core" + std::to_string( core.coreIndex )
                        + " minimum scaling frequency " + std::to_string( *currentMin )
-                       + " instead of " + std::to_string( *profile.cpu.scalingMinFrequency ), LOG_DEBUG );
+                       + " instead of " + std::to_string( *expectedMin ), LOG_DEBUG );
               return false;
             }
           }
 
-          // check maximum frequency
+          // check maximum frequency — compare against the per-core clamped+snapped value.
+          // On heterogeneous CPUs (Intel Turbo Boost Max 3.0, P+E cores) every core type
+          // has its own cpuinfo_max_freq ceiling; the profile stores the global requested
+          // max but each core will have been written a different effective value.
           if ( profile.cpu.scalingMaxFrequency.has_value() )
           {
             auto currentMax = core.scalingMaxFreq.read();
+            auto expectedMax = CpuController::computeEffectiveMaxFreq( core, profile.cpu.scalingMaxFrequency, acpiFallback );
 
-            if ( currentMax.has_value() and *currentMax != *profile.cpu.scalingMaxFrequency )
+            if ( currentMax.has_value() and expectedMax.has_value() and *currentMax != *expectedMax )
             {
               logLine( "CpuWorker: Unexpected value core" + std::to_string( core.coreIndex )
                        + " maximum scaling frequency " + std::to_string( *currentMax )
-                       + " instead of " + std::to_string( *profile.cpu.scalingMaxFrequency ), LOG_DEBUG );
+                       + " instead of " + std::to_string( *expectedMax ), LOG_DEBUG );
               return false;
             }
           }

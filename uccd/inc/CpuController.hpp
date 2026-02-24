@@ -235,6 +235,130 @@ public:
   }
 
   /**
+   * @brief Compute the effective max scaling frequency that will be written to a core.
+   *
+   * Mirrors the per-core clamping and frequency-snapping logic of
+   * setGovernorScalingMaxFrequency() so that validation and writing always agree
+   * on the expected value regardless of per-core hardware limits (e.g. the best
+   * P-core vs other P-cores vs E-cores all have different cpuinfo_max_freq on
+   * heterogeneous Intel/AMD CPUs with Turbo Boost Max 3.0 or hybrid topologies).
+   *
+   * @param core          The logical core to compute for
+   * @param targetMax     The requested maximum frequency (same semantics as setGovernorScalingMaxFrequency)
+   * @param acpiFallback  True when scaling driver is acpi-cpufreq and boost is available
+   * @return The effective frequency that will be set, or nullopt if sysfs nodes are unavailable
+   */
+  static std::optional< int32_t > computeEffectiveMaxFreq( const LogicalCpuController &core,
+                                                           std::optional< int32_t > targetMax,
+                                                           bool acpiFallback )
+  {
+    if ( not core.scalingMinFreq.isAvailable() or not core.scalingMaxFreq.isAvailable()
+         or not core.cpuinfoMinFreq.isAvailable() or not core.cpuinfoMaxFreq.isAvailable() )
+      return std::nullopt;
+
+    auto coreMin = core.cpuinfoMinFreq.read();
+    auto coreMax = core.cpuinfoMaxFreq.read();
+    auto scalingMin = core.scalingMinFreq.read();
+    auto avail = core.scalingAvailableFrequencies.read();
+
+    if ( not coreMin or not coreMax or not scalingMin )
+      return std::nullopt;
+
+    int32_t freq;
+
+    if ( not targetMax.has_value() )
+    {
+      freq = *coreMax;
+    }
+    else if ( *targetMax == -1 )
+    {
+      // special case: -1 means "reduced"
+      if ( acpiFallback )
+        freq = *coreMax;
+      else
+      {
+        auto reduced = core.getReducedAvailableFreq();
+        freq = reduced.value_or( *coreMax );
+      }
+    }
+    else
+    {
+      freq = *targetMax;
+    }
+
+    // clamp to per-core hardware limits
+    freq = std::clamp( freq, *scalingMin, *coreMax );
+
+    // snap to the closest available frequency (filtered to >= scalingMin)
+    if ( avail and not avail->empty() )
+    {
+      std::vector< int32_t > filtered;
+      for ( int32_t f : *avail )
+        if ( f >= *scalingMin )
+          filtered.push_back( f );
+      if ( not filtered.empty() )
+        freq = findClosestValue( freq, filtered );
+    }
+
+    return freq;
+  }
+
+  /**
+   * @brief Compute the effective min scaling frequency that will be written to a core.
+   *
+   * Mirrors the per-core clamping and frequency-snapping logic of
+   * setGovernorScalingMinFrequency().
+   *
+   * @param core       The logical core to compute for
+   * @param targetMin  The requested minimum frequency (same semantics as setGovernorScalingMinFrequency)
+   * @return The effective frequency that will be set, or nullopt if sysfs nodes are unavailable
+   */
+  static std::optional< int32_t > computeEffectiveMinFreq( const LogicalCpuController &core,
+                                                           std::optional< int32_t > targetMin )
+  {
+    if ( not core.scalingMinFreq.isAvailable() or not core.scalingMaxFreq.isAvailable()
+         or not core.cpuinfoMinFreq.isAvailable() or not core.cpuinfoMaxFreq.isAvailable() )
+      return std::nullopt;
+
+    auto coreMin = core.cpuinfoMinFreq.read();
+    auto coreMax = core.cpuinfoMaxFreq.read();
+    auto scalingMax = core.scalingMaxFreq.read();
+    auto avail = core.scalingAvailableFrequencies.read();
+
+    if ( not coreMin or not coreMax or not scalingMax )
+      return std::nullopt;
+
+    int32_t freq;
+
+    if ( not targetMin.has_value() )
+    {
+      freq = *coreMin;
+    }
+    else if ( *targetMin == -2 )
+    {
+      // special case: -2 means "set to max"
+      freq = *coreMax;
+    }
+    else
+    {
+      freq = std::clamp( *targetMin, *coreMin, *scalingMax );
+    }
+
+    // snap to the closest available frequency (filtered to <= scalingMax)
+    if ( avail and not avail->empty() )
+    {
+      std::vector< int32_t > filtered;
+      for ( int32_t f : *avail )
+        if ( f <= *scalingMax )
+          filtered.push_back( f );
+      if ( not filtered.empty() )
+        freq = findClosestValue( freq, filtered );
+    }
+
+    return freq;
+  }
+
+  /**
    * @brief Set maximum scaling frequency for all cores
    *
    * @param setMaxFrequency Target frequency (-1 for reduced, undefined for max)
@@ -242,6 +366,7 @@ public:
   void setGovernorScalingMaxFrequency( std::optional< int32_t > setMaxFrequency = std::nullopt )
   {
     std::optional< std::string > scalingDriverStr;
+    bool acpiFallback = false;
 
     for ( auto &core : cores )
     {
@@ -249,70 +374,19 @@ public:
            or not core.cpuinfoMinFreq.isAvailable() or not core.cpuinfoMaxFreq.isAvailable() )
         continue;
 
-      if ( core.coreIndex != 0 and core.online.read().value_or( false ) == false )
-        continue;
-
-      auto coreMinFrequency = core.cpuinfoMinFreq.read();
-      auto coreMaxFrequency = core.cpuinfoMaxFreq.read();
-      auto scalingMinFrequency = core.scalingMinFreq.read();
-      auto availableFrequencies = core.scalingAvailableFrequencies.read();
-
-      if ( not coreMinFrequency.has_value() or not coreMaxFrequency.has_value()
-           or not scalingMinFrequency.has_value() )
+      if ( core.coreIndex != 0 and not core.online.read().value_or( false ) )
         continue;
 
       if ( not scalingDriverStr.has_value() )
+      {
         scalingDriverStr = core.scalingDriver.read();
-
-      int32_t newMaxFrequency;
-
-      // default to max available
-      if ( not setMaxFrequency.has_value() )
-      {
-        newMaxFrequency = *coreMaxFrequency;
-      }
-      else if ( *setMaxFrequency == -1 )
-      {
-        // special case: -1 means "reduced"
-        if ( boost.isAvailable() and scalingDriverStr.has_value() and *scalingDriverStr == "acpi-cpufreq" )
-        {
-          newMaxFrequency = *coreMaxFrequency;
-        }
-        else
-        {
-          auto reduced = core.getReducedAvailableFreq();
-          newMaxFrequency = reduced.value_or( *coreMaxFrequency );
-        }
-      }
-      else
-      {
-        newMaxFrequency = *setMaxFrequency;
+        acpiFallback = boost.isAvailable() and scalingDriverStr.has_value()
+                       and *scalingDriverStr == "acpi-cpufreq";
       }
 
-      // enforce min/max limits
-      if ( newMaxFrequency > *coreMaxFrequency )
-        newMaxFrequency = *coreMaxFrequency;
-      else if ( newMaxFrequency < *scalingMinFrequency )
-        newMaxFrequency = *scalingMinFrequency;
-
-      // snap to available frequency if defined
-      if ( availableFrequencies.has_value() and not availableFrequencies->empty() )
-      {
-        std::vector< int32_t > filtered;
-
-        for ( int32_t freq : *availableFrequencies )
-        {
-          if ( freq >= *scalingMinFrequency )
-            filtered.push_back( freq );
-        }
-
-        if ( not filtered.empty() )
-        {
-          newMaxFrequency = findClosestValue( newMaxFrequency, filtered );
-        }
-      }
-
-      core.scalingMaxFreq.write( newMaxFrequency );
+      auto effective = computeEffectiveMaxFreq( core, setMaxFrequency, acpiFallback );
+      if ( effective )
+        core.scalingMaxFreq.write( *effective );
     }
 
     // handle boost for AMD (boost not included in max frequency)
@@ -358,56 +432,9 @@ public:
       if ( core.coreIndex != 0 and core.online.read().value_or( false ) == false )
         continue;
 
-      auto coreMinFrequency = core.cpuinfoMinFreq.read();
-      auto coreMaxFrequency = core.cpuinfoMaxFreq.read();
-      auto scalingMaxFrequency = core.scalingMaxFreq.read();
-      auto availableFrequencies = core.scalingAvailableFrequencies.read();
-
-      if ( not coreMinFrequency.has_value() or not coreMaxFrequency.has_value()
-           or not scalingMaxFrequency.has_value() )
-        continue;
-
-      int32_t newMinFrequency;
-
-      // default to min available
-      if ( not setMinFrequency.has_value() )
-      {
-        newMinFrequency = *coreMinFrequency;
-      }
-      else if ( *setMinFrequency == -2 )
-      {
-        // special case: -2 means "set to max"
-        newMinFrequency = *coreMaxFrequency;
-      }
-      else
-      {
-        newMinFrequency = *setMinFrequency;
-
-        // enforce min/max limits
-        if ( newMinFrequency < *coreMinFrequency )
-          newMinFrequency = *coreMinFrequency;
-        else if ( newMinFrequency > *scalingMaxFrequency )
-          newMinFrequency = *scalingMaxFrequency;
-      }
-
-      // snap to available frequency if defined
-      if ( availableFrequencies.has_value() and not availableFrequencies->empty() )
-      {
-        std::vector< int32_t > filtered;
-
-        for ( int32_t freq : *availableFrequencies )
-        {
-          if ( freq <= *scalingMaxFrequency )
-            filtered.push_back( freq );
-        }
-
-        if ( not filtered.empty() )
-        {
-          newMinFrequency = findClosestValue( newMinFrequency, filtered );
-        }
-      }
-
-      core.scalingMinFreq.write( newMinFrequency );
+      auto effective = computeEffectiveMinFreq( core, setMinFrequency );
+      if ( effective )
+        core.scalingMinFreq.write( *effective );
     }
   }
 
