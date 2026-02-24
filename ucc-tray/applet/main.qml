@@ -24,7 +24,7 @@ PlasmoidItem {
 
     Plasmoid.icon: "ucc-tray"
 
-    toolTipMainText: "Uniwill Control Center"
+    toolTipMainText: trayBackend.laptopModel || "Uniwill Control Center"
     toolTipSubText: {
         if (!trayBackend.connected)
             return i18n("Disconnected from uccd")
@@ -69,6 +69,15 @@ PlasmoidItem {
 
     fullRepresentation: PlasmaExtras.Representation {
         id: fullRep
+
+        title: trayBackend.laptopModel || "Uniwill Control Center"
+
+        Connections {
+            target: trayBackend
+            function onSystemInfoChanged() {
+                fullRep.title = trayBackend.laptopModel || "Uniwill Control Center";
+            }
+        }
 
         Layout.preferredWidth: Kirigami.Units.gridUnit * 28
         Layout.preferredHeight: Kirigami.Units.gridUnit * 24

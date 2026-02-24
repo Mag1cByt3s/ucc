@@ -76,6 +76,17 @@ bool TrayBackend::connected() const
 // ---------------------------------------------------------------------------
 // Monitoring getters
 // ---------------------------------------------------------------------------
+// System info getters
+// ---------------------------------------------------------------------------
+
+QString TrayBackend::laptopModel() const { return m_laptopModel; }
+QString TrayBackend::cpuModel()    const { return m_cpuModel; }
+QString TrayBackend::dGpuModel()   const { return m_dGpuModel; }
+QString TrayBackend::iGpuModel()   const { return m_iGpuModel; }
+
+// ---------------------------------------------------------------------------
+// Monitoring getters
+// ---------------------------------------------------------------------------
 
 int    TrayBackend::cpuTemp()      const { return m_cpuTemp; }
 int    TrayBackend::gpuTemp()      const { return m_gpuTemp; }
@@ -661,6 +672,20 @@ void TrayBackend::loadCapabilities()
     m_waterCoolerSupported = *v;
     if ( was != m_waterCoolerSupported )
       emit waterCoolerSupportedChanged();
+  }
+
+  if ( auto sysInfoJson = m_client->getSystemInfoJSON() )
+  {
+    QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *sysInfoJson ) );
+    if ( doc.isObject() )
+    {
+      const QJsonObject obj = doc.object();
+      m_laptopModel = obj.value( "laptopModel" ).toString();
+      m_cpuModel    = obj.value( "cpuModel" ).toString();
+      m_dGpuModel   = obj.value( "dGpuModel" ).toString();
+      m_iGpuModel   = obj.value( "iGpuModel" ).toString();
+      emit systemInfoChanged();
+    }
   }
 }
 

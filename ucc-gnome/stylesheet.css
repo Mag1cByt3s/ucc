@@ -36,7 +36,7 @@
 .ucc-tab-content {
     padding: 6px 12px;
     spacing: 4px;
-    min-width: 300px;
+    min-width: 250px;
 }
 
 /* ── Section titles ── */
@@ -48,6 +48,24 @@
     text-transform: uppercase;
     padding-top: 6px;
     padding-bottom: 2px;
+}
+
+/* ── Model names (CPU, GPU, System) ── */
+
+.ucc-cpu-gpu-model {
+    font-size: 14px;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.8);
+    padding-top: 6px;
+    padding-bottom: 2px;
+}
+
+.ucc-system-model {
+    font-size: 16px;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.9);
+    padding-top: 6px;
+    padding-bottom: 4px;
 }
 
 /* ── Metric rows ── */

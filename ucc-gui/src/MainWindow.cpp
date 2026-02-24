@@ -119,6 +119,24 @@ MainWindow::MainWindow( QWidget *parent )
   connectSignals();
 
   // Initialize status bar
+  // Water cooler status indicator (left of the connection indicator)
+  if ( m_waterCoolerSupported )
+  {
+    m_waterCoolerStatusBarLabel = new QLabel( this );
+    m_waterCoolerStatusBarLabel->setTextFormat( Qt::RichText );
+    statusBar()->addPermanentWidget( m_waterCoolerStatusBarLabel );
+
+    QFrame *wcSep = new QFrame( this );
+    wcSep->setFrameShape( QFrame::VLine );
+    wcSep->setFrameShadow( QFrame::Sunken );
+    statusBar()->addPermanentWidget( wcSep );
+
+    connect( m_dashboardTab, &DashboardTab::waterCoolerStatusChanged,
+             m_waterCoolerStatusBarLabel, &QLabel::setText );
+    // Populate the label with the current status immediately
+    m_dashboardTab->refreshWaterCoolerStatus();
+  }
+
   m_connectionLabel = new QLabel( this );
   m_connectionLabel->setTextFormat( Qt::RichText );
   statusBar()->addPermanentWidget( m_connectionLabel );
@@ -160,8 +178,24 @@ void MainWindow::setupUI()
   // Connect tab changes to control monitoring
   connect( m_tabs, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged );
 
+  // Fetch system hardware info from daemon and pass to DashboardTab
+  QString laptopModel, cpuModel, dGpuModel, iGpuModel;
+  if ( auto sysInfoJson = m_UccdClient->getSystemInfoJSON() )
+  {
+    QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *sysInfoJson ) );
+    if ( doc.isObject() )
+    {
+      const QJsonObject obj = doc.object();
+      laptopModel = obj.value( "laptopModel" ).toString();
+      cpuModel    = obj.value( "cpuModel" ).toString();
+      dGpuModel   = obj.value( "dGpuModel" ).toString();
+      iGpuModel   = obj.value( "iGpuModel" ).toString();
+    }
+  }
+
   // Now create DashboardTab (daemon-backed water cooler; no controller pointer)
-  m_dashboardTab = new DashboardTab( m_systemMonitor.get(), m_profileManager.get(), m_waterCoolerSupported, this );
+  m_dashboardTab = new DashboardTab( m_systemMonitor.get(), m_profileManager.get(), m_waterCoolerSupported,
+                                     laptopModel, cpuModel, dGpuModel, iGpuModel, this );
   m_tabs->addTab( m_dashboardTab, "Dashboard" );
   setupProfilesPage();
 
@@ -985,6 +1019,10 @@ void MainWindow::connectSignals()
   connect( m_UccdClient.get(), &UccdClient::connectionStatusChanged,
            this, &MainWindow::onUccdConnectionChanged );
 
+  // Update connection status label when active profile changes
+  connect( m_profileManager.get(), &ProfileManager::activeProfileIndexChanged,
+           this, &MainWindow::updateConnectionStatusLabel );
+
   connectKeyboardBacklightPageWidgets();
 
   // Sync profile page keyboard combo (profiles may have been added before
@@ -1327,6 +1365,23 @@ void MainWindow::onAllProfilesChanged()
   // Ensure buttons reflect current profile set (remove button availability etc.)
   updateButtonStates();
   m_saveButton->setEnabled( true );
+}
+
+void MainWindow::updateConnectionStatusLabel()
+{
+  if ( !m_connectionLabel )
+    return;
+
+  // Only update if currently connected
+  if ( !m_UccdClient->isConnected() )
+    return;
+
+  QString profileName = m_profileManager->activeProfileName();
+  if ( profileName.isEmpty() )
+    profileName = QStringLiteral( "Unknown" );
+
+  m_connectionLabel->setText(
+    QString( "<span style='color: green;'>●</span> %1" ).arg( profileName ) );
 }
 
 void MainWindow::onActiveProfileIndexChanged()
@@ -2527,15 +2582,17 @@ void MainWindow::onUccdConnectionChanged( bool connected )
 {
   qDebug() << "[MainWindow] uccd connection changed:" << connected;
 
-  // Update statusbar indicator
-  if ( m_connectionLabel )
+  if ( !connected )
   {
-    if ( connected )
-      m_connectionLabel->setText(
-        QStringLiteral( "<span style='color: green;'>●</span> Connected" ) );
-    else
+    // Display disconnected status
+    if ( m_connectionLabel )
       m_connectionLabel->setText(
         QStringLiteral( "<span style='color: red;'>●</span> Disconnected" ) );
+  }
+  else
+  {
+    // When connected, display the active profile name
+    updateConnectionStatusLabel();
   }
 
   if ( !connected )

@@ -60,6 +60,9 @@ namespace ucc
     ~MainWindow() override;
 
   private slots:
+    // Status bar slots
+    void updateConnectionStatusLabel();
+
     // Profile page slots
     void onProfileIndexChanged( int index );
     void onAllProfilesChanged();
@@ -248,5 +251,8 @@ namespace ucc
 
     // Statusbar connection indicator
     QLabel *m_connectionLabel = nullptr;
+
+    // Statusbar water-cooler status indicator (shown only when water-cooler is supported)
+    QLabel *m_waterCoolerStatusBarLabel = nullptr;
   };
 }

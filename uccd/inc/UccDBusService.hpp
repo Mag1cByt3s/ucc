@@ -45,6 +45,7 @@
 #include "AutosaveManager.hpp"
 #include "TccSettings.hpp"
 #include "MetricsHistoryStore.hpp"
+#include "SystemInfo.hpp"
 #include "tuxedo_io_lib/tuxedo_io_api.hh"
 
 // Forward declarations
@@ -105,6 +106,7 @@ public:
   std::atomic< bool > tuxedoWmiAvailable;
   std::atomic< bool > fanHwmonAvailable;
   std::string uccdVersion;
+  std::string systemInfoJSON;
   std::vector< FanData > fans;
   std::atomic< bool > webcamSwitchAvailable;
   std::atomic< bool > webcamSwitchStatus;
@@ -240,6 +242,7 @@ public:
 public slots:
   // device and system information
   QString GetDeviceName();
+  QString GetSystemInfoJSON();
   QString GetDisplayModesJSON();
   bool GetIsX11();
   bool TuxedoWmiAvailable();
@@ -548,6 +551,7 @@ private:
 
   // identified device
   std::optional< UniwillDeviceID > m_deviceId;
+  SystemInfo m_systemInfo;
 
   // periodic validation counters
   uint32_t m_nvidiaValidationCounter = 0;

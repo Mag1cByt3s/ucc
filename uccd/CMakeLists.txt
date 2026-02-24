@@ -25,6 +25,7 @@ set(CMAKE_AUTOMOC ON)
 add_executable(uccd
   src/uccd.cpp
   src/UccDBusService.cpp
+  src/SystemInfo.cpp
   src/workers/ProfileSettingsWorker.cpp
   src/workers/KeyboardBacklightListener.cpp
   src/workers/LCTWaterCoolerWorker.cpp

@@ -251,6 +251,31 @@ static int cmdStatus( ucc::UccdClient &c )
   std::puts( "=== UCC System Status ===" );
   std::puts( "" );
 
+  // System information
+  if ( auto sysInfoJson = c.getSystemInfoJSON() )
+  {
+    QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *sysInfoJson ) );
+    if ( doc.isObject() )
+    {
+      const QJsonObject obj = doc.object();
+      const auto laptopModel = obj.value( "laptopModel" ).toString().toStdString();
+      const auto cpuModel    = obj.value( "cpuModel" ).toString().toStdString();
+      const auto dGpuModel   = obj.value( "dGpuModel" ).toString().toStdString();
+      const auto iGpuModel   = obj.value( "iGpuModel" ).toString().toStdString();
+
+      std::puts( "--- System ---" );
+      if ( !laptopModel.empty() )
+        std::printf( "  %-24s %s\n", "Laptop model:", laptopModel.c_str() );
+      if ( !cpuModel.empty() )
+        std::printf( "  %-24s %s\n", "CPU:", cpuModel.c_str() );
+      if ( !dGpuModel.empty() )
+        std::printf( "  %-24s %s\n", "GPU (discrete):", dGpuModel.c_str() );
+      if ( !iGpuModel.empty() )
+        std::printf( "  %-24s %s\n", "GPU (integrated):", iGpuModel.c_str() );
+      std::puts( "" );
+    }
+  }
+
   // Connection
   std::printf( "  %-24s %s\n", "Daemon connected:", c.isConnected() ? "yes" : "no" );
 

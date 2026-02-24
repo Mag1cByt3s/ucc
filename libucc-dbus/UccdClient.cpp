@@ -274,6 +274,16 @@ bool UccdClient::callVoidMethod( const QString &method, const Args &...args ) co
   return true;
 }
 
+// System Information
+std::optional< std::string > UccdClient::getSystemInfoJSON()
+{
+  if ( auto result = callMethod< QString >( "GetSystemInfoJSON" ) )
+  {
+    return result->toStdString();
+  }
+  return std::nullopt;
+}
+
 // Profile Management
 std::optional< std::string > UccdClient::getDefaultProfilesJSON()
 {

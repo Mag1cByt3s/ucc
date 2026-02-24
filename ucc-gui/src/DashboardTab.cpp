@@ -72,17 +72,23 @@ QString formatFanSpeed( const QString &fanSpeed )
 namespace ucc
 {
 
-DashboardTab::DashboardTab( SystemMonitor *systemMonitor, ProfileManager *profileManager, bool waterCoolerSupported, QWidget *parent )
+DashboardTab::DashboardTab( SystemMonitor *systemMonitor, ProfileManager *profileManager, bool waterCoolerSupported,
+                            const QString &laptopModel, const QString &cpuModel,
+                            const QString &dGpuModel, const QString &iGpuModel,
+                            QWidget *parent )
   : QWidget( parent )
   , m_systemMonitor( systemMonitor )
   , m_profileManager( profileManager )
   , m_waterCoolerSupported( waterCoolerSupported )
+  , m_laptopModel( laptopModel )
+  , m_cpuModel( cpuModel )
+  , m_dGpuModel( dGpuModel )
+  , m_iGpuModel( iGpuModel )
 {
   setupUI();
   connectSignals();
 
-  // Initialize active profile label
-  m_activeProfileLabel->setText( m_profileManager->activeProfileName() );
+  // m_activeProfileLabel is created but hidden; it's only for internal use
 
   // Initialize water cooler status polling only if supported
   if ( m_waterCoolerSupported )
@@ -115,52 +121,39 @@ void DashboardTab::setupUI()
   const QString innerTextHex = (windowBg.value() < 128) ? QString("#ffffff") : QString("#000000");
   m_ringColorHex = QString("#d32f2f");  // Red for disconnected state and other alerts
 
-  // Title
-  QLabel *titleLabel = new QLabel( "System monitor" );
+  // Title — use laptop model from daemon if available
+  // Use a grid so the title is centered over the full row width while
+  // the checkbox floats to the right edge, both occupying the same cell.
+  QGridLayout *titleLayout = new QGridLayout();
+  const QString titleText = m_laptopModel.isEmpty() ? QStringLiteral( "System Monitor" ) : m_laptopModel;
+  QLabel *titleLabel = new QLabel( titleText );
   titleLabel->setStyleSheet( QString("font-size: 22px; font-weight: bold;") );
-  titleLabel->setAlignment( Qt::AlignCenter );
-  layout->addWidget( titleLabel );
-
-  // Active Profile and Water Cooler Status
-  QHBoxLayout *statusLayout = new QHBoxLayout();
-
-  // Active Profile section
-  QLabel *activeLabel = new QLabel( "Active profile:" );
-  activeLabel->setStyleSheet( "font-weight: bold;" );
-  m_activeProfileLabel = new QLabel( "Loading..." );
-  m_activeProfileLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(textHex) );
-
-  // Water Cooler Status section
-  QLabel *coolerLabel = new QLabel( "Water Cooler Status:" );
-  coolerLabel->setStyleSheet( "font-weight: bold;" );
-  m_waterCoolerStatusLabel = new QLabel( "Disconnected" );
-  m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(m_ringColorHex) );
 
   // Water Cooler Enable checkbox (synced with FanControlTab)
-  m_waterCoolerEnableCheckBox = new QCheckBox( "Enable Water Cooler" );
+  m_waterCoolerEnableCheckBox = new QCheckBox( "Water Cooler" );
   m_waterCoolerEnableCheckBox->setChecked( ucc::WATER_COOLER_INITIAL_STATE );
   m_waterCoolerEnableCheckBox->setToolTip( tr( "When enabled the daemon will scan for water cooler devices" ) );
 
-  // Hide water cooler status bar items if water cooler not supported
+  // Hide water cooler checkbox if water cooler not supported
   if ( !m_waterCoolerSupported )
   {
-    coolerLabel->setVisible( false );
-    m_waterCoolerStatusLabel->setVisible( false );
     m_waterCoolerEnableCheckBox->setVisible( false );
   }
 
-  statusLayout->addStretch();
-  statusLayout->addWidget( activeLabel );
-  statusLayout->addSpacing( 6 );
-  statusLayout->addWidget( m_activeProfileLabel );
-  statusLayout->addSpacing( 20 );  // Space between sections
-  statusLayout->addWidget( m_waterCoolerEnableCheckBox );
-  statusLayout->addSpacing( 12 );
-  statusLayout->addWidget( coolerLabel );
-  statusLayout->addSpacing( 6 );
-  statusLayout->addWidget( m_waterCoolerStatusLabel );
-  statusLayout->addStretch();
-  layout->addLayout( statusLayout );
+  // Both widgets share the same cell — title centered, checkbox right-aligned
+  titleLayout->addWidget( titleLabel,                0, 0, Qt::AlignCenter );
+  titleLayout->addWidget( m_waterCoolerEnableCheckBox, 0, 0, Qt::AlignRight | Qt::AlignVCenter );
+  layout->addLayout( titleLayout );
+
+  // Active Profile label (created but not shown; only used in status bar)
+  m_activeProfileLabel = new QLabel( "Loading..." );
+  m_activeProfileLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(textHex) );
+  m_activeProfileLabel->setVisible( false );
+
+  // Water Cooler Status label (created but not shown; only used in status bar)
+  m_waterCoolerStatusLabel = new QLabel( "Disconnected" );
+  m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(m_ringColorHex) );
+  m_waterCoolerStatusLabel->setVisible( false );
 
   auto makeGauge = [&]( const QString &caption, const QString &unit, QLabel *&valueLabel ) -> QWidget * {
     QWidget *container = new QWidget();
@@ -200,7 +193,8 @@ void DashboardTab::setupUI()
   };
 
   // CPU section
-  QLabel *cpuHeader = new QLabel( "Main processor monitor" );
+  const QString cpuHeaderText = m_cpuModel.isEmpty() ? QStringLiteral( "Main Processor Monitor" ) : m_cpuModel;
+  QLabel *cpuHeader = new QLabel( cpuHeaderText );
   cpuHeader->setStyleSheet( "font-size: 14px; font-weight: bold;" );
   cpuHeader->setAlignment( Qt::AlignCenter );
   layout->addWidget( cpuHeader );
@@ -215,13 +209,12 @@ void DashboardTab::setupUI()
   layout->addLayout( cpuGrid );
 
   // GPU section — single section with toggle between dGPU and iGPU
-  QHBoxLayout *gpuHeaderLayout = new QHBoxLayout();
-  gpuHeaderLayout->setContentsMargins( 0, 0, 0, 0 );
-  QLabel *gpuHeader = new QLabel( "Graphics card monitor" );
-  gpuHeader->setStyleSheet( "font-size: 14px; font-weight: bold;" );
-  gpuHeaderLayout->addStretch();
-  gpuHeaderLayout->addWidget( gpuHeader );
-  gpuHeaderLayout->addSpacing( 12 );
+  // Initial GPU header text: prefer dGPU model, fall back to iGPU model
+  const QString gpuHeaderText = !m_dGpuModel.isEmpty() ? m_dGpuModel
+                               : !m_iGpuModel.isEmpty() ? m_iGpuModel
+                               : QStringLiteral( "Graphics Card Monitor" );
+  m_gpuHeaderLabel = new QLabel( gpuHeaderText );
+  m_gpuHeaderLabel->setStyleSheet( "font-size: 14px; font-weight: bold;" );
 
   m_gpuToggleButton = new QPushButton( "Show iGPU" );
   m_gpuToggleButton->setFixedHeight( 24 );
@@ -229,8 +222,12 @@ void DashboardTab::setupUI()
     QString("QPushButton { font-size: 11px; padding: 2px 12px; border: 1px solid %1; border-radius: 4px; }"
             "QPushButton:hover { background-color: %2; }").arg(midHex, highlightHex) );
   m_gpuToggleButton->setVisible( false );  // Hidden until both GPUs detected
-  gpuHeaderLayout->addWidget( m_gpuToggleButton );
-  gpuHeaderLayout->addStretch();
+
+  // Same grid trick as title row: both share cell (0,0) — label centered, button right-aligned
+  QGridLayout *gpuHeaderLayout = new QGridLayout();
+  gpuHeaderLayout->setContentsMargins( 0, 0, 0, 0 );
+  gpuHeaderLayout->addWidget( m_gpuHeaderLabel,  0, 0, Qt::AlignCenter );
+  gpuHeaderLayout->addWidget( m_gpuToggleButton, 0, 0, Qt::AlignRight | Qt::AlignVCenter );
   layout->addLayout( gpuHeaderLayout );
 
   // dGPU gauges (default view)
@@ -366,34 +363,42 @@ void DashboardTab::updateWaterCoolerStatus()
   const QString textHex = pal.color(QPalette::WindowText).name();
   const QString midHex = pal.color(QPalette::Mid).name();
   const QString highlightHex = pal.color(QPalette::Highlight).name();
-  const QString linkHex = pal.color(QPalette::Link).name();
+  const QString searchingColorHex = QStringLiteral("#0066cc");  // Dark blue for searching
+
+  // Helper: emit status bar signal (dashboard label is hidden).
+  auto emitStatus = [this]( const QString &statusText, const QString &colorHex )
+  {
+    emit waterCoolerStatusChanged(
+      QString("<span style='color: %1;'>&#9679;</span> WC: %2").arg(colorHex, statusText) );
+  };
 
   // Status progression: Disabled → Disconnected → Searching → Connected
   if ( !wcEnabled )
   {
-    m_waterCoolerStatusLabel->setText( QStringLiteral("Disabled") );
-    m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(m_ringColorHex) );
+    emitStatus( QStringLiteral("Disabled"), m_ringColorHex );
     setWCStatus( false );
   }
   else if ( connected.isValid() && connected.value() )
   {
-    m_waterCoolerStatusLabel->setText( QStringLiteral("Connected") );
-    m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(highlightHex) );
+    emitStatus( QStringLiteral("Connected"), highlightHex );
     setWCStatus( true );
   }
   else if ( scanning.isValid() && scanning.value() )
   {
     // GetWaterCoolerAvailable == true means the daemon is actively scanning
-    m_waterCoolerStatusLabel->setText( QStringLiteral("Searching...") );
-    m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(linkHex) );
+    emitStatus( QStringLiteral("Searching..."), searchingColorHex );
     setWCStatus( false );
   }
   else
   {
-    m_waterCoolerStatusLabel->setText( QStringLiteral("Disconnected") );
-    m_waterCoolerStatusLabel->setStyleSheet( QString("font-weight: bold; color: %1;").arg(m_ringColorHex) );
+    emitStatus( QStringLiteral("Disconnected"), m_ringColorHex );
     setWCStatus( false );
   }
+}
+
+void DashboardTab::refreshWaterCoolerStatus()
+{
+  updateWaterCoolerStatus();
 }
 
 // Dashboard slots
@@ -637,6 +642,15 @@ void DashboardTab::switchGpuView( bool showIGpu )
   m_dGpuGaugeContainer->setVisible( !showIGpu );
   m_iGpuGaugeContainer->setVisible( showIGpu );
   m_gpuToggleButton->setText( showIGpu ? "Show dGPU" : "Show iGPU" );
+
+  // Update header to reflect which GPU is being shown
+  if ( m_gpuHeaderLabel )
+  {
+    const QString headerText = showIGpu
+      ? ( m_iGpuModel.isEmpty() ? QStringLiteral( "Integrated GPU" ) : m_iGpuModel )
+      : ( m_dGpuModel.isEmpty() ? QStringLiteral( "Discrete GPU" )   : m_dGpuModel );
+    m_gpuHeaderLabel->setText( headerText );
+  }
 }
 
 void DashboardTab::updateGpuSwitchVisibility()

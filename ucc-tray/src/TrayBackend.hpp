@@ -39,6 +39,12 @@ class TrayBackend : public QObject
   // ── Connection ──
   Q_PROPERTY( bool connected READ connected NOTIFY connectedChanged )
 
+  // ── System Info (static, loaded once) ──
+  Q_PROPERTY( QString laptopModel  READ laptopModel  NOTIFY systemInfoChanged )
+  Q_PROPERTY( QString cpuModel     READ cpuModel     NOTIFY systemInfoChanged )
+  Q_PROPERTY( QString dGpuModel    READ dGpuModel    NOTIFY systemInfoChanged )
+  Q_PROPERTY( QString iGpuModel    READ iGpuModel    NOTIFY systemInfoChanged )
+
   // ── Dashboard / Monitoring ──
   Q_PROPERTY( int cpuTemp        READ cpuTemp        NOTIFY metricsUpdated )
   Q_PROPERTY( int gpuTemp        READ gpuTemp        NOTIFY metricsUpdated )
@@ -102,6 +108,12 @@ public:
 
   // ── Connection ──
   bool connected() const;
+
+  // ── System Info ──
+  QString laptopModel() const;
+  QString cpuModel() const;
+  QString dGpuModel() const;
+  QString iGpuModel() const;
 
   // ── Monitoring ──
   int cpuTemp() const;
@@ -179,6 +191,7 @@ public:
 
 signals:
   void connectedChanged();
+  void systemInfoChanged();
   void metricsUpdated();
   void profilesChanged();
   void activeProfileChanged();
@@ -250,6 +263,12 @@ private:
   int  m_wcLedRed = 255;
   int  m_wcLedGreen = 0;
   int  m_wcLedBlue = 0;
+
+  // System info
+  QString m_laptopModel;
+  QString m_cpuModel;
+  QString m_dGpuModel;
+  QString m_iGpuModel;
 
   // Device capabilities
   bool m_waterCoolerSupported = false;

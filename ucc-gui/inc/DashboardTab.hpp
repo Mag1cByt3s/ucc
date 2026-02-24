@@ -39,14 +39,24 @@ namespace ucc
     Q_OBJECT
 
   public:
-    explicit DashboardTab( SystemMonitor *systemMonitor, ProfileManager *profileManager, bool waterCoolerSupported, QWidget *parent = nullptr );
+    explicit DashboardTab( SystemMonitor *systemMonitor, ProfileManager *profileManager, bool waterCoolerSupported,
+                          const QString &laptopModel = {},
+                          const QString &cpuModel = {},
+                          const QString &dGpuModel = {},
+                          const QString &iGpuModel = {},
+                          QWidget *parent = nullptr );
     ~DashboardTab() override = default;
 
     /** Update the water-cooler enable checkbox without re-triggering signals. */
     void setWaterCoolerEnabled( bool enabled );
 
+    /** Trigger an immediate water-cooler status query and emit waterCoolerStatusChanged. */
+    void refreshWaterCoolerStatus();
+
   signals:
     void waterCoolerEnableChanged( bool enabled );
+    /** Emitted whenever the water-cooler status changes (rich-text, e.g. for the status bar). */
+    void waterCoolerStatusChanged( const QString &richText );
 
   private slots:
     void onCpuTempChanged();
@@ -102,6 +112,17 @@ namespace ucc
     QLabel *m_waterCoolerHeader = nullptr;
     QCheckBox *m_waterCoolerEnableCheckBox = nullptr;
 
+    bool m_waterCoolerSupported = false;
+
+    // System hardware info strings
+    QString m_laptopModel;
+    QString m_cpuModel;
+    QString m_dGpuModel;
+    QString m_iGpuModel;
+
+    // GPU section header label (updated when toggling dGPU / iGPU)
+    QLabel *m_gpuHeaderLabel = nullptr;
+
     // GPU view toggle (dGPU / iGPU)
     QPushButton *m_gpuToggleButton = nullptr;
     QWidget *m_dGpuGaugeContainer = nullptr;
@@ -109,8 +130,6 @@ namespace ucc
     bool m_showingIGpu = false;
     bool m_hasDGpuData = false;
     bool m_hasIGpuData = false;
-
-    bool m_waterCoolerSupported = false;
 
     // Theme colors
     QString m_ringColorHex = "#d32f2f";  // Red for disconnected/disabled state

@@ -62,7 +62,7 @@ PC3.ScrollView {
             // ── CPU Section ──
             PlasmaExtras.Heading {
                 level: 4
-                text: i18n("CPU")
+                text: dashTab.backend.cpuModel || i18n("CPU")
             }
 
             GridLayout {
@@ -87,7 +87,7 @@ PC3.ScrollView {
             // ── GPU Section ──
             PlasmaExtras.Heading {
                 level: 4
-                text: i18n("GPU")
+                text: dashTab.backend.dGpuModel || dashTab.backend.iGpuModel || i18n("GPU")
             }
 
             GridLayout {

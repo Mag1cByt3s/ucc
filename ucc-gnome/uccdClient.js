@@ -204,6 +204,7 @@ export class UccdClient {
     getAvailableODMProfiles() { return this._call('ODMProfilesAvailable') ?? []; }
     getWaterCoolerSupported() { return this._call('GetWaterCoolerSupported') ?? false; }
     isWaterCoolerEnabled()    { return this._call('IsWaterCoolerEnabled') ?? false; }
+    getSystemInfoJSON()       { return this._call('GetSystemInfoJSON'); }
 
     getFanProfile(name) { return this._call('GetFanProfile', [name], 's'); }
 

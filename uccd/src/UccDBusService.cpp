@@ -336,6 +336,12 @@ QString UccDBusInterfaceAdaptor::GetDeviceName()
   return QString::fromStdString( m_data.device );
 }
 
+QString UccDBusInterfaceAdaptor::GetSystemInfoJSON()
+{
+  std::lock_guard< std::mutex > lock( m_data.dataMutex );
+  return QString::fromStdString( m_data.systemInfoJSON );
+}
+
 QString UccDBusInterfaceAdaptor::GetDisplayModesJSON()
 {
   std::lock_guard< std::mutex > lock( m_data.dataMutex );
@@ -1738,6 +1744,10 @@ UccDBusService::UccDBusService()
 
   // compute device-specific feature flags (aquaris, cTGP)
   computeDeviceCapabilities();
+
+  // detect system hardware info (CPU, GPU, laptop model)
+  m_systemInfo = detectSystemInfo( m_deviceId );
+  m_dbusData.systemInfoJSON = m_systemInfo.toJSON();
 
   // detect display session type and initialize display modes
   initializeDisplayModes();

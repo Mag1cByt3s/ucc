@@ -48,7 +48,7 @@ function labelRow(labelText) {
     });
     box.add_child(nameLabel);
     box.add_child(valueLabel);
-    return { box, valueLabel };
+    return { box, nameLabel, valueLabel };
 }
 
 /** Map raw power state string to display string. */
@@ -117,6 +117,8 @@ class UccIndicator extends PanelMenu.Button {
             cpuFanPct: -1, gpuFanPct: -1,
             wcFanSpeed: -1, wcPumpLevel: -1,
             wcConnected: false,
+            // System info
+            laptopModel: '', cpuModel: '', gpuModel: '',
             // Profiles
             profileNames: [], profileIds: [],
             activeProfileId: '', activeProfileName: '',
@@ -267,40 +269,48 @@ class UccIndicator extends PanelMenu.Button {
             x_expand: true,
         });
 
-        // Section: Temperatures
-        box.add_child(new St.Label({ text: 'Temperatures', style_class: 'ucc-section-title' }));
-        const tempGrid = new St.BoxLayout({ vertical: true, style_class: 'ucc-grid' });
-        this._lCpuTemp = labelRow('CPU Temp');  tempGrid.add_child(this._lCpuTemp.box);
-        this._lGpuTemp = labelRow('GPU Temp');  tempGrid.add_child(this._lGpuTemp.box);
-        box.add_child(tempGrid);
+        // System model title (hidden when empty)
+        this._sysModelLabel = new St.Label({
+            text: '',
+            style_class: 'ucc-system-model',
+        });
+        this._sysModelLabel.visible = false;
+        box.add_child(this._sysModelLabel);
 
-        // Section: Frequencies
-        box.add_child(new St.Label({ text: 'Frequencies', style_class: 'ucc-section-title' }));
-        const freqGrid = new St.BoxLayout({ vertical: true, style_class: 'ucc-grid' });
-        this._lCpuFreq = labelRow('CPU Freq');  freqGrid.add_child(this._lCpuFreq.box);
-        this._lGpuFreq = labelRow('GPU Freq');  freqGrid.add_child(this._lGpuFreq.box);
-        box.add_child(freqGrid);
+        // ── CPU Section ──
+        this._cpuTitleLabel = new St.Label({
+            text: 'CPU',
+            style_class: 'ucc-cpu-gpu-model',
+        });
+        box.add_child(this._cpuTitleLabel);
 
-        // Section: Power
-        box.add_child(new St.Label({ text: 'Power', style_class: 'ucc-section-title' }));
-        const powerGrid = new St.BoxLayout({ vertical: true, style_class: 'ucc-grid' });
-        this._lCpuPower = labelRow('CPU Power'); powerGrid.add_child(this._lCpuPower.box);
-        this._lGpuPower = labelRow('GPU Power'); powerGrid.add_child(this._lGpuPower.box);
-        box.add_child(powerGrid);
+        const cpuGrid = new St.BoxLayout({ vertical: true, style_class: 'ucc-grid' });
+        this._lCpuTemp  = labelRow('Temp');   cpuGrid.add_child(this._lCpuTemp.box);
+        this._lCpuFreq  = labelRow('Freq');   cpuGrid.add_child(this._lCpuFreq.box);
+        this._lCpuPower = labelRow('Power');  cpuGrid.add_child(this._lCpuPower.box);
+        this._lCpuFan   = labelRow('Fan');    cpuGrid.add_child(this._lCpuFan.box);
+        box.add_child(cpuGrid);
 
-        // Section: Fans
-        box.add_child(new St.Label({ text: 'Fans', style_class: 'ucc-section-title' }));
-        const fanGrid = new St.BoxLayout({ vertical: true, style_class: 'ucc-grid' });
-        this._lCpuFan = labelRow('CPU Fan');  fanGrid.add_child(this._lCpuFan.box);
-        this._lGpuFan = labelRow('GPU Fan');  fanGrid.add_child(this._lGpuFan.box);
-        box.add_child(fanGrid);
+        // ── GPU Section ──
+        this._gpuTitleLabel = new St.Label({
+            text: 'GPU',
+            style_class: 'ucc-cpu-gpu-model',
+        });
+        box.add_child(this._gpuTitleLabel);
+
+        const gpuGrid = new St.BoxLayout({ vertical: true, style_class: 'ucc-grid' });
+        this._lGpuTemp  = labelRow('Temp');   gpuGrid.add_child(this._lGpuTemp.box);
+        this._lGpuFreq  = labelRow('Freq');   gpuGrid.add_child(this._lGpuFreq.box);
+        this._lGpuPower = labelRow('Power');  gpuGrid.add_child(this._lGpuPower.box);
+        this._lGpuFan   = labelRow('Fan');    gpuGrid.add_child(this._lGpuFan.box);
+        box.add_child(gpuGrid);
 
         // Water cooler metrics (hidden until supported)
-        this._wcMetricsBox = new St.BoxLayout({ vertical: true, style_class: 'ucc-grid' });
+        this._wcMetricsBox = new St.BoxLayout({ vertical: true, style_class: 'ucc-cpu-gpu-model' });
         this._wcMetricsBox.visible = false;
         box.add_child(new St.Label({ text: 'Water Cooler', style_class: 'ucc-section-title' }));
-        this._lWcFan  = labelRow('WC Fan');   this._wcMetricsBox.add_child(this._lWcFan.box);
-        this._lWcPump = labelRow('WC Pump');  this._wcMetricsBox.add_child(this._lWcPump.box);
+        this._lWcFan  = labelRow('Fan');   this._wcMetricsBox.add_child(this._lWcFan.box);
+        this._lWcPump = labelRow('Pump');  this._wcMetricsBox.add_child(this._lWcPump.box);
         box.add_child(this._wcMetricsBox);
 
         this._tabs['dashboard'] = box;
@@ -718,6 +728,18 @@ class UccIndicator extends PanelMenu.Button {
                 this._addTab('watercooler', 'Water Cooler');
             }
         }
+
+        const sysInfoRaw = this._client.getSystemInfoJSON();
+        if (sysInfoRaw) {
+            try {
+                const si = JSON.parse(sysInfoRaw);
+                this._state.laptopModel = si.laptopModel ?? '';
+                this._state.cpuModel    = si.cpuModel    ?? '';
+                // prefer dGPU model, fall back to iGPU
+                this._state.gpuModel    = si.dGpuModel   || si.iGpuModel || '';
+                this._updateSystemInfoLabels();
+            } catch { /* ignore */ }
+        }
     }
 
     _loadProfiles() {
@@ -999,6 +1021,26 @@ class UccIndicator extends PanelMenu.Button {
         }
     }
 
+    _updateSystemInfoLabels() {
+        const s = this._state;
+
+        // Laptop model title
+        if (this._sysModelLabel) {
+            this._sysModelLabel.text    = s.laptopModel;
+            this._sysModelLabel.visible = s.laptopModel.length > 0;
+        }
+
+        // CPU section title
+        if (this._cpuTitleLabel) {
+            this._cpuTitleLabel.text = s.cpuModel || 'CPU';
+        }
+
+        // GPU section title
+        if (this._gpuTitleLabel) {
+            this._gpuTitleLabel.text = s.gpuModel || 'GPU';
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Lifecycle
     // -----------------------------------------------------------------------
@@ -1018,7 +1060,6 @@ class UccIndicator extends PanelMenu.Button {
         }
 
         // Enable/LED toggles: require wcConnected
-        if (this._wcEnableSwitch) this._wcEnableSwitch.reactive = wcConnected;
         if (this._wcLedSwitch) this._wcLedSwitch.reactive = wcConnected;
     }
 

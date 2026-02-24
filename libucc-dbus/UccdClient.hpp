@@ -48,6 +48,9 @@ public:
 
   ~UccdClient() override = default;
 
+  // System Information
+  std::optional< std::string > getSystemInfoJSON();
+
   // Profile Management
   std::optional< std::string > getDefaultProfilesJSON();
   std::optional< std::string > getCpuFrequencyLimitsJSON();
