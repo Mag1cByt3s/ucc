@@ -83,13 +83,13 @@ public:
       m_setOdmProfilesAvailable( std::move( setOdmProfilesAvailableCallback ) ),
       m_setOdmPowerLimitsJSON( std::move( setOdmPowerLimitsJSON ) ),
       m_logFunction( std::move( logFunction ) ),
+      m_skipAcpiPlatformProfile( skipAcpiPlatformProfile ),
       m_settings( settings ),
       m_modeReapplyPending( modeReapplyPending ),
       m_nvidiaPowerCTRLDefaultPowerLimit( nvidiaPowerCTRLDefaultPowerLimit ),
       m_nvidiaPowerCTRLMaxPowerLimit( nvidiaPowerCTRLMaxPowerLimit ),
       m_nvidiaPowerCTRLAvailable( nvidiaPowerCTRLAvailable ),
-      m_cTGPAdjustmentSupported( cTGPAdjustmentSupported ),
-      m_skipAcpiPlatformProfile( skipAcpiPlatformProfile )
+      m_cTGPAdjustmentSupported( cTGPAdjustmentSupported )
   {
   }
 

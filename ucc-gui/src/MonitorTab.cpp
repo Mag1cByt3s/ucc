@@ -304,7 +304,15 @@ void MonitorTab::setupUI()
   chartsLayout->addWidget( m_powerChartView, 1 );
   chartsLayout->addWidget( m_freqChartView, 1 );
 
-  m_perGroupPage = chartsWidget;  // stacked page 0
+  // Wrap the per-group charts in a scroll area so the window can be
+  // resized smaller than the combined minimum height of 4 charts.
+  auto *scrollArea = new QScrollArea();
+  scrollArea->setWidget( chartsWidget );
+  scrollArea->setWidgetResizable( true );
+  scrollArea->setFrameShape( QFrame::NoFrame );
+  scrollArea->setContentsMargins( 0, 0, 0, 0 );
+
+  m_perGroupPage = scrollArea;  // stacked page 0
 
   // ---------- Unified "all-in-one" chart (page 1) ----------
   setupUnifiedChart();
@@ -400,7 +408,15 @@ void MonitorTab::setTimeWindow( int seconds )
 
 void MonitorTab::wheelEvent( QWheelEvent *event )
 {
-  // Each 120-unit notch changes the window by 30 seconds
+  // Only change the time window when Ctrl is held; otherwise let the
+  // event propagate normally so the scroll area can scroll.
+  if ( !( event->modifiers() & Qt::ControlModifier ) )
+  {
+    QWidget::wheelEvent( event );
+    return;
+  }
+
+  // Ctrl + scroll: each 120-unit notch changes the window by 30 seconds
   const int delta = event->angleDelta().y();
   if ( delta == 0 )
     return;

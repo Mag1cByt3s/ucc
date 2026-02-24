@@ -824,27 +824,17 @@ static int cmdFanGet( ucc::UccdClient &c, const char *fanProfileId )
   std::printf( "=== Fan Profile: %s ===\n", displayName.toStdString().c_str() );
   std::printf( "  %-24s %s\n", "ID:", displayId.toStdString().c_str() );
 
-  bool hasCurves = false;
   if ( obj.contains( "tableCPU" ) && obj["tableCPU"].isArray() )
-  {
     printFanCurve( "CPU fan curve", obj["tableCPU"].toArray() );
-    hasCurves = true;
-  }
+
   if ( obj.contains( "tableGPU" ) && obj["tableGPU"].isArray() )
-  {
     printFanCurve( "GPU fan curve", obj["tableGPU"].toArray() );
-    hasCurves = true;
-  }
+
   if ( obj.contains( "tablePump" ) && obj["tablePump"].isArray() )
-  {
     printFanCurve( "Pump curve", obj["tablePump"].toArray() );
-    hasCurves = true;
-  }
+
   if ( obj.contains( "tableWaterCoolerFan" ) && obj["tableWaterCoolerFan"].isArray() )
-  {
     printFanCurve( "Water cooler fan curve", obj["tableWaterCoolerFan"].toArray() );
-    hasCurves = true;
-  }
 
   return 0;
 }

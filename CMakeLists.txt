@@ -50,7 +50,8 @@ find_package( Qt6 REQUIRED COMPONENTS
 )
 
 find_package( ECM REQUIRED NO_MODULE )
-set( CMAKE_MODULE_PATH ${ECM_MODULE_PATH} )
+set( CMAKE_MODULE_PATH ${ECM_MODULE_PATH} )# GNUInstallDirs must come before KDEInstallDirs to avoid variable propagation
+include( GNUInstallDirs )
 include( KDEInstallDirs )
 include( KDECMakeSettings )
 include( ECMQmlModule )
