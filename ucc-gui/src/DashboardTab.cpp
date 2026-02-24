@@ -129,10 +129,22 @@ void DashboardTab::setupUI()
   QLabel *titleLabel = new QLabel( titleText );
   titleLabel->setStyleSheet( QString("font-size: 22px; font-weight: bold;") );
 
-  // Water Cooler Enable checkbox (synced with FanControlTab)
-  m_waterCoolerEnableCheckBox = new QCheckBox( "Water Cooler" );
+  // Water Cooler Enable toggle button (synced with FanControlTab)
+  m_waterCoolerEnableCheckBox = new QPushButton( "Water Cooler" );
+  m_waterCoolerEnableCheckBox->setCheckable( true );
   m_waterCoolerEnableCheckBox->setChecked( ucc::WATER_COOLER_INITIAL_STATE );
   m_waterCoolerEnableCheckBox->setToolTip( tr( "When enabled the daemon will scan for water cooler devices" ) );
+  m_waterCoolerEnableCheckBox->setFixedHeight( 24 );
+  {
+    QPalette pal_ = this->palette();
+    const QString midHex_ = pal_.color(QPalette::Mid).name();
+    const QString enabledColorHex = QStringLiteral("#4caf50"); // green
+    const QString disabledColorHex = QStringLiteral("#d32f2f"); // red
+    m_waterCoolerEnableCheckBox->setStyleSheet(
+      QString("QPushButton { font-size: 11px; padding: 2px 12px; border: 1px solid %1; border-radius: 4px; background-color: %2; }"
+              "QPushButton:checked { background-color: %3; font-weight: bold; }")
+        .arg(midHex_, disabledColorHex, enabledColorHex) );
+  }
 
   // Hide water cooler checkbox if water cooler not supported
   if ( !m_waterCoolerSupported )
@@ -320,8 +332,8 @@ void DashboardTab::connectSignals()
 
   Q_UNUSED(m_waterCoolerDbus)
 
-  // Water cooler enable checkbox → emit signal for cross-tab sync and update status
-  connect( m_waterCoolerEnableCheckBox, &QCheckBox::toggled,
+  // Water cooler enable toggle button → emit signal for cross-tab sync and update status
+  connect( m_waterCoolerEnableCheckBox, &QPushButton::toggled,
            this, [this]() {
              updateWaterCoolerStatus();
              emit waterCoolerEnableChanged( m_waterCoolerEnableCheckBox->isChecked() );

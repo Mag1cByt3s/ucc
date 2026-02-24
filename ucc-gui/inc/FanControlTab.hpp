@@ -148,7 +148,7 @@ private:
   QDBusInterface *m_waterCoolerDbus = nullptr;
   QTimer *m_waterCoolerPollTimer = nullptr;
   bool m_isWcConnected = false;
-  QCheckBox *m_waterCoolerEnableCheckBox = nullptr;
+  QPushButton *m_waterCoolerEnableCheckBox = nullptr;
   QComboBox *m_pumpVoltageCombo = nullptr;
   QCheckBox *m_ledOnOffCheckBox = nullptr;
   QPushButton *m_colorPickerButton = nullptr;

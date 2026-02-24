@@ -180,10 +180,20 @@ void FanControlTab::setupUI()
     wcHw->setContentsMargins( 0, 0, 0, 0 );
     wcHw->setSpacing( 4 );
 
-    m_waterCoolerEnableCheckBox = new QCheckBox( "Enable" );
-    m_waterCoolerEnableCheckBox->setLayoutDirection( Qt::RightToLeft );
+    m_waterCoolerEnableCheckBox = new QPushButton( "Enable" );
+    m_waterCoolerEnableCheckBox->setCheckable( true );
     m_waterCoolerEnableCheckBox->setChecked( ucc::WATER_COOLER_INITIAL_STATE );
     m_waterCoolerEnableCheckBox->setToolTip( tr( "When enabled the daemon will scan for water cooler devices" ) );
+    m_waterCoolerEnableCheckBox->setFixedHeight( 24 );
+    m_waterCoolerEnableCheckBox->setStyleSheet([
+      ]() {
+        // Use green/red for enabled/disabled states instead of theme highlight
+        const QString enabledColor = QStringLiteral("#4caf50");
+        const QString disabledColor = QStringLiteral("#d32f2f");
+        return QStringLiteral("QPushButton { font-size: 11px; padding: 2px 12px; border: 1px solid palette(mid); border-radius: 4px; background-color: %1; }"
+                              "QPushButton:checked { background-color: %2; font-weight: bold; }")
+               .arg(disabledColor, enabledColor);
+      }() );
     wcHw->addWidget( m_waterCoolerEnableCheckBox );
 
     QLabel *pumpVoltageLabel = new QLabel( "Pump Voltage:" );
@@ -306,7 +316,7 @@ void FanControlTab::connectSignals()
   // Water cooler hardware controls
   if ( m_waterCoolerSupported )
   {
-    connect( m_waterCoolerEnableCheckBox, &QCheckBox::toggled,
+    connect( m_waterCoolerEnableCheckBox, &QPushButton::toggled,
              this, &FanControlTab::onWaterCoolerEnableToggled );
     connect( m_pumpVoltageCombo, QOverload< int >::of( &QComboBox::currentIndexChanged ),
              this, &FanControlTab::onPumpVoltageChanged );

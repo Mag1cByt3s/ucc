@@ -17,7 +17,6 @@
 
 #include <QWidget>
 #include <QLabel>
-#include <QCheckBox>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -110,7 +109,7 @@ namespace ucc
     QLabel *m_waterCoolerPumpLabel = nullptr;
     QGridLayout *m_waterCoolerGrid = nullptr;
     QLabel *m_waterCoolerHeader = nullptr;
-    QCheckBox *m_waterCoolerEnableCheckBox = nullptr;
+    QPushButton *m_waterCoolerEnableCheckBox = nullptr;
 
     bool m_waterCoolerSupported = false;
 
