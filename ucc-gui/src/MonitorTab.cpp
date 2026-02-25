@@ -25,11 +25,41 @@
 #include <QSettings>
 #include <QMainWindow>
 #include <QStatusBar>
+#include <QApplication>
 #include <cstring>
 #include <algorithm>
+#include <functional>
 
 namespace ucc
 {
+
+// ---------------------------------------------------------------------------
+// Clickable graphics rect — calls a callback on mouse press
+// ---------------------------------------------------------------------------
+
+class ClickableRectItem : public QGraphicsRectItem
+{
+public:
+  explicit ClickableRectItem( QGraphicsItem *parent = nullptr )
+    : QGraphicsRectItem( parent )
+  {
+    setAcceptedMouseButtons( Qt::LeftButton );
+    setCursor( Qt::PointingHandCursor );
+  }
+
+  void setClickCallback( std::function< void() > cb ) { m_onClick = std::move( cb ); }
+
+protected:
+  void mousePressEvent( QGraphicsSceneMouseEvent *event ) override
+  {
+    if ( m_onClick )
+      m_onClick();
+    event->accept();
+  }
+
+private:
+  std::function< void() > m_onClick;
+};
 
 // ---------------------------------------------------------------------------
 // Metric definitions — colour palette inspired by CoolerControl
@@ -229,6 +259,7 @@ void MonitorTab::setMonitoringActive( bool active )
     m_lastTimestamp = now - static_cast< qint64 >( m_windowSeconds ) * 1000;
     fetchData();
     m_fetchTimer.start();
+    m_unifiedChartView->setFocus();  // Immediate key events (crosshair Ctrl)
   }
   else
   {
@@ -268,6 +299,7 @@ void MonitorTab::setupUI()
     pen.setWidth( 1 );
     series->setPen( pen );
     series->setProperty( "_unit", QString::fromUtf8( metricGroupUnit( md.group ) ) );
+    series->setProperty( "_metricKey", QString::fromStdString( md.key ) );
 
     connect( cb, &QCheckBox::toggled, series, &QLineSeries::setVisible );
 
@@ -343,6 +375,8 @@ void MonitorTab::setupUI()
              this, &MonitorTab::saveCheckboxStates );
     connect( info.toggle, &QCheckBox::toggled,
              this, &MonitorTab::updateGroupChartVisibility );
+    connect( info.toggle, &QCheckBox::toggled,
+             this, &MonitorTab::updateStickyMarkPositions );
   }
 
   // Apply initial group visibility after loading saved states
@@ -378,6 +412,7 @@ void MonitorTab::setTimeWindow( int seconds )
     // Do NOT trim or clear buffers — the data must survive zoom-in so that a
     // subsequent zoom-out can reveal it again.
     updateAxes();
+    updateStickyMarkPositions();
   }
   else
   {
@@ -452,6 +487,18 @@ void MonitorTab::setupUnifiedChart()
   // Shadow series created lazily in createUnifiedSeries() when the
   // unified view is first activated.
   m_unifiedChartView = createChartView( m_unifiedChart );
+
+  // --- Crosshair line (hidden by default) ---
+  m_crosshairLine = new QGraphicsLineItem( m_unifiedChart );
+  m_crosshairLine->setPen( QPen( QColor( 200, 200, 200, 150 ), 1, Qt::DashLine ) );
+  m_crosshairLine->setZValue( 80 );
+  m_crosshairLine->hide();
+
+  // Enable mouse tracking so we get move events without button press
+  m_unifiedChartView->setMouseTracking( true );
+  m_unifiedChartView->viewport()->setMouseTracking( true );
+  m_unifiedChartView->viewport()->installEventFilter( this );
+  m_unifiedChartView->setFocusPolicy( Qt::StrongFocus );
 }
 
 void MonitorTab::createUnifiedSeries()
@@ -478,6 +525,7 @@ void MonitorTab::createUnifiedSeries()
     const double fwdScale = metricToNormalisedScale( md.group );
     ns->setProperty( "_realScale", 1.0 / fwdScale );
     ns->setProperty( "_unit", QString::fromUtf8( metricGroupUnit( md.group ) ) );
+    ns->setProperty( "_metricKey", QString::fromStdString( md.key ) );
 
     // Store the shadow series on the original for applyBinaryData/trimSeries
     m_seriesMap[ md.key ].series->setProperty( "_uniSeries",
@@ -541,14 +589,18 @@ void MonitorTab::setUnifiedMode( bool unified )
     createUnifiedSeries();
     // Install hover callout now that the series actually exist
     installHoverCallout( m_unifiedChart );
+    // Create unified-side sticky mark graphics for existing marks
+    createUnifiedMarkGfx();
   }
   else if ( !unified && m_unifiedSeriesActive )
   {
     // Reclaim memory when switching back to per-group view
+    destroyUnifiedMarkGfx();
     destroyUnifiedSeries();
   }
   m_chartStack->setCurrentIndex( unified ? 1 : 0 );
   updateAxes();
+  updateStickyMarkPositions();
 }
 
 // ---------------------------------------------------------------------------
@@ -636,7 +688,903 @@ void MonitorTab::installHoverCallout( QChart *chart )
       co.bg->show();
       co.text->show();
     } );
+
+    // Sticky mark — click to pin/unpin a data-point label
+    connect( ls, &QLineSeries::clicked,
+             this, [this, ls]( const QPointF &point )
+    {
+      handleSeriesClick( ls, point );
+    } );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Sticky marks — click to pin/unpin a data-point callout
+// ---------------------------------------------------------------------------
+
+int MonitorTab::metricIndexForKey( const std::string &key )
+{
+  for ( int i = 0; i < METRIC_COUNT; ++i )
+  {
+    if ( kMetrics[ i ].key == key )
+      return i;
+  }
+  return -1;
+}
+
+QChart *MonitorTab::chartForGroup( MetricGroup g ) const
+{
+  switch ( g )
+  {
+    case MetricGroup::Temp:  return m_tempChart;
+    case MetricGroup::Duty:  return m_dutyChart;
+    case MetricGroup::Power: return m_powerChart;
+    case MetricGroup::Freq:  return m_freqChart;
+  }
+  return m_tempChart;
+}
+
+MonitorTab::MarkGfx MonitorTab::createMarkGfx( QChart *chart, const QColor &borderColor,
+                                               std::function< void() > onClick )
+{
+  auto *bg   = new ClickableRectItem( chart );
+  auto *text = new QGraphicsSimpleTextItem( chart );
+
+  bg->setBrush( QBrush( QColor( 30, 30, 30, 220 ) ) );
+  bg->setPen( QPen( borderColor, 2 ) );
+  bg->setZValue( 90 );
+  if ( onClick )
+    bg->setClickCallback( std::move( onClick ) );
+
+  // Let mouse clicks pass through the text to the bg rect behind it
+  text->setAcceptedMouseButtons( Qt::NoButton );
+  text->setBrush( Qt::white );
+  text->setZValue( 91 );
+  bg->hide();
+  text->hide();
+
+  return { bg, text };
+}
+
+void MonitorTab::positionMarkGfx( MarkGfx &gfx, QChart *chart,
+                                  const QPointF &dataPoint, const QString &label )
+{
+  if ( !gfx.bg || !gfx.text )
+    return;
+
+  const QRectF plotArea = chart->plotArea();
+  const QPointF scenePos = chart->mapToPosition( dataPoint );
+
+  // Hide if the mark has scrolled outside the visible plot area
+  if ( scenePos.x() < plotArea.left() || scenePos.x() > plotArea.right() )
+  {
+    gfx.bg->hide();
+    gfx.text->hide();
+    return;
+  }
+
+  gfx.text->setText( label );
+
+  constexpr qreal pad = 4.0;
+  const QRectF textRect = gfx.text->boundingRect();
+
+  // Position above and to the right of the data point
+  qreal tx = scenePos.x() + 10;
+  qreal ty = scenePos.y() - textRect.height() - 10;
+
+  // If it would overflow the right edge, flip to the left side
+  if ( tx + textRect.width() + 2 * pad > plotArea.right() )
+    tx = scenePos.x() - textRect.width() - 2 * pad - 10;
+
+  // If it would overflow the top edge, flip below
+  if ( ty - pad < plotArea.top() )
+    ty = scenePos.y() + 10;
+
+  gfx.text->setPos( tx, ty );
+  gfx.bg->setRect( tx - pad, ty - pad,
+                    textRect.width() + 2 * pad,
+                    textRect.height() + 2 * pad );
+
+  gfx.bg->show();
+  gfx.text->show();
+}
+
+void MonitorTab::handleSeriesClick( QLineSeries *ls, const QPointF &point )
+{
+  const QString keyStr = ls->property( "_metricKey" ).toString();
+  if ( keyStr.isEmpty() )
+    return;
+
+  const std::string key = keyStr.toStdString();
+  const int idx = metricIndexForKey( key );
+  if ( idx < 0 )
+    return;
+
+  // Determine raw value — denormalize if this is a unified shadow series
+  const QVariant rvProp = ls->property( "_realScale" );
+  const double rawValue = rvProp.isValid()
+                          ? point.y() * rvProp.toDouble()
+                          : point.y();
+
+  const qint64 clickTs = static_cast< qint64 >( point.x() );
+
+  if ( static_cast< int >( m_stickyMarks.size() ) >= MAX_STICKY_MARKS )
+
+  if ( static_cast< int >( m_stickyMarks.size() ) >= MAX_STICKY_MARKS )
+    return;
+
+  // Snap to the nearest actual data point in the raw buffer
+  auto &buf = m_seriesMap[ key ].buffer;
+  if ( buf.isEmpty() )
+    return;
+
+  qint64 snapTs  = clickTs;
+  double snapVal = rawValue;
+  qint64 bestDist = m_windowSeconds * 1000LL + 1;
+
+  for ( const auto &pt : buf )
+  {
+    const qint64 d = std::abs( static_cast< qint64 >( pt.x() ) - clickTs );
+    if ( d < bestDist )
+    {
+      bestDist = d;
+      snapTs  = static_cast< qint64 >( pt.x() );
+      snapVal = pt.y();
+    }
+  }
+
+  // Create a single-metric group mark — place box at vertical centre of plot
+  addStickyMarkGroup( snapTs, 0.5, { { key, snapVal } } );
+}
+
+void MonitorTab::addStickyMarkGroup( qint64 ts, double clickDataY,
+                                     const std::vector< StickyMetricEntry > &entries )
+{
+  StickyMark mark;
+  mark.timestamp  = ts;
+  mark.clickDataY = clickDataY;
+  mark.entries    = entries;
+
+  // Build a remove callback
+  const qint64 capturedTs = ts;
+  auto removeCb = [this, capturedTs]() {
+    for ( auto it = m_stickyMarks.begin(); it != m_stickyMarks.end(); ++it )
+    {
+      if ( it->timestamp == capturedTs )
+      {
+        removeStickyMark( it );
+        return;
+      }
+    }
+  };
+
+  // Create per-group chart graphics (one MarkGfx per entry)
+  for ( const auto &entry : entries )
+  {
+    const int idx = metricIndexForKey( entry.metricKey );
+    if ( idx < 0 )
+    {
+      mark.groupGfxList.push_back( {} );
+      continue;
+    }
+    const auto &md = kMetrics[ idx ];
+    mark.groupGfxList.push_back( createMarkGfx( chartForGroup( md.group ), md.color, removeCb ) );
+  }
+
+  // Create unified chart graphics if the unified view is active
+  if ( m_unifiedSeriesActive && m_unifiedChart )
+  {
+    // Background rect (clickable)
+    auto *bg = new ClickableRectItem( m_unifiedChart );
+    bg->setBrush( QBrush( QColor( 30, 30, 30, 220 ) ) );
+    bg->setPen( QPen( QColor( 200, 200, 200 ), 1 ) );
+    bg->setZValue( 90 );
+    bg->setClickCallback( removeCb );
+    mark.uniBg = bg;
+
+    // One text item per entry + timestamp header
+    auto *tsText = new QGraphicsSimpleTextItem( m_unifiedChart );
+    tsText->setBrush( Qt::white );
+    tsText->setZValue( 91 );
+    tsText->setAcceptedMouseButtons( Qt::NoButton );
+    mark.uniTexts.push_back( tsText );
+
+    for ( const auto &entry : entries )
+    {
+      const int idx = metricIndexForKey( entry.metricKey );
+      const QColor col = ( idx >= 0 ) ? kMetrics[ idx ].color : Qt::white;
+      auto *txt = new QGraphicsSimpleTextItem( m_unifiedChart );
+      txt->setBrush( col );
+      txt->setZValue( 91 );
+      txt->setAcceptedMouseButtons( Qt::NoButton );
+      mark.uniTexts.push_back( txt );
+    }
+
+    // Vertical marker line
+    auto *line = new QGraphicsLineItem( m_unifiedChart );
+    line->setPen( QPen( QColor( 200, 200, 200, 150 ), 1, Qt::DashLine ) );
+    line->setZValue( 89 );
+    mark.uniLine = line;
+  }
+
+  m_stickyMarks.push_back( std::move( mark ) );
+  updateStickyMarkPositions();
+}
+
+void MonitorTab::removeStickyMark( std::vector< StickyMark >::iterator it )
+{
+  // Per-group graphics
+  for ( auto &gfx : it->groupGfxList )
+  {
+    delete gfx.bg;
+    delete gfx.text;
+  }
+
+  // Unified graphics
+  for ( auto *txt : it->uniTexts )
+    delete txt;
+  delete it->uniBg;
+  delete it->uniLine;
+
+  m_stickyMarks.erase( it );
+}
+
+void MonitorTab::updateStickyMarkPositions()
+{
+  for ( auto &mark : m_stickyMarks )
+  {
+    // --- Per-group chart positioning (one per entry) ---
+    for ( size_t e = 0; e < mark.entries.size(); ++e )
+    {
+      if ( e >= mark.groupGfxList.size() )
+        break;
+
+      const auto &entry = mark.entries[ e ];
+      auto &gfx = mark.groupGfxList[ e ];
+
+      const int idx = metricIndexForKey( entry.metricKey );
+      if ( idx < 0 )
+        continue;
+
+      const auto &md = kMetrics[ idx ];
+      auto it = m_seriesMap.find( md.key );
+      const bool visible = ( it != m_seriesMap.end() && it->second.toggle->isChecked() );
+
+      if ( !visible )
+      {
+        if ( gfx.bg ) { gfx.bg->hide(); gfx.text->hide(); }
+        continue;
+      }
+
+      const QDateTime dt = QDateTime::fromMSecsSinceEpoch( mark.timestamp );
+      const QString unit = QString::fromUtf8( metricGroupUnit( md.group ) );
+      const QString label = QStringLiteral( "%1\n%2: %3 %4" )
+          .arg( dt.toString( "HH:mm:ss" ) )
+          .arg( md.label )
+          .arg( entry.rawValue, 0, 'f', 1 )
+          .arg( unit );
+
+      positionMarkGfx( gfx, chartForGroup( md.group ),
+          QPointF( static_cast< qreal >( mark.timestamp ), entry.rawValue ), label );
+    }
+
+    // --- Unified chart grouped label ---
+    if ( !mark.uniBg || !m_unifiedChart )
+      continue;
+
+    // Check if any entry is visible
+    bool anyVisible = false;
+    for ( const auto &entry : mark.entries )
+    {
+      const int idx = metricIndexForKey( entry.metricKey );
+      if ( idx >= 0 )
+      {
+        auto it = m_seriesMap.find( entry.metricKey );
+        if ( it != m_seriesMap.end() && it->second.toggle->isChecked() )
+        {
+          anyVisible = true;
+          break;
+        }
+      }
+    }
+
+    const QRectF plotArea = m_unifiedChart->plotArea();
+    const QPointF sceneX = m_unifiedChart->mapToPosition(
+        QPointF( static_cast< qreal >( mark.timestamp ), 0 ) );
+
+    if ( !anyVisible || sceneX.x() < plotArea.left() || sceneX.x() > plotArea.right() )
+    {
+      mark.uniBg->hide();
+      for ( auto *txt : mark.uniTexts )
+        txt->hide();
+      if ( mark.uniLine )
+        mark.uniLine->hide();
+      continue;
+    }
+
+    // Set timestamp header text
+    const QDateTime dt = QDateTime::fromMSecsSinceEpoch( mark.timestamp );
+    mark.uniTexts[ 0 ]->setText( dt.toString( "HH:mm:ss" ) );
+
+    // Set per-metric texts, build up total height
+    constexpr qreal pad = 4.0;
+    constexpr qreal rowGap = 1.0;
+    qreal totalH = 0;
+    qreal maxW   = 0;
+
+    // Measure timestamp row
+    {
+      const QRectF r = mark.uniTexts[ 0 ]->boundingRect();
+      totalH += r.height() + rowGap;
+      maxW = std::max( maxW, r.width() );
+    }
+
+    // Measure + set metric rows
+    size_t txtIdx = 1;
+    for ( const auto &entry : mark.entries )
+    {
+      if ( txtIdx >= mark.uniTexts.size() )
+        break;
+
+      const int idx = metricIndexForKey( entry.metricKey );
+      if ( idx < 0 ) { ++txtIdx; continue; }
+
+      const auto &md = kMetrics[ idx ];
+      auto it = m_seriesMap.find( md.key );
+      const bool vis = ( it != m_seriesMap.end() && it->second.toggle->isChecked() );
+
+      if ( !vis )
+      {
+        mark.uniTexts[ txtIdx ]->hide();
+        ++txtIdx;
+        continue;
+      }
+
+      const QString unit = QString::fromUtf8( metricGroupUnit( md.group ) );
+      const QString rowText = QStringLiteral( "%1: %2 %3" )
+          .arg( md.label )
+          .arg( entry.rawValue, 0, 'f', 1 )
+          .arg( unit );
+
+      mark.uniTexts[ txtIdx ]->setText( rowText );
+      mark.uniTexts[ txtIdx ]->show();
+
+      const QRectF r = mark.uniTexts[ txtIdx ]->boundingRect();
+      totalH += r.height() + rowGap;
+      maxW = std::max( maxW, r.width() );
+      ++txtIdx;
+    }
+
+    // Position the label box above the data, anchored at sceneX
+    const qreal boxW = maxW + 2 * pad;
+    const qreal boxH = totalH + 2 * pad - rowGap;  // remove last rowGap
+
+    qreal bx = sceneX.x() + 8;
+    if ( bx + boxW > plotArea.right() )
+      bx = sceneX.x() - boxW - 8;
+
+    // Place box at the stored plot-fraction Y — independent of axis zoom
+    qreal by = plotArea.top() + mark.clickDataY * plotArea.height() - boxH / 2.0;
+    by = std::max( plotArea.top() + 2.0, by );
+    by = std::min( plotArea.bottom() - boxH - 2.0, by );
+
+    mark.uniBg->setRect( bx, by, boxW, boxH );
+    mark.uniBg->show();
+
+    // Position text rows inside the box
+    qreal rowY = by + pad;
+    for ( size_t t = 0; t < mark.uniTexts.size(); ++t )
+    {
+      auto *txt = mark.uniTexts[ t ];
+      if ( !txt->isVisible() && t != 0 )
+        continue;
+
+      if ( t == 0 )
+        txt->show();
+
+      txt->setPos( bx + pad, rowY );
+      rowY += txt->boundingRect().height() + rowGap;
+    }
+
+    // Vertical line from bottom of box to X axis
+    if ( mark.uniLine )
+    {
+      mark.uniLine->setLine( sceneX.x(), plotArea.top(), sceneX.x(), plotArea.bottom() );
+      mark.uniLine->show();
+    }
+  }
+}
+
+void MonitorTab::createUnifiedMarkGfx()
+{
+  for ( auto &mark : m_stickyMarks )
+  {
+    if ( mark.uniBg )
+      continue;  // Already has unified graphics
+
+    const qint64 capturedTs = mark.timestamp;
+    auto removeCb = [this, capturedTs]() {
+      for ( auto it = m_stickyMarks.begin(); it != m_stickyMarks.end(); ++it )
+      {
+        if ( it->timestamp == capturedTs )
+        {
+          removeStickyMark( it );
+          return;
+        }
+      }
+    };
+
+    auto *bg = new ClickableRectItem( m_unifiedChart );
+    bg->setBrush( QBrush( QColor( 30, 30, 30, 220 ) ) );
+    bg->setPen( QPen( QColor( 200, 200, 200 ), 1 ) );
+    bg->setZValue( 90 );
+    bg->setClickCallback( removeCb );
+    mark.uniBg = bg;
+
+    // Timestamp text
+    auto *tsText = new QGraphicsSimpleTextItem( m_unifiedChart );
+    tsText->setBrush( Qt::white );
+    tsText->setZValue( 91 );
+    tsText->setAcceptedMouseButtons( Qt::NoButton );
+    mark.uniTexts.push_back( tsText );
+
+    // Per-metric texts
+    for ( const auto &entry : mark.entries )
+    {
+      const int idx = metricIndexForKey( entry.metricKey );
+      const QColor col = ( idx >= 0 ) ? kMetrics[ idx ].color : Qt::white;
+      auto *txt = new QGraphicsSimpleTextItem( m_unifiedChart );
+      txt->setBrush( col );
+      txt->setZValue( 91 );
+      txt->setAcceptedMouseButtons( Qt::NoButton );
+      mark.uniTexts.push_back( txt );
+    }
+
+    auto *line = new QGraphicsLineItem( m_unifiedChart );
+    line->setPen( QPen( QColor( 200, 200, 200, 150 ), 1, Qt::DashLine ) );
+    line->setZValue( 89 );
+    mark.uniLine = line;
+  }
+}
+
+void MonitorTab::destroyUnifiedMarkGfx()
+{
+  for ( auto &mark : m_stickyMarks )
+  {
+    for ( auto *txt : mark.uniTexts )
+      delete txt;
+    mark.uniTexts.clear();
+    delete mark.uniBg;
+    mark.uniBg = nullptr;
+    delete mark.uniLine;
+    mark.uniLine = nullptr;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Unified crosshair — vertical line + per-series labels on Ctrl
+// ---------------------------------------------------------------------------
+
+bool MonitorTab::eventFilter( QObject *watched, QEvent *event )
+{
+  // Only handle mouse events on the unified chart viewport
+  if ( watched != m_unifiedChartView->viewport() )
+    return QWidget::eventFilter( watched, event );
+
+  switch ( event->type() )
+  {
+    case QEvent::MouseMove:
+    {
+      auto *me = static_cast< QMouseEvent * >( event );
+
+      // Rubber-band zoom drag in progress
+      if ( m_zoomDragging )
+      {
+        m_zoomBand->setGeometry( QRect( m_zoomOrigin, me->pos() ).normalized() );
+        return true;
+      }
+
+      m_lastCrosshairPos = me->pos();
+      m_cursorInPlot = true;
+      updateCrosshair( me->pos(), m_annotationsVisible );
+      break;
+    }
+    case QEvent::MouseButtonPress:
+    {
+      auto *me = static_cast< QMouseEvent * >( event );
+
+      // Ctrl+LMB starts rubber-band zoom
+      if ( me->button() == Qt::LeftButton
+           && ( me->modifiers() & Qt::ControlModifier ) )
+      {
+        m_zoomOrigin = me->pos();
+        if ( !m_zoomBand )
+          m_zoomBand = new QRubberBand( QRubberBand::Rectangle, m_unifiedChartView->viewport() );
+        m_zoomBand->setGeometry( QRect( m_zoomOrigin, QSize() ) );
+        m_zoomBand->show();
+        m_zoomDragging = true;
+        return true;
+      }
+
+      if ( me->button() == Qt::LeftButton && m_annotationsVisible )
+      {
+        // Check if the click is on a sticky mark graphics item
+        const QPointF scenePos = m_unifiedChartView->mapToScene(
+            static_cast< int >( me->pos().x() ),
+            static_cast< int >( me->pos().y() ) );
+        const auto items = m_unifiedChart->scene()->items( scenePos );
+        
+        // If a graphics item was clicked (mark bg rect), let it through
+        for ( auto *item : items )
+        {
+          if ( dynamic_cast< ClickableRectItem * >( item ) )
+            return false;  // Don't consume; let the item handle it
+        }
+        
+        // No mark clicked; create a new one on empty space
+        crosshairClick( me->pos() );
+        return true;
+      }
+      break;
+    }
+    case QEvent::MouseButtonRelease:
+    {
+      auto *me = static_cast< QMouseEvent * >( event );
+
+      // Finish rubber-band zoom
+      if ( me->button() == Qt::LeftButton && m_zoomDragging )
+      {
+        m_zoomDragging = false;
+        m_zoomBand->hide();
+        const QRect rect = QRect( m_zoomOrigin, me->pos() ).normalized();
+        if ( rect.width() > 4 && rect.height() > 4 )
+          applyZoomRect( rect );
+        return true;
+      }
+
+      if ( me->button() == Qt::RightButton )
+      {
+        m_annotationsVisible = !m_annotationsVisible;
+        updateCrosshair( me->pos(), m_annotationsVisible );
+        return true;  // suppress context menu
+      }
+      break;
+    }
+    case QEvent::Leave:
+      m_cursorInPlot = false;
+      hideCrosshair();
+      break;
+    default:
+      break;
+  }
+
+  return QWidget::eventFilter( watched, event );
+}
+
+void MonitorTab::hideCrosshair()
+{
+  if ( m_crosshairLine )
+    m_crosshairLine->hide();
+
+  for ( auto &cl : m_crosshairLabels )
+  {
+    delete cl.bg;
+    delete cl.text;
+  }
+  m_crosshairLabels.clear();
+  m_crosshairVisible = false;
+}
+
+void MonitorTab::updateCrosshair( const QPointF &widgetPos, bool ctrlHeld )
+{
+  if ( !m_unifiedSeriesActive || !m_unifiedChart )
+  {
+    hideCrosshair();
+    return;
+  }
+
+  // Map the widget position to chart coordinates.
+  // The viewport() pos maps to the QGraphicsView, which we convert to scene
+  // and then to chart-value coordinates.
+  const QPointF scenePos = m_unifiedChartView->mapToScene(
+      static_cast< int >( widgetPos.x() ),
+      static_cast< int >( widgetPos.y() ) );
+  const QRectF plotArea = m_unifiedChart->plotArea();
+
+  if ( !plotArea.contains( scenePos ) )
+  {
+    hideCrosshair();
+    return;
+  }
+
+  // Draw the vertical crosshair line spanning the full plot height
+  m_crosshairLine->setLine( scenePos.x(), plotArea.top(),
+                             scenePos.x(), plotArea.bottom() );
+  m_crosshairLine->show();
+
+  // Clean up old labels
+  for ( auto &cl : m_crosshairLabels )
+  {
+    delete cl.bg;
+    delete cl.text;
+  }
+  m_crosshairLabels.clear();
+
+  if ( !ctrlHeld )
+  {
+    m_crosshairVisible = true;
+    return;
+  }
+
+  // Map scenePos to a data-space X (timestamp)
+  const QPointF dataPos = m_unifiedChart->mapToValue( scenePos );
+  const qint64 cursorTs = static_cast< qint64 >( dataPos.x() );
+
+  // Pre-count visible metrics so we can center the label stack on the cursor Y
+  int totalLabels = 1; // +1 for the timestamp row
+  for ( int i = 0; i < METRIC_COUNT; ++i )
+  {
+    const auto &md  = kMetrics[ i ];
+    const auto &info = m_seriesMap[ md.key ];
+    if ( info.toggle->isChecked() && !info.buffer.isEmpty() )
+      ++totalLabels;
+  }
+
+  // For each visible metric, find the nearest data point and create a label
+  int labelIndex = 0;
+  for ( int i = 0; i < METRIC_COUNT; ++i )
+  {
+    const auto &md  = kMetrics[ i ];
+    auto &info = m_seriesMap[ md.key ];
+    if ( !info.toggle->isChecked() )
+      continue;
+
+    const auto &buf = info.buffer;
+    if ( buf.isEmpty() )
+      continue;
+
+    // Binary search for the nearest timestamp in the raw buffer
+    int lo = 0, hi = buf.size() - 1;
+    while ( lo < hi )
+    {
+      const int mid = lo + ( hi - lo ) / 2;
+      if ( static_cast< qint64 >( buf[ mid ].x() ) < cursorTs )
+        lo = mid + 1;
+      else
+        hi = mid;
+    }
+
+    // Check the neighbor as well to find the truly closest
+    int bestIdx = lo;
+    if ( lo > 0 )
+    {
+      const qint64 dLo = std::abs( static_cast< qint64 >( buf[ lo ].x() ) - cursorTs );
+      const qint64 dPrev = std::abs( static_cast< qint64 >( buf[ lo - 1 ].x() ) - cursorTs );
+      if ( dPrev < dLo )
+        bestIdx = lo - 1;
+    }
+
+    const double rawVal = buf[ bestIdx ].y();
+    const qint64 snapTs = static_cast< qint64 >( buf[ bestIdx ].x() );
+
+    // Compute the normalised data point for potential future use
+    const double scale = metricToNormalisedScale( md.group );
+    (void) scale; // Used below for mapToPosition if needed
+
+    // Build label text
+    const QDateTime dt = QDateTime::fromMSecsSinceEpoch( snapTs );
+    const QString unit = QString::fromUtf8( metricGroupUnit( md.group ) );
+    const QString label = QStringLiteral( "%1: %2 %3" )
+        .arg( md.label )
+        .arg( rawVal, 0, 'f', 1 )
+        .arg( unit );
+
+    // Create graphics items
+    auto *bg   = new QGraphicsRectItem( m_unifiedChart );
+    auto *text = new QGraphicsSimpleTextItem( m_unifiedChart );
+
+    bg->setBrush( QBrush( QColor( 30, 30, 30, 220 ) ) );
+    bg->setPen( QPen( md.color, 1 ) );
+    bg->setZValue( 95 );
+    text->setBrush( md.color );
+    text->setZValue( 96 );
+    text->setAcceptedMouseButtons( Qt::NoButton );
+
+    text->setText( label );
+
+    constexpr qreal pad = 3.0;
+    const QRectF textRect = text->boundingRect();
+
+    // Stack labels centered on the cursor Y
+    const qreal rowH   = textRect.height() + 2 * pad + 2;
+    const qreal startY = std::max( plotArea.top() + 2,
+                           std::min( scenePos.y() - totalLabels * rowH / 2.0,
+                                     plotArea.bottom() - totalLabels * rowH - 2 ) );
+    const qreal baseY  = startY + labelIndex * rowH;
+    qreal tx = scenePos.x() + 12;
+
+    // If it would overflow the right edge, flip to the left
+    if ( tx + textRect.width() + 2 * pad > plotArea.right() )
+      tx = scenePos.x() - textRect.width() - 2 * pad - 12;
+
+    text->setPos( tx, baseY );
+    bg->setRect( tx - pad, baseY - pad,
+                 textRect.width() + 2 * pad,
+                 textRect.height() + 2 * pad );
+
+    bg->show();
+    text->show();
+
+    m_crosshairLabels.push_back( { bg, text } );
+    ++labelIndex;
+  }
+
+  // Time label — always shown at the bottom of the stack (white)
+  {
+    constexpr qreal pad = 3.0;
+    auto *bg   = new QGraphicsRectItem( m_unifiedChart );
+    auto *text = new QGraphicsSimpleTextItem( m_unifiedChart );
+
+    bg->setBrush( QBrush( QColor( 30, 30, 30, 220 ) ) );
+    bg->setPen( QPen( QColor( 150, 150, 150 ), 1 ) );
+    bg->setZValue( 95 );
+    text->setBrush( Qt::white );
+    text->setZValue( 96 );
+    text->setAcceptedMouseButtons( Qt::NoButton );
+
+    const QDateTime dt = QDateTime::fromMSecsSinceEpoch( cursorTs );
+    text->setText( dt.toString( "HH:mm:ss" ) );
+
+    const QRectF textRect = text->boundingRect();
+    const qreal rowH   = textRect.height() + 2 * pad + 2;
+    const qreal startY = std::max( plotArea.top() + 2,
+                           std::min( scenePos.y() - totalLabels * rowH / 2.0,
+                                     plotArea.bottom() - totalLabels * rowH - 2 ) );
+    const qreal baseY  = startY + labelIndex * rowH;
+    qreal tx = scenePos.x() + 12;
+    if ( tx + textRect.width() + 2 * pad > plotArea.right() )
+      tx = scenePos.x() - textRect.width() - 2 * pad - 12;
+
+    text->setPos( tx, baseY );
+    bg->setRect( tx - pad, baseY - pad,
+                 textRect.width() + 2 * pad,
+                 textRect.height() + 2 * pad );
+    bg->show();
+    text->show();
+
+    m_crosshairLabels.push_back( { bg, text } );
+  }
+
+  m_crosshairVisible = true;
+}
+
+void MonitorTab::crosshairClick( const QPointF &widgetPos )
+{
+  if ( !m_unifiedSeriesActive || !m_unifiedChart )
+    return;
+
+  const QPointF scenePos = m_unifiedChartView->mapToScene(
+      static_cast< int >( widgetPos.x() ),
+      static_cast< int >( widgetPos.y() ) );
+  const QRectF plotArea = m_unifiedChart->plotArea();
+
+  if ( !plotArea.contains( scenePos ) )
+    return;
+
+  const QPointF dataPos = m_unifiedChart->mapToValue( scenePos );
+  const qint64 cursorTs = static_cast< qint64 >( dataPos.x() );
+
+  if ( static_cast< int >( m_stickyMarks.size() ) >= MAX_STICKY_MARKS )
+    return;
+
+  // Collect all visible metrics at this timestamp
+  std::vector< StickyMetricEntry > entries;
+  qint64 snapTs = cursorTs;
+
+  for ( int i = 0; i < METRIC_COUNT; ++i )
+  {
+    const auto &md  = kMetrics[ i ];
+    auto &info = m_seriesMap[ md.key ];
+    if ( !info.toggle->isChecked() )
+      continue;
+
+    const auto &buf = info.buffer;
+    if ( buf.isEmpty() )
+      continue;
+
+    // Binary search for the nearest timestamp
+    int lo = 0, hi = buf.size() - 1;
+    while ( lo < hi )
+    {
+      const int mid = lo + ( hi - lo ) / 2;
+      if ( static_cast< qint64 >( buf[ mid ].x() ) < cursorTs )
+        lo = mid + 1;
+      else
+        hi = mid;
+    }
+
+    int bestIdx = lo;
+    if ( lo > 0 )
+    {
+      const qint64 dLo = std::abs( static_cast< qint64 >( buf[ lo ].x() ) - cursorTs );
+      const qint64 dPrev = std::abs( static_cast< qint64 >( buf[ lo - 1 ].x() ) - cursorTs );
+      if ( dPrev < dLo )
+        bestIdx = lo - 1;
+    }
+
+    // Use the first metric's snapped timestamp as the group timestamp
+    if ( entries.empty() )
+      snapTs = static_cast< qint64 >( buf[ bestIdx ].x() );
+
+    entries.push_back( { md.key, buf[ bestIdx ].y() } );
+  }
+
+  if ( !entries.empty() )
+  {
+    const double plotFrac = ( plotArea.height() > 0 )
+        ? ( scenePos.y() - plotArea.top() ) / plotArea.height()
+        : 0.5;
+    addStickyMarkGroup( snapTs, plotFrac, entries );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Ctrl+LMB rubber-band zoom
+// ---------------------------------------------------------------------------
+
+void MonitorTab::applyZoomRect( const QRect &viewportRect )
+{
+  if ( !m_unifiedChart || !m_unifiedXAxis || !m_unifiedYAxis )
+    return;
+
+  // Map viewport corners to scene, then to data coordinates
+  const QPointF topLeft = m_unifiedChartView->mapToScene( viewportRect.topLeft() );
+  const QPointF bottomRight = m_unifiedChartView->mapToScene( viewportRect.bottomRight() );
+
+  const QRectF plotArea = m_unifiedChart->plotArea();
+
+  // Clamp to the plot area
+  const QPointF clampedTL(
+      std::max( topLeft.x(), plotArea.left() ),
+      std::max( topLeft.y(), plotArea.top() ) );
+  const QPointF clampedBR(
+      std::min( bottomRight.x(), plotArea.right() ),
+      std::min( bottomRight.y(), plotArea.bottom() ) );
+
+  const QPointF dataMin = m_unifiedChart->mapToValue( clampedTL );
+  const QPointF dataMax = m_unifiedChart->mapToValue( clampedBR );
+
+  // dataMin.y() is the top of the rect → higher value (Y axis is inverted in screen coords)
+  // dataMax.y() is the bottom of the rect → lower value
+  const qreal yLo = std::min( dataMin.y(), dataMax.y() );
+  const qreal yHi = std::max( dataMin.y(), dataMax.y() );
+  const qint64 tLo = static_cast< qint64 >( std::min( dataMin.x(), dataMax.x() ) );
+  const qint64 tHi = static_cast< qint64 >( std::max( dataMin.x(), dataMax.x() ) );
+
+  // Pause data fetching
+  m_paused = true;
+  if ( m_pauseLabel )
+    m_pauseLabel->setVisible( true );
+
+  // Apply zoomed ranges
+  m_unifiedXAxis->setRange(
+      QDateTime::fromMSecsSinceEpoch( tLo ),
+      QDateTime::fromMSecsSinceEpoch( tHi ) );
+  m_unifiedYAxis->setRange( yLo, yHi );
+
+  m_zoomed = true;
+  updateStickyMarkPositions();
+}
+
+void MonitorTab::resetZoom()
+{
+  if ( !m_unifiedYAxis )
+    return;
+
+  m_unifiedYAxis->setRange( 0, 100 );
+  m_zoomed = false;
+  updateStickyMarkPositions();
+  // The X axis will be restored by updateAxes() on the next tick
 }
 
 // ---------------------------------------------------------------------------
@@ -743,6 +1691,7 @@ void MonitorTab::fetchData()
   trimSeries();
   commitSeries();
   updateAxes();
+  updateStickyMarkPositions();
 
   // ── Resume painting — triggers a single composite repaint ─────────
   m_tempChartView->setUpdatesEnabled( true );
@@ -750,6 +1699,10 @@ void MonitorTab::fetchData()
   m_powerChartView->setUpdatesEnabled( true );
   m_freqChartView->setUpdatesEnabled( true );
   m_unifiedChartView->setUpdatesEnabled( true );
+
+  // Refresh floating crosshair labels so they don't lag behind the scrolling data
+  if ( m_cursorInPlot )
+    updateCrosshair( m_lastCrosshairPos, m_annotationsVisible );
 }
 
 // ---------------------------------------------------------------------------
@@ -761,6 +1714,8 @@ void MonitorTab::keyPressEvent( QKeyEvent *event )
   if ( event->key() == Qt::Key_Space )
   {
     m_paused = !m_paused;
+    if ( !m_paused && m_zoomed )
+      resetZoom();
     if ( m_pauseLabel )
     {
       m_pauseLabel->setVisible( m_paused );
@@ -768,6 +1723,7 @@ void MonitorTab::keyPressEvent( QKeyEvent *event )
     event->accept();
     return;
   }
+
   QWidget::keyPressEvent( event );
 }
 
@@ -896,7 +1852,7 @@ void MonitorTab::updateAxes()
   }
   else
   {
-    if ( m_unifiedXAxis )
+    if ( m_unifiedXAxis && !m_zoomed )
       m_unifiedXAxis->setRange( start, now );
   }
 }

@@ -31,13 +31,18 @@
 #include <QByteArray>
 #include <QGraphicsSimpleTextItem>
 #include <QGraphicsRectItem>
+#include <QGraphicsLineItem>
 #include <QLabel>
 #include <QStackedWidget>
 #include <QSettings>
 #include <QStatusBar>
 #include <QKeyEvent>
 #include <QWheelEvent>
+#include <QGraphicsSceneMouseEvent>
+#include <QRubberBand>
 #include <map>
+#include <vector>
+#include <functional>
 #include <cstdint>
 
 namespace ucc
@@ -76,6 +81,7 @@ public:
 protected:
   void keyPressEvent( QKeyEvent *event ) override;
   void wheelEvent( QWheelEvent *event ) override;
+  bool eventFilter( QObject *watched, QEvent *event ) override;
 
 private slots:
   void fetchData();
@@ -184,6 +190,80 @@ private:
     QGraphicsSimpleTextItem *text = nullptr;
   };
   std::map< QChart *, Callout > m_callouts;
+
+  // --- Sticky marks (click-to-pin) ---
+  static constexpr int MAX_STICKY_MARKS = 10;
+
+  struct MarkGfx
+  {
+    QGraphicsRectItem       *bg   = nullptr;
+    QGraphicsSimpleTextItem *text = nullptr;
+  };
+
+  /// One metric entry inside a grouped sticky mark
+  struct StickyMetricEntry
+  {
+    std::string metricKey;
+    double      rawValue;
+  };
+
+  /// A grouped sticky mark at a single timestamp, shown as one label box + vertical line
+  struct StickyMark
+  {
+    qint64                            timestamp  = 0;
+    double                            clickDataY = 0.5; ///< Fractional Y within plot area (0=top,1=bottom)
+    std::vector< StickyMetricEntry >  entries;
+
+    // Per-group chart: individual mark per metric (kept for per-group view)
+    std::vector< MarkGfx >            groupGfxList;
+
+    // Unified chart: single grouped label box + vertical line
+    QGraphicsRectItem               *uniBg     = nullptr;   ///< Outer background rect (ClickableRectItem)
+    std::vector< QGraphicsSimpleTextItem * > uniTexts;      ///< One text item per row
+    QGraphicsLineItem               *uniLine   = nullptr;   ///< Vertical line to X axis
+  };
+
+  std::vector< StickyMark > m_stickyMarks;
+
+  void handleSeriesClick( QLineSeries *ls, const QPointF &point );
+  MarkGfx createMarkGfx( QChart *chart, const QColor &borderColor,
+                         std::function< void() > onClick = nullptr );
+  void positionMarkGfx( MarkGfx &gfx, QChart *chart,
+                        const QPointF &dataPoint, const QString &label );
+  void addStickyMarkGroup( qint64 ts, double clickDataY,
+                           const std::vector< StickyMetricEntry > &entries );
+  void removeStickyMark( std::vector< StickyMark >::iterator it );
+  void updateStickyMarkPositions();
+  void createUnifiedMarkGfx();
+  void destroyUnifiedMarkGfx();
+  QChart *chartForGroup( MetricGroup g ) const;
+  static int metricIndexForKey( const std::string &key );
+
+  // --- Unified crosshair ---
+  struct CrosshairLabel
+  {
+    QGraphicsRectItem       *bg   = nullptr;
+    QGraphicsSimpleTextItem *text = nullptr;
+  };
+
+  QGraphicsLineItem *m_crosshairLine = nullptr;
+  std::vector< CrosshairLabel > m_crosshairLabels;   ///< One per visible metric
+  bool m_crosshairVisible = false;
+  QPointF m_lastCrosshairPos;   ///< Last known cursor pos in viewport coords
+  bool m_cursorInPlot = false;  ///< Is cursor currently inside the unified plot?
+  bool m_annotationsVisible = true; ///< Annotations (RMB toggle) currently shown?
+
+  void updateCrosshair( const QPointF &widgetPos, bool ctrlHeld );
+  void hideCrosshair();
+  void crosshairClick( const QPointF &widgetPos );
+
+  // --- Ctrl+LMB rubber-band zoom ---
+  QRubberBand *m_zoomBand       = nullptr;  ///< Rubber-band selection rectangle
+  QPoint       m_zoomOrigin;                ///< Viewport origin of the drag
+  bool         m_zoomDragging   = false;    ///< Currently dragging a zoom rect?
+  bool         m_zoomed         = false;    ///< Is the view currently zoomed in?
+  void applyZoomRect( const QRect &viewportRect );
+  void resetZoom();
 
   // --- Controls ---
   QCheckBox *m_unifiedCheckBox = nullptr;
