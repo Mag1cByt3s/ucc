@@ -40,6 +40,8 @@ stdenv.mkDerivation {
     kdePackages.qtdeclarative
     kdePackages.qtconnectivity
     kdePackages.qtwayland
+    kdePackages.plasma-integration
+    kdePackages.breeze
     kdePackages.kconfig
     kdePackages.kcoreaddons
     kdePackages.kpackage
