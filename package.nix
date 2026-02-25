@@ -13,6 +13,7 @@
 , pkg-config
 , libxrandr
 , systemd
+, xorg
 , makeWrapper
 , tuxedo-drivers ? null
 , src ? ./.   # default to the source tree containing this file
@@ -25,13 +26,12 @@ stdenv.mkDerivation {
 
   inherit src;
 
-  dontWrapQtApps = true;
-
   nativeBuildInputs = [
     cmake
     kdePackages.extra-cmake-modules
     pkg-config
     makeWrapper
+    kdePackages.wrapQtAppsHook
   ];
 
   buildInputs = [
@@ -39,6 +39,7 @@ stdenv.mkDerivation {
     kdePackages.qtcharts
     kdePackages.qtdeclarative
     kdePackages.qtconnectivity
+    kdePackages.qtwayland
     kdePackages.kconfig
     kdePackages.kcoreaddons
     kdePackages.kpackage
@@ -47,6 +48,7 @@ stdenv.mkDerivation {
     nlohmann_json
     libxrandr
     systemd
+    xorg.xcbutilcursor
   ] ++ lib.optionals (tuxedo-drivers != null) [
     tuxedo-drivers
   ];
@@ -61,8 +63,6 @@ stdenv.mkDerivation {
   ];
 
   postFixup = ''
-    wrapProgram $out/bin/ucc-gui \
-      --set QT_QPA_PLATFORM_PLUGIN_PATH "${kdePackages.qtbase}/lib/qt-6/plugins"
     wrapProgram $out/bin/uccd \
       --prefix PATH : "${lib.makeBinPath [ coreutils gawk gnugrep procps util-linux which ]}"
 
