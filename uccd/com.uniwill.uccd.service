@@ -1,3 +1,4 @@
 [D-BUS Service]
 Name=com.uniwill.uccd
+SystemdService=uccd.service
 Exec=/usr/bin/uccd --start
