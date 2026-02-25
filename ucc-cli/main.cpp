@@ -534,8 +534,6 @@ static void printProfileSummary( const QJsonObject &obj, bool showHeader = true 
       std::printf( "    %-22s %s\n", "Fan profile:", fanProf.toStdString().c_str() );
     if ( fan.contains( "sameSpeed" ) )
       std::printf( "    %-22s %s\n", "Same speed:", fan["sameSpeed"].toBool() ? "yes" : "no" );
-    if ( fan.contains( "offsetFanspeed" ) )
-      std::printf( "    %-22s %d %%\n", "Offset:", fan["offsetFanspeed"].toInt() );
     if ( fan.contains( "enableWaterCooler" ) )
       std::printf( "    %-22s %s\n", "Water cooler:", fan["enableWaterCooler"].toBool() ? "yes" : "no" );
   }

@@ -107,7 +107,6 @@ public:
     , m_lastEffectiveTemp( -1 )
     , m_fansMinSpeedHWLimit( 0 )
     , m_fansOffAvailable( true )
-    , m_offsetFanspeed( 0 )
   {
   }
 
@@ -116,9 +115,6 @@ public:
 
   void setFansOffAvailable( bool available )
   { m_fansOffAvailable = available; }
-
-  void setOffsetFanspeed( int speed )
-  { m_offsetFanspeed = std::clamp( speed, -30, 30 ); }
 
   void updateFanProfile( const FanProfile &fanProfile )
   { m_fanProfile = fanProfile; }
@@ -249,8 +245,6 @@ private:
     int curveSpeed = m_fanProfile.getSpeedForTemp( effectiveTemp, isCPU );
     if ( curveSpeed < 0 ) curveSpeed = 0;
 
-    // Apply user offset
-    curveSpeed += m_offsetFanspeed;
     curveSpeed = std::clamp( curveSpeed, 0, 100 );
 
     // Apply hardware limitations
@@ -274,7 +268,6 @@ private:
 
   int m_fansMinSpeedHWLimit;
   bool m_fansOffAvailable;
-  int m_offsetFanspeed;
 };
 
 class FanControlWorker : public DaemonWorker
@@ -582,7 +575,6 @@ private:
       }
 
       m_fanLogics[i].updateFanProfile( fanProfile );
-      m_fanLogics[i].setOffsetFanspeed( profile.fan.offsetFanspeed );
     }
   }
 

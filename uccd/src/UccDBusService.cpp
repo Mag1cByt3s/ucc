@@ -163,7 +163,6 @@ static std::string profileToJSON( const UccProfile &profile,
       << "\"fan\":{"
       << "\"useControl\":" << ( profile.fan.useControl ? "true" : "false" ) << ","
       << "\"fanProfile\":\"" << jsonEscape( profile.fan.fanProfile ) << "\" ,"
-      << "\"offsetFanspeed\":" << profile.fan.offsetFanspeed << ","
       << "\"sameSpeed\":" << ( profile.fan.sameSpeed ? "true" : "false" ) << ","
       << "\"autoControlWC\":" << ( profile.fan.autoControlWC ? "true" : "false" ) << ","
       << "\"enableWaterCooler\":" << ( profile.fan.enableWaterCooler ? "true" : "false" );
@@ -839,7 +838,6 @@ bool UccDBusInterfaceAdaptor::UpdateCustomProfile( const QString &profileJSON )
     std::cout << "[Profile]   Fan control: " << (profile.fan.useControl ? "enabled" : "disabled") << std::endl;
     std::cout << "[Profile]   Fan profile: " << profile.fan.fanProfile << std::endl;
     std::cout << "[Profile]   Auto control WC: " << (profile.fan.autoControlWC ? "enabled" : "disabled") << std::endl;
-    std::cout << "[Profile]   Offset: " << profile.fan.offsetFanspeed << std::endl;
     std::cout << "[Profile]   Fan profile name: " << profile.fan.fanProfile << std::endl;
 
     bool result = m_service->updateCustomProfile( profile );

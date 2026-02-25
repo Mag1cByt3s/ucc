@@ -17,6 +17,7 @@
 #include "SysfsNode.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -103,11 +104,76 @@ struct PciGpu
 };
 
 /**
+ * @brief Look up a device name from the system pci.ids database
+ *
+ * The pci.ids file uses a simple text format:
+ *   VVVV  Vendor Name          (vendor line, no indent, 4-digit lowercase hex)
+ *   \tDDDD  Device Name        (device line, one tab indent, under that vendor)
+ *
+ * Common locations: /usr/share/hwdata/pci.ids (Fedora/Arch/NixOS),
+ *                   /usr/share/misc/pci.ids  (Debian/Ubuntu)
+ */
+std::string lookupPciIds( unsigned vendor, unsigned device )
+{
+  static const char *pciIdsPaths[] = {
+    "/usr/share/hwdata/pci.ids",
+    "/usr/share/misc/pci.ids",
+    "/usr/share/pci.ids",
+    nullptr
+  };
+
+  // Format vendor/device as lowercase 4-digit hex for matching
+  char vendorHex[5], deviceHex[5];
+  std::snprintf( vendorHex, sizeof( vendorHex ), "%04x", vendor );
+  std::snprintf( deviceHex, sizeof( deviceHex ), "%04x", device );
+
+  for ( const char **p = pciIdsPaths; *p; ++p )
+  {
+    std::ifstream file( *p );
+    if ( !file.is_open() )
+      continue;
+
+    bool inVendor = false;
+    std::string line;
+    while ( std::getline( file, line ) )
+    {
+      // Skip comments and empty lines
+      if ( line.empty() || line[0] == '#' )
+        continue;
+
+      // Vendor line: starts with hex digit at column 0
+      if ( line[0] != '\t' )
+      {
+        // Check if this is our vendor
+        if ( line.size() >= 4 && line.compare( 0, 4, vendorHex ) == 0 )
+          inVendor = true;
+        else if ( inVendor )
+          break; // Passed our vendor section, stop searching
+        continue;
+      }
+
+      // Device line: tab + 4-digit hex + spaces + name
+      if ( inVendor && line.size() >= 6 && line[0] == '\t' && line[1] != '\t' )
+      {
+        if ( line.compare( 1, 4, deviceHex ) == 0 )
+        {
+          // Found it — extract the name after "DDDD  "
+          auto nameStart = line.find_first_not_of( " \t", 5 );
+          if ( nameStart != std::string::npos )
+            return trim( line.substr( nameStart ) );
+        }
+      }
+    }
+  }
+
+  return {};
+}
+
+/**
  * @brief Decode a PCI vendor/device pair into a human-readable string
  *
- * This is a lightweight built-in table covering common laptop GPU vendor+device
- * names.  For everything not in the table we fall back to the kernel-provided
- * label sysfs node, sysfs vendor/device strings, or "Unknown GPU".
+ * Tries multiple sources in order: sysfs label, DRM product_name,
+ * NVIDIA /proc, pci.ids database, then generic vendor string fallback.
  */
 std::string decodePciName( unsigned vendor, [[maybe_unused]] unsigned device,
                            const std::string &sysfsDir )
@@ -177,6 +243,13 @@ std::string decodePciName( unsigned vendor, [[maybe_unused]] unsigned device,
     }
   }
   catch ( ... ) { }
+
+  // Try the system pci.ids database (same source lspci uses)
+  {
+    std::string pciName = lookupPciIds( vendor, device );
+    if ( !pciName.empty() )
+      return pciName;
+  }
 
   // Fallback: vendor-generic strings
   switch ( vendor )

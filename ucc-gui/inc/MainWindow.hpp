@@ -69,7 +69,6 @@ namespace ucc
     void onActiveProfileIndexChanged();
     void onCustomKeyboardProfilesChanged();
     void onBrightnessSliderChanged( int value );
-    void onOffsetFanSpeedChanged( int value );
     void onCpuCoresChanged( int value );
     void onMaxFrequencyChanged( int value );
     void onODMPowerLimit1Changed( int value );
@@ -184,8 +183,6 @@ namespace ucc
     QComboBox *m_profileChargeLimitCombo = nullptr;
 
     // Fan control widgets (profile page)
-    QSlider *m_offsetFanSpeedSlider = nullptr;
-    QLabel *m_offsetFanSpeedValue = nullptr;
     QCheckBox *m_sameFanSpeedCheckBox = nullptr;
     QCheckBox *m_autoWaterControlCheckBox = nullptr;
     QComboBox *m_profileFanProfileCombo = nullptr;

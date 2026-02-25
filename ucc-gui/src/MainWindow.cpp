@@ -564,20 +564,6 @@ void MainWindow::setupProfilesPage()
   detailsLayout->addWidget( m_profileFanProfileCombo, row, 1 );
   row++;
 
-  QLabel *offsetFanLabel = new QLabel( "Offset fan speed" );
-  QHBoxLayout *offsetFanLayout = new QHBoxLayout();
-  m_offsetFanSpeedSlider = new QSlider( Qt::Horizontal );
-  m_offsetFanSpeedSlider->setMinimum( -30 );
-  m_offsetFanSpeedSlider->setMaximum( 30 );
-  m_offsetFanSpeedSlider->setValue( -2 );
-  m_offsetFanSpeedValue = new QLabel( "-2%" );
-  m_offsetFanSpeedValue->setMinimumWidth( 40 );
-  offsetFanLayout->addWidget( m_offsetFanSpeedSlider, 1 );
-  offsetFanLayout->addWidget( m_offsetFanSpeedValue );
-  detailsLayout->addWidget( offsetFanLabel, row, 0 );
-  detailsLayout->addLayout( offsetFanLayout, row, 1 );
-  row++;
-
   QLabel *sameSpeedLabel = new QLabel( "Same fan speed for all fans" );
   detailsLayout->addWidget( sameSpeedLabel, row, 0 );
   // Reuse the shared checkbox created in the dashboard (create if not present)
@@ -822,11 +808,6 @@ void MainWindow::connectSignals()
   connect( m_brightnessSlider, &QSlider::valueChanged,
            this, &MainWindow::onBrightnessSliderChanged );
 
-  // Fan controls
-
-  connect( m_offsetFanSpeedSlider, &QSlider::valueChanged,
-           this, &MainWindow::onOffsetFanSpeedChanged );
-
   // ODM Power Limit controls
 
   connect( m_odmPowerLimit1Slider, &QSlider::valueChanged,
@@ -930,9 +911,6 @@ void MainWindow::connectSignals()
              // Load the fan curves for the new profile
              onFanProfileChanged(m_profileFanProfileCombo->currentData().toString());
            } );
-
-  connect( m_offsetFanSpeedSlider, &QSlider::valueChanged,
-           this, [this]() { markChanged(); } );
 
   connect( m_autoWaterControlCheckBox, &QCheckBox::toggled,
            this, &MainWindow::markChanged );
@@ -1402,11 +1380,6 @@ void MainWindow::onBrightnessSliderChanged( int value )
   m_brightnessValueLabel->setText( QString::number( value ) + "%" );
 }
 
-void MainWindow::onOffsetFanSpeedChanged( int value )
-{
-  m_offsetFanSpeedValue->setText( QString::number( value ) + "%" );
-}
-
 void MainWindow::onCpuCoresChanged( int value )
 {
   m_cpuCoresValue->setText( QString::number( value ) );
@@ -1473,7 +1446,6 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   m_setBrightnessCheckBox->blockSignals( true );
   m_profileFanProfileCombo->blockSignals( true );
   m_fanControlTab->fanProfileCombo()->blockSignals( true );
-  m_offsetFanSpeedSlider->blockSignals( true );
   if ( m_autoWaterControlCheckBox ) m_autoWaterControlCheckBox->blockSignals( true );
   m_cpuCoresSlider->blockSignals( true );
   m_governorCombo->blockSignals( true );
@@ -1552,9 +1524,6 @@ void MainWindow::loadProfileDetails( const QString &profileId )
         missingFanProfile = fanProfileRef;
       }
     }
-
-    if ( fanObj.contains( "offsetFanspeed" ) )
-      m_offsetFanSpeedSlider->setValue( fanObj["offsetFanspeed"].toInt( 0 ) );
 
     // Load sameSpeed from profile (default true)
     if ( fanObj.contains( "sameSpeed" ) )
@@ -1870,7 +1839,6 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   m_setBrightnessCheckBox->blockSignals( false );
   m_profileFanProfileCombo->blockSignals( false );
   m_fanControlTab->fanProfileCombo()->blockSignals( false );
-  m_offsetFanSpeedSlider->blockSignals( false );
   if ( m_autoWaterControlCheckBox ) m_autoWaterControlCheckBox->blockSignals( false );
 
   // Set initial auto control state for water cooler
@@ -1895,7 +1863,6 @@ void MainWindow::loadProfileDetails( const QString &profileId )
 
   // Trigger label updates by calling the slots directly
   onBrightnessSliderChanged( m_brightnessSlider->value() );
-  onOffsetFanSpeedChanged( m_offsetFanSpeedSlider->value() );
   onCpuCoresChanged( m_cpuCoresSlider->value() );
   onMaxFrequencyChanged( m_maxFrequencySlider->value() );
   onODMPowerLimit1Changed( m_odmPowerLimit1Slider->value() );
@@ -1975,7 +1942,6 @@ void MainWindow::updateProfileEditingWidgets( bool isCustom )
 
   // Fan controls
   if ( m_profileFanProfileCombo ) m_profileFanProfileCombo->setEnabled( isCustom );
-  if ( m_offsetFanSpeedSlider ) m_offsetFanSpeedSlider->setEnabled( isCustom );
   if ( m_sameFanSpeedCheckBox ) m_sameFanSpeedCheckBox->setEnabled( isCustom );
   if ( m_autoWaterControlCheckBox ) m_autoWaterControlCheckBox->setEnabled( isCustom );
 
@@ -2051,7 +2017,6 @@ QString MainWindow::buildProfileJSON() const
     }
   }
   fanObj["fanProfile"]       = fanProfileId;
-  fanObj["offsetFanspeed"]   = m_offsetFanSpeedSlider->value();
   fanObj["sameSpeed"]        = m_sameFanSpeedCheckBox   ? m_sameFanSpeedCheckBox->isChecked()   : true;
   fanObj["autoControlWC"]    = m_autoWaterControlCheckBox ? m_autoWaterControlCheckBox->isChecked() : true;
   fanObj["enableWaterCooler"] = m_fanControlTab          ? m_fanControlTab->isWaterCoolerEnabled() : true;

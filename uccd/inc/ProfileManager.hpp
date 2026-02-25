@@ -219,15 +219,13 @@ public:
     {
       profile.fan.useControl = extractBool( fanJson, "useControl", true );
       profile.fan.fanProfile = extractString( fanJson, "fanProfile", "fan-balanced" );
-      profile.fan.offsetFanspeed = extractInt( fanJson, "offsetFanspeed", 0 );
       profile.fan.sameSpeed = extractBool( fanJson, "sameSpeed", true );
       profile.fan.autoControlWC = extractBool( fanJson, "autoControlWC", true );
       profile.fan.enableWaterCooler = extractBool( fanJson, "enableWaterCooler", ucc::WATER_COOLER_INITIAL_STATE );
 
-      // Debug: log the parsed fan offset and sameSpeed
+      // Debug: log the parsed fan settings
       std::cout << "[ProfileManager] Parsed profile '" << profile.name
-                << "' offsetFanspeed: " << profile.fan.offsetFanspeed
-                << " sameSpeed: " << ( profile.fan.sameSpeed ? "true" : "false" ) << std::endl;
+                << "' sameSpeed: " << ( profile.fan.sameSpeed ? "true" : "false" ) << std::endl;
 
       // Parse embedded fan tables if present (GUI embeds full fan curves in custom profiles)
       std::string tableCPUJson = extractArray( fanJson, "tableCPU" );
@@ -628,7 +626,6 @@ public:
         << "\"fan\":{"
         << "\"useControl\":" << ( profile.fan.useControl ? "true" : "false" ) << ","
         << "\"fanProfile\":\"" << jsonEscape( profile.fan.fanProfile ) << "\","
-        << "\"offsetFanspeed\":" << profile.fan.offsetFanspeed << ","
         << "\"sameSpeed\":" << ( profile.fan.sameSpeed ? "true" : "false" ) << ","
         << "\"autoControlWC\":" << ( profile.fan.autoControlWC ? "true" : "false" ) << ","
         << "\"enableWaterCooler\":" << ( profile.fan.enableWaterCooler ? "true" : "false" );
