@@ -5,7 +5,8 @@ After=dbus.service
 Requires=dbus.service
 
 [Service]
-Type=simple
+Type=dbus
+BusName=com.uniwill.uccd
 ExecStart=/usr/bin/uccd --start
 Restart=on-failure
 RestartSec=5s

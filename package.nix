@@ -76,10 +76,23 @@ stdenv.mkDerivation {
     if [ -f "$out/share/dbus-1/system-services/com.uniwill.uccd.service" ]; then
       substituteInPlace "$out/share/dbus-1/system-services/com.uniwill.uccd.service" \
         --replace-fail "/usr/bin/uccd" "$out/bin/uccd"
+      if ! grep -q '^SystemdService=uccd\\.service$' "$out/share/dbus-1/system-services/com.uniwill.uccd.service"; then
+        sed -i '/^Name=com\\.uniwill\\.uccd$/a SystemdService=uccd.service' \
+          "$out/share/dbus-1/system-services/com.uniwill.uccd.service"
+      fi
     fi
     if [ -f "$out/lib/systemd/system/uccd-sleep.service" ]; then
       substituteInPlace "$out/lib/systemd/system/uccd-sleep.service" \
         --replace-fail "/usr/bin/systemctl" "${systemd}/bin/systemctl"
+    fi
+
+    if [ -f "$out/lib/systemd/system/uccd.service" ]; then
+      if ! grep -q '^Type=dbus$' "$out/lib/systemd/system/uccd.service"; then
+        sed -i 's/^Type=simple$/Type=dbus/' "$out/lib/systemd/system/uccd.service"
+      fi
+      if ! grep -q '^BusName=com\\.uniwill\\.uccd$' "$out/lib/systemd/system/uccd.service"; then
+        sed -i '/^Type=dbus$/a BusName=com.uniwill.uccd' "$out/lib/systemd/system/uccd.service"
+      fi
     fi
   '';
 

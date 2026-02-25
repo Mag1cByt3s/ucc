@@ -69,7 +69,9 @@ in
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
-        Type = "simple";
+        Type = "dbus";
+        BusName = "com.uniwill.uccd";
+        ExecStartPre = "-${cfg.package}/bin/uccd --stop";
         ExecStart =
           "${cfg.package}/bin/uccd --start"
           + lib.optionalString (cfg.extraArgs != [ ]) " ${extraArgsString}";
