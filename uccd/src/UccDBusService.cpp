@@ -1928,6 +1928,19 @@ UccDBusService::UccDBusService()
       {
         try
         {
+          // Apply asymmetric EWMA to the raw sensor reading so that the
+          // water-cooler fan and pump see a smooth temperature signal,
+          // matching the filtering the main fan control loop uses.
+          if ( m_wcTempFiltered < 0.0 )
+            m_wcTempFiltered = static_cast< double >( temp );
+          else
+          {
+            const double alpha = ( temp > m_wcTempFiltered )
+                                   ? WC_TEMP_ALPHA_RISING : WC_TEMP_ALPHA_FALLING;
+            m_wcTempFiltered += alpha * ( static_cast< double >( temp ) - m_wcTempFiltered );
+          }
+          const int wcTemp = static_cast< int >( std::round( m_wcTempFiltered ) );
+
           const std::string &fpName = m_activeProfile.fan.fanProfile;
           FanProfile fp = getDefaultFanProfile( fpName );
 
@@ -1959,7 +1972,7 @@ UccDBusService::UccDBusService()
             fp.tablePump = m_activeProfile.fan.tablePump;
           }
 
-          const int snappedTemp = ( temp / 5 + 1 ) * 5;
+          const int snappedTemp = ( ( wcTemp + 2 ) / 5 ) * 5;  // round to nearest 5°C
           const int wcFanSpeed = fp.getWaterCoolerFanSpeedForTemp( snappedTemp );
           m_waterCoolerWorker->setFanSpeed( wcFanSpeed );
 
@@ -1977,9 +1990,44 @@ UccDBusService::UccDBusService()
               static_cast< int >( ucc::RGBState::Static ) );
           }
 
-          // Auto-control pump voltage
-          const ucc::PumpVoltage pumpSpeedValue = fp.getPumpSpeedForTemp( temp );
-          m_waterCoolerWorker->setPumpVoltage( static_cast<int>(pumpSpeedValue) );
+          // Auto-control pump voltage with hysteresis.
+          // Step-up happens immediately at the table threshold; step-down requires
+          // the temperature to fall at least PUMP_HYSTERESIS_DEG below the
+          // threshold that last triggered an upward transition.
+          static constexpr ucc::PumpVoltage pumpIdxToVoltage[] = {
+              ucc::PumpVoltage::Off, ucc::PumpVoltage::V7, ucc::PumpVoltage::V8,
+              ucc::PumpVoltage::V11, ucc::PumpVoltage::V12 };
+
+          int rawIdx = 0;
+          for ( const auto &[t, s] : fp.tablePump )
+          {
+            if ( wcTemp >= t ) rawIdx = std::min( s, 4 );
+            else               break;
+          }
+
+          if ( rawIdx > m_pumpHysSpeedIdx )
+          {
+            // Temperature rising – apply new level and record its table threshold.
+            m_pumpHysSpeedIdx = rawIdx;
+            m_pumpHysThreshold = 0;
+            for ( const auto &[t, s] : fp.tablePump )
+              if ( std::min( s, 4 ) == rawIdx ) { m_pumpHysThreshold = t; break; }
+          }
+          else if ( rawIdx < m_pumpHysSpeedIdx )
+          {
+            // Temperature falling – only step down once we are past the dead-band.
+            if ( wcTemp < m_pumpHysThreshold - PUMP_HYSTERESIS_DEG )
+            {
+              m_pumpHysSpeedIdx = rawIdx;
+              m_pumpHysThreshold = 0;
+              for ( const auto &[t, s] : fp.tablePump )
+                if ( std::min( s, 4 ) == rawIdx ) { m_pumpHysThreshold = t; break; }
+            }
+          }
+
+          const ucc::PumpVoltage pumpSpeedValue =
+              pumpIdxToVoltage[ std::clamp( m_pumpHysSpeedIdx, 0, 4 ) ];
+          m_waterCoolerWorker->setPumpVoltage( static_cast<int>( pumpSpeedValue ) );
 
           // Push water cooler pump level to history store
           m_metricsStore.push( MetricId::WaterCoolerPumpLevel, timestamp,
@@ -2453,6 +2501,12 @@ void UccDBusService::onWork()
           m_adaptor->emitPowerStateChanged( stateKey );
         }
 
+        // Reset pump hysteresis so the auto-control loop picks up the correct
+        // level for the new profile from a clean state.
+        m_pumpHysSpeedIdx = 0;
+        m_pumpHysThreshold = 0;
+        m_wcTempFiltered = -1.0;  // reset EWMA so next sample seeds immediately
+
         applyProfileForCurrentState();
       }
     }
@@ -2841,6 +2895,10 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
         }
         FanProfile tempFp;
         tempFp.tablePump = pumpTable;
+        // Reset hysteresis before a one-shot profile apply so the continuous
+        // loop re-initialises to the correct level on the next tick.
+        m_pumpHysSpeedIdx = 0;
+        m_pumpHysThreshold = 0;
         m_waterCoolerWorker->setPumpVoltage( static_cast<int>( tempFp.getPumpSpeedForTemp( maxTemp ) ) );
         std::cout << "[Profile] Applied pump voltage for temp " << maxTemp << "°C" << std::endl;
       }
@@ -3453,6 +3511,10 @@ void UccDBusService::applyFanAndPumpSettings( const UccProfile &profile )
       }
       FanProfile tempFp;
       tempFp.tablePump = pumpTable;
+      // Reset hysteresis before a one-shot profile apply so the continuous
+      // loop re-initialises to the correct level on the next tick.
+      m_pumpHysSpeedIdx = 0;
+      m_pumpHysThreshold = 0;
       m_waterCoolerWorker->setPumpVoltage( static_cast<int>( tempFp.getPumpSpeedForTemp( maxTemp ) ) );
       std::cout << "[FanPump] Applied pump voltage for temp " << maxTemp << "°C" << std::endl;
     }
@@ -3550,6 +3612,10 @@ void UccDBusService::applyProfileForCurrentState()
         }
         FanProfile tempFp;
         tempFp.tablePump = pumpTable;
+        // Reset hysteresis before a one-shot profile apply so the continuous
+        // loop re-initialises to the correct level on the next tick.
+        m_pumpHysSpeedIdx = 0;
+        m_pumpHysThreshold = 0;
         m_waterCoolerWorker->setPumpVoltage( static_cast<int>( tempFp.getPumpSpeedForTemp( maxTemp ) ) );
         std::cout << "[State] Applied pump voltage for temp " << maxTemp << "°C" << std::endl;
       }

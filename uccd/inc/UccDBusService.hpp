@@ -513,6 +513,21 @@ private:
   bool m_previousWaterCoolerConnected;
   std::atomic< int32_t > m_waterCoolerLedMode{ 0 };  // Tracks the GUI-requested LED mode (may be Temperature)
 
+  // Pump hysteresis: on the way up the table threshold is used directly;
+  // on the way down the pump only steps down once the temperature has fallen
+  // at least PUMP_HYSTERESIS_DEG below the threshold that caused the last step-up.
+  static constexpr int PUMP_HYSTERESIS_DEG = 3;
+  int m_pumpHysSpeedIdx{ 0 };    // last applied speed index (0=Off … 4=V12)
+  int m_pumpHysThreshold{ 0 };   // table entryTemp that last triggered a step-up
+
+  // EWMA filter for the temperature fed to water-cooler fan + pump auto-control.
+  // The FanControlWorker has its own EWMA per fan, but the WC callback receives
+  // the raw sensor reading.  This filter smooths it with the same asymmetric
+  // weights (fast rise, slow fall) so the pump doesn't bounce on noisy sensors.
+  double m_wcTempFiltered{ -1.0 };
+  static constexpr double WC_TEMP_ALPHA_RISING  = 0.5;
+  static constexpr double WC_TEMP_ALPHA_FALLING = 0.15;
+
   // Water cooler debounce – avoids reacting to brief BLE connect/disconnect
   // glitches that cause rapid power-state oscillation.
   bool m_wcDebouncePending = false;

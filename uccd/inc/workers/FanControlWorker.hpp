@@ -135,9 +135,10 @@ private:
   /**
    * @brief Apply hysteresis to prevent oscillation at curve boundaries.
    *
-   * When temperature is falling, we use the higher of (filteredTemp, lastEffectiveTemp − 1).
-   * This means the effective temperature used for curve lookup decreases by at most
-   * 1°C per cycle (1°C/s), even if the filtered temperature drops faster.
+   * When temperature is falling, the effective temperature is held up to
+   * HYSTERESIS_DEG above the filtered reading.  It tracks
+   * min(lastEffective, filteredTemp + HYSTERESIS_DEG), so large drops
+   * are damped but it still converges.
    * When temperature is rising, the effective temperature follows immediately.
    */
   int applyHysteresis( int filteredTemp )
@@ -159,7 +160,6 @@ private:
     else
     {
       // Temperature falling — hold the effective temp higher by up to HYSTERESIS_DEG
-      // but still allow it to decrease by 1°C per cycle
       int floor = filteredTemp + HYSTERESIS_DEG;
       int newEffective = std::min( m_lastEffectiveTemp, floor );
       // Never go below the actual filtered temperature
