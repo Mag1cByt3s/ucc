@@ -135,14 +135,15 @@ void DashboardTab::setupUI()
   m_waterCoolerEnableCheckBox->setChecked( ucc::WATER_COOLER_INITIAL_STATE );
   m_waterCoolerEnableCheckBox->setToolTip( tr( "When enabled the daemon will scan for water cooler devices" ) );
   m_waterCoolerEnableCheckBox->setFixedHeight( 24 );
+
   {
     QPalette pal_ = this->palette();
     const QString midHex_ = pal_.color(QPalette::Mid).name();
     const QString enabledColorHex = QStringLiteral("#4caf50"); // green
     const QString disabledColorHex = QStringLiteral("#d32f2f"); // red
     m_waterCoolerEnableCheckBox->setStyleSheet(
-      QString("QPushButton { font-size: 11px; padding: 2px 12px; border: 1px solid %1; border-radius: 4px; background-color: %2; }"
-              "QPushButton:checked { background-color: %3; font-weight: bold; }")
+      QString("QPushButton { font-size: 11px; padding: 2px 16px; border: 1px solid %1; border-radius: 4px; background-color: %2; }"
+              "QPushButton:checked { background-color: %3; font-weight: bold; padding: 2px 12px; }")
         .arg(midHex_, disabledColorHex, enabledColorHex) );
   }
 
@@ -381,7 +382,7 @@ void DashboardTab::updateWaterCoolerStatus()
   auto emitStatus = [this]( const QString &statusText, const QString &colorHex )
   {
     emit waterCoolerStatusChanged(
-      QString("<span style='color: %1;'>&#9679;</span> WC: %2").arg(colorHex, statusText) );
+      QString("<span style='color: %1;'>&#9679;</span> Water Cooler: %2").arg( colorHex, statusText ) );
   };
 
   // Status progression: Disabled → Disconnected → Searching → Connected
