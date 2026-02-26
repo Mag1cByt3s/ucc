@@ -62,7 +62,13 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// Metric definitions — colour palette inspired by CoolerControl
+// Metric definitions — device-based colour palette
+//   CPU  = shades of red
+//   dGPU = shades of blue
+//   iGPU = shades of grey (neutral, distinct from coloured devices)
+//   WC   = shades of green
+// Within each device the hues are close but differ in brightness/saturation
+// so individual metrics remain easily distinguishable.
 // ---------------------------------------------------------------------------
 struct MetricDef
 {
@@ -77,19 +83,23 @@ static constexpr int METRIC_COUNT = 13;
 // Order matches MetricId enum in MetricsHistoryStore.hpp
 static const MetricDef kMetrics[ METRIC_COUNT ] =
 {
-  { "cpuTemp",             "CPU Temp",            QColor( 239,  83,  80 ), MetricGroup::Temp  },
-  { "cpuFanDuty",          "CPU Fan Duty",        QColor(  66, 165, 245 ), MetricGroup::Duty  },
-  { "cpuPower",            "CPU Power",           QColor( 255, 167,  38 ), MetricGroup::Power },
-  { "cpuFrequency",        "CPU Frequency",       QColor( 171, 71,  188 ), MetricGroup::Freq  },
-  { "gpuTemp",             "dGPU Temp",           QColor( 255,  82,  82 ), MetricGroup::Temp  },
-  { "gpuFanDuty",          "dGPU Fan Duty",       QColor(  41, 182, 246 ), MetricGroup::Duty  },
-  { "gpuPower",            "dGPU Power",          QColor( 255, 202,  40 ), MetricGroup::Power },
-  { "gpuFrequency",        "dGPU Frequency",      QColor( 186, 104, 200 ), MetricGroup::Freq  },
-  { "igpuTemp",            "iGPU Temp",           QColor( 255, 138, 101 ), MetricGroup::Temp  },
-  { "igpuPower",           "iGPU Power",          QColor( 255, 213,  79 ), MetricGroup::Power },
-  { "igpuFrequency",       "iGPU Frequency",      QColor( 206, 147, 216 ), MetricGroup::Freq  },
-  { "waterCoolerFanDuty",  "WC Fan Duty",         QColor(  38, 198, 218 ), MetricGroup::Duty  },
-  { "waterCoolerPumpLevel","WC Pump Level",       QColor( 129, 199, 132 ), MetricGroup::Duty  },
+  // ── CPU (reds) ─────────────────────────────────────────────────────
+  { "cpuTemp",             "CPU Temp",            QColor( 200,  30,  30 ), MetricGroup::Temp  },
+  { "cpuFanDuty",          "CPU Fan Duty",        QColor( 255,  80,  80 ), MetricGroup::Duty  },
+  { "cpuPower",            "CPU Power",           QColor( 180,  20,  60 ), MetricGroup::Power },
+  { "cpuFrequency",        "CPU Frequency",       QColor( 255, 150, 150 ), MetricGroup::Freq  },
+  // ── dGPU (blues) ──────────────────────────────────────────────────
+  { "gpuTemp",             "dGPU Temp",           QColor(  30, 140, 255 ), MetricGroup::Temp  },
+  { "gpuFanDuty",          "dGPU Fan Duty",       QColor(  80, 120, 180 ), MetricGroup::Duty  },
+  { "gpuPower",            "dGPU Power",          QColor(  20, 100, 130 ), MetricGroup::Power },
+  { "gpuFrequency",        "dGPU Frequency",      QColor( 100, 100, 220 ), MetricGroup::Freq  },
+  // ── iGPU (greys) ──────────────────────────────────────────────────
+  { "igpuTemp",            "iGPU Temp",           QColor( 220, 220, 220 ), MetricGroup::Temp  },
+  { "igpuPower",           "iGPU Power",          QColor( 160, 160, 160 ), MetricGroup::Power },
+  { "igpuFrequency",       "iGPU Frequency",      QColor( 100, 100, 100 ), MetricGroup::Freq  },
+  // ── Water Cooler (greens) ─────────────────────────────────────────
+  { "waterCoolerFanDuty",  "WC Fan Duty",         QColor(  30, 160,  40 ), MetricGroup::Duty  },
+  { "waterCoolerPumpLevel","WC Pump Level",       QColor(  60, 230,  80 ), MetricGroup::Duty  },
 };
 
 // ---------------------------------------------------------------------------
