@@ -284,6 +284,11 @@ std::optional< std::string > UccdClient::getSystemInfoJSON()
   return std::nullopt;
 }
 
+std::optional< bool > UccdClient::isDeviceSupported()
+{
+  return callMethod< bool >( "IsDeviceSupported" );
+}
+
 // Profile Management
 std::optional< std::string > UccdClient::getDefaultProfilesJSON()
 {

@@ -16,7 +16,7 @@
 #pragma once
 
 #include "DaemonWorker.hpp"
-#include "../Utils.hpp"
+#include "Utils.hpp"
 #include <string>
 #include <optional>
 #include <memory>

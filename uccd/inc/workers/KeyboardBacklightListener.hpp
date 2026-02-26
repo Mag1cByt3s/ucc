@@ -16,7 +16,7 @@
 #pragma once
 
 #include "DaemonWorker.hpp"
-#include "../SysfsNode.hpp"
+#include "SysfsNode.hpp"
 #include <string>
 #include <vector>
 #include <filesystem>

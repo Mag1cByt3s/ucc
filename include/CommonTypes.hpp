@@ -15,6 +15,11 @@
 
 #pragma once
 
+#include <array>
+#include <string>
+
+#include "Utils.hpp"
+
 namespace ucc
 {
 static inline constexpr bool WATER_COOLER_INITIAL_STATE = false;  // Off by default

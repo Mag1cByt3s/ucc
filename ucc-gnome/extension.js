@@ -719,6 +719,13 @@ class UccIndicator extends PanelMenu.Button {
     // -----------------------------------------------------------------------
 
     _loadCapabilities() {
+        if (!this._client.isDeviceSupported()) {
+            log('[UCC] Device not supported — hiding indicator');
+            this._stopTimers();
+            this.visible = false;
+            return;
+        }
+
         const wc = this._client.getWaterCoolerSupported();
         if (wc !== this._state.waterCoolerSupported) {
             this._state.waterCoolerSupported = wc;

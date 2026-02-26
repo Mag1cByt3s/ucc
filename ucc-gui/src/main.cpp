@@ -15,11 +15,13 @@
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QMessageBox>
 #include <QTextStream>
 #include <QThread>
 #include <cstdlib>
 #include "MainWindow.hpp"
 #include "SystemMonitor.hpp"
+#include "UccdClient.hpp"
 
 int main( int argc, char *argv[] )
 {
@@ -77,6 +79,20 @@ int main( int argc, char *argv[] )
 
   // ensure window decorations and the application use the theme icon we installed
   app.setWindowIcon( QIcon::fromTheme( "ucc-gui" ) );
+
+  {
+    ucc::UccdClient client;
+    auto supported = client.isDeviceSupported();
+    if ( !supported.has_value() || !supported.value() )
+    {
+      QMessageBox::critical(
+        nullptr, "Unsupported Device",
+        "This laptop model is not supported by UCC.\n\n"
+        "Running UCC on untested hardware may cause\n"
+        "unexpected behavior, even damage." );
+      return 1;
+    }
+  }
 
   ucc::MainWindow window;
   window.show();

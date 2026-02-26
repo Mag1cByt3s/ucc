@@ -16,8 +16,8 @@
 #pragma once
 
 #include "DaemonWorker.hpp"
-#include "../SysfsNode.hpp"
-#include "../Utils.hpp"
+#include "SysfsNode.hpp"
+#include "Utils.hpp"
 #include "../profiles/UccProfile.hpp"
 #include <string>
 #include <vector>

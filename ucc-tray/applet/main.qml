@@ -24,8 +24,12 @@ PlasmoidItem {
 
     Plasmoid.icon: "ucc-tray"
 
-    toolTipMainText: trayBackend.laptopModel || "Uniwill Control Center"
+    toolTipMainText: trayBackend.deviceSupported
+                     ? (trayBackend.laptopModel || "Uniwill Control Center")
+                     : i18n("Unsupported Device")
     toolTipSubText: {
+        if (!trayBackend.deviceSupported)
+            return i18n("This laptop model is not supported by UCC")
         if (!trayBackend.connected)
             return i18n("Disconnected from uccd")
         var parts = []
@@ -70,12 +74,16 @@ PlasmoidItem {
     fullRepresentation: PlasmaExtras.Representation {
         id: fullRep
 
-        title: trayBackend.laptopModel || "Uniwill Control Center"
+        title: trayBackend.deviceSupported
+               ? (trayBackend.laptopModel || "Uniwill Control Center")
+               : i18n("Unsupported Device")
 
         Connections {
             target: trayBackend
             function onSystemInfoChanged() {
-                fullRep.title = trayBackend.laptopModel || "Uniwill Control Center";
+                fullRep.title = trayBackend.deviceSupported
+                    ? (trayBackend.laptopModel || "Uniwill Control Center")
+                    : i18n("Unsupported Device");
             }
         }
 
@@ -88,7 +96,33 @@ PlasmoidItem {
 
         collapseMarginsHint: true
 
+        // Unsupported device overlay
+        Loader {
+            active: !trayBackend.deviceSupported
+            anchors.fill: parent
+            sourceComponent: ColumnLayout {
+                anchors.centerIn: parent
+                spacing: Kirigami.Units.largeSpacing
+
+                Kirigami.Icon {
+                    source: "dialog-warning"
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.huge
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.huge
+                    Layout.alignment: Qt.AlignHCenter
+                }
+                PC3.Label {
+                    text: i18n("This laptop model is not supported by UCC.")
+                    wrapMode: Text.WordWrap
+                    horizontalAlignment: Text.AlignHCenter
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: Kirigami.Units.gridUnit * 24
+                    Layout.alignment: Qt.AlignHCenter
+                }
+            }
+        }
+
         header: PlasmaExtras.PlasmoidHeading {
+            visible: trayBackend.deviceSupported
             RowLayout {
                 anchors.fill: parent
                 spacing: Kirigami.Units.smallSpacing
@@ -122,6 +156,7 @@ PlasmoidItem {
         }
 
         contentItem: StackLayout {
+            visible: trayBackend.deviceSupported
             currentIndex: tabBar.currentIndex
 
             DashboardTab    { backend: trayBackend }
@@ -131,6 +166,7 @@ PlasmoidItem {
         }
 
         footer: PlasmaExtras.PlasmoidHeading {
+            visible: trayBackend.deviceSupported
             RowLayout {
                 anchors.fill: parent
                 spacing: Kirigami.Units.smallSpacing

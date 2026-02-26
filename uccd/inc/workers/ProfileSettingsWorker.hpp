@@ -17,7 +17,7 @@
 
 #include "../profiles/UccProfile.hpp"
 #include "../PowerSupplyController.hpp"
-#include "../SysfsNode.hpp"
+#include "SysfsNode.hpp"
 #include "../TccSettings.hpp"
 
 #include <algorithm>

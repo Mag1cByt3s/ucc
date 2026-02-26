@@ -154,6 +154,7 @@ public:
   std::atomic< bool > waterCoolerScanningEnabled;
   std::atomic< bool > waterCoolerSupported;
   std::atomic< bool > cTGPAdjustmentSupported;
+  std::atomic< bool > deviceSupported{ false };
   std::atomic< int32_t > cpuFrequencyMHz;
 
   std::mutex dataMutex;
@@ -260,6 +261,7 @@ public slots:
   // device and system information
   QString GetDeviceName();
   QString GetSystemInfoJSON();
+  bool IsDeviceSupported();
   QString GetDisplayModesJSON();
   bool GetIsX11();
   bool TuxedoWmiAvailable();

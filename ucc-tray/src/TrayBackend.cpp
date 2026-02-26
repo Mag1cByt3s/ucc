@@ -55,6 +55,13 @@ TrayBackend::TrayBackend( QObject *parent )
 
   // Initial data load
   loadCapabilities();
+
+  if ( !m_deviceSupported )
+  {
+    fprintf( stderr, "[TrayBackend] Device not supported — tray disabled\n" );
+    return;
+  }
+
   loadProfiles();
   loadLocalProfiles();
   pollMetrics();
@@ -71,6 +78,11 @@ TrayBackend::TrayBackend( QObject *parent )
 bool TrayBackend::connected() const
 {
   return m_client && m_client->isConnected();
+}
+
+bool TrayBackend::deviceSupported() const
+{
+  return m_deviceSupported;
 }
 
 // ---------------------------------------------------------------------------
@@ -666,6 +678,17 @@ void TrayBackend::loadProfiles()
 
 void TrayBackend::loadCapabilities()
 {
+  if ( auto supported = m_client->isDeviceSupported() )
+  {
+    bool was = m_deviceSupported;
+    m_deviceSupported = *supported;
+    if ( was != m_deviceSupported )
+      emit deviceSupportedChanged();
+  }
+
+  if ( !m_deviceSupported )
+    return;
+
   if ( auto v = m_client->getWaterCoolerSupported() )
   {
     bool was = m_waterCoolerSupported;

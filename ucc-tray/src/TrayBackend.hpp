@@ -39,6 +39,9 @@ class TrayBackend : public QObject
   // ── Connection ──
   Q_PROPERTY( bool connected READ connected NOTIFY connectedChanged )
 
+  // ── Device support ──
+  Q_PROPERTY( bool deviceSupported READ deviceSupported NOTIFY deviceSupportedChanged )
+
   // ── System Info (static, loaded once) ──
   Q_PROPERTY( QString laptopModel  READ laptopModel  NOTIFY systemInfoChanged )
   Q_PROPERTY( QString cpuModel     READ cpuModel     NOTIFY systemInfoChanged )
@@ -108,6 +111,9 @@ public:
 
   // ── Connection ──
   bool connected() const;
+
+  // ── Device support ──
+  bool deviceSupported() const;
 
   // ── System Info ──
   QString laptopModel() const;
@@ -191,6 +197,7 @@ public:
 
 signals:
   void connectedChanged();
+  void deviceSupportedChanged();
   void systemInfoChanged();
   void metricsUpdated();
   void profilesChanged();
@@ -271,6 +278,7 @@ private:
   QString m_iGpuModel;
 
   // Device capabilities
+  bool m_deviceSupported = true;
   bool m_waterCoolerSupported = false;
   bool m_wcAutoControl = true;
   bool m_wcEnabled = true;  // true = daemon controls fan/pump automatically
