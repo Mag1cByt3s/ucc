@@ -210,7 +210,7 @@ inline bool isDeviceSupported()
 [[deprecated( "Use ucc::executeProcess() with argument vectors" )]]
 [[nodiscard]] inline std::string executeCommand( const std::string &command ) noexcept
 {
-  return executeProcess( "/bin/sh", { "-c", command } );
+  return executeProcess( "#!/usr/bin/env bash", { "-c", command } );
 }
 
 /**

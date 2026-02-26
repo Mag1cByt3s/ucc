@@ -151,6 +151,15 @@ public:
   }
 
   /**
+   * @brief Check if charge_type is supported
+   * @return true if charge_type sysfs node exists, false otherwise
+   */
+  [[nodiscard]] bool supportsChargeType() const noexcept
+  {
+    return SysfsNode< std::string >( m_basePath + "/charge_type" ).isAvailable();
+  }
+
+  /**
    * @brief Get charge type
    * @return ChargeType enum value
    */
@@ -255,6 +264,23 @@ public:
 
     if ( not batteries.empty() )
       return std::move( batteries[ 0 ] );
+
+    return std::nullopt;
+  }
+
+  /**
+   * @brief Get the first battery that supports charge_type
+   * @return Optional PowerSupplyController for a battery supporting charge_type, or nullopt if none found
+   */
+  [[nodiscard]] static std::optional< PowerSupplyController > getFirstBatteryWithChargeType() noexcept
+  {
+    auto batteries = getPowerSupplyBatteries();
+
+    for ( auto &battery : batteries )
+    {
+      if ( battery.supportsChargeType() )
+        return std::move( battery );
+    }
 
     return std::nullopt;
   }

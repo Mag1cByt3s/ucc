@@ -449,7 +449,7 @@ class UccIndicator extends PanelMenu.Button {
             x_expand: true,
         });
         openBtn.connect('clicked', () => {
-            GLib.spawn_command_line_async('/usr/bin/ucc-gui');
+            GLib.spawn_command_line_async('/usr/bin/env ucc-gui');
             this.menu.close();
         });
         box.add_child(openBtn);

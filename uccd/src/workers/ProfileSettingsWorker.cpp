@@ -259,7 +259,7 @@ std::string ProfileSettingsWorker::getChargeType() const noexcept
 
 bool ProfileSettingsWorker::setChargeType( const std::string &type ) noexcept
 {
-  auto battery = PowerSupplyController::getFirstBattery();
+  auto battery = PowerSupplyController::getFirstBatteryWithChargeType();
   if ( not battery )
     return false;
 
