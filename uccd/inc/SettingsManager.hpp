@@ -143,23 +143,38 @@ public:
         }
       }
 
-      // Write to file
-      std::ofstream file( SETTINGS_FILE );
-      if ( !file )
+      // Write to temporary file, then atomically rename (prevents corruption on crash)
+      std::string tempFile = std::string(SETTINGS_FILE) + ".tmp";
+      try
       {
-        std::cerr << "[Settings] Failed to create settings file" << std::endl;
+        std::ofstream file( tempFile );
+        if ( !file )
+        {
+          std::cerr << "[Settings] Failed to create temporary file" << std::endl;
+          return false;
+        }
+
+        file << json;
+        file.close();
+
+        // Atomic rename replaces the target file
+        fs::rename( tempFile, SETTINGS_FILE );
+
+        // Set permissions
+        fs::permissions( SETTINGS_FILE,
+                        fs::perms::owner_read | fs::perms::owner_write |
+                        fs::perms::group_read | fs::perms::others_read );
+
+        std::cout << "[Settings] Settings written successfully" << std::endl;
+        return true;
+      }
+      catch ( const std::exception &e )
+      {
+        std::cerr << "[Settings] Failed to write settings atomically: " << e.what() << std::endl;
+        // Clean up temp file if it exists
+        try { fs::remove( tempFile ); } catch (...) { }
         return false;
       }
-
-      file << json;
-
-      // Set permissions
-      fs::permissions( SETTINGS_FILE,
-                      fs::perms::owner_read | fs::perms::owner_write |
-                      fs::perms::group_read | fs::perms::others_read );
-
-      std::cout << "[Settings] Settings written successfully" << std::endl;
-      return true;
     }
     catch ( const std::exception &e )
     {

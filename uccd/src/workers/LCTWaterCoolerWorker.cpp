@@ -143,16 +143,17 @@ void LCTWaterCoolerWorker::onTick()
   m_dbusData.waterCoolerConnected = m_isConnected.load();
 
   // Notify on state transitions
-  if ( m_state != m_previousState )
+  WaterCoolerState currentState = m_state.load(); // Snapshot atomic state (main thread, no race)
+  if ( currentState != m_previousState )
   {
     ucc::wDebug( "LCTWaterCoolerWorker: state %d -> %d", static_cast< int >( m_previousState ),
-                 static_cast< int >( m_state ) );
+                 static_cast< int >( currentState ) );
     if ( m_statusCallback )
-      m_statusCallback( m_state );
-    m_previousState = m_state;
+      m_statusCallback( currentState );
+    m_previousState = currentState;
   }
 
-  switch( m_state )
+  switch( currentState )
   {
   case WaterCoolerState::Disconnected:
     handleDisconnected();
@@ -455,15 +456,16 @@ void LCTWaterCoolerWorker::onBleDisconnected()
   m_lastPumpVoltage.store( -1 );
   m_lastFanSpeed.store( -1 );
   m_connectedModel = ucc::LCTDeviceModel::LCT21001; // Reset to default
+  WaterCoolerState currentState = m_state.load(); // Snapshot for logging
   std::cout << "[WC-BLE] Disconnected from device (state was "
-            << static_cast< int >( m_state ) << ")" << std::endl;
+            << static_cast< int >( currentState ) << ")" << std::endl;
   syslog( LOG_WARNING, "LCTWaterCoolerWorker: disconnected from device (state was %d)",
-          static_cast< int >( m_state ) );
+          static_cast< int >( currentState ) );
 
   // Immediately transition state machine so reconnect logic runs on next tick
   // instead of waiting for the tick to poll-detect the disconnection.
-  if ( m_state == WaterCoolerState::Connected or m_state == WaterCoolerState::Connecting or
-      m_state == WaterCoolerState::Reconnecting )
+  if ( currentState == WaterCoolerState::Connected or currentState == WaterCoolerState::Connecting or
+      currentState == WaterCoolerState::Reconnecting )
   {
     m_state = WaterCoolerState::Disconnected;
   }
@@ -568,18 +570,19 @@ void LCTWaterCoolerWorker::onCharacteristicWritten( const QLowEnergyCharacterist
 
 void LCTWaterCoolerWorker::onBleError( QLowEnergyController::Error error )
 {
+  WaterCoolerState currentState = m_state.load(); // Snapshot for logging
   std::cout << "[WC-BLE] Error " << static_cast< int >( error )
-            << " (state=" << static_cast< int >( m_state ) << ")" << std::endl;
+            << " (state=" << static_cast< int >( currentState ) << ")" << std::endl;
   syslog( LOG_ERR, "LCTWaterCoolerWorker: BLE error %d (state %d)",
-          static_cast< int >( error ), static_cast< int >( m_state ) );
+          static_cast< int >( error ), static_cast< int >( currentState ) );
   m_isConnected = false;
   m_lastPumpVoltage.store( -1 );
   m_lastFanSpeed.store( -1 );
 
   // Immediately transition state machine on connection-breaking errors
   // instead of waiting for a timeout in the state handler.
-  if ( m_state == WaterCoolerState::Connecting or m_state == WaterCoolerState::Reconnecting or
-      m_state == WaterCoolerState::Connected )
+  if ( currentState == WaterCoolerState::Connecting or currentState == WaterCoolerState::Reconnecting or
+      currentState == WaterCoolerState::Connected )
   {
     ++m_consecutiveFailures;
     m_state = WaterCoolerState::Disconnected;
@@ -919,6 +922,24 @@ bool LCTWaterCoolerWorker::connectToDevice( const QString& deviceUuid )
   {
     syslog( LOG_ERR, "LCTWaterCoolerWorker: device %s not in discovered list", deviceUuid.toStdString().c_str() );
     return false;
+  }
+
+  // Verify MAC address on reconnect (prevent impersonation)
+  const QString deviceMac = deviceInfo.address().toString();
+  if ( m_hasKnownDevice && !m_trustedDeviceMacAddress.isEmpty() )
+  {
+    if ( deviceMac != m_trustedDeviceMacAddress )
+    {
+      syslog( LOG_ERR, "LCTWaterCoolerWorker: MAC mismatch! Expected %s but got %s (possible spoofing)",
+              m_trustedDeviceMacAddress.toStdString().c_str(), deviceMac.toStdString().c_str() );
+      return false;
+    }
+  }
+  else if ( m_hasKnownDevice )
+  {
+    // Store the MAC on first successful connection
+    m_trustedDeviceMacAddress = deviceMac;
+    syslog( LOG_INFO, "LCTWaterCoolerWorker: stored trusted device MAC: %s", deviceMac.toStdString().c_str() );
   }
 
   m_connectedDeviceInfo = deviceInfo;

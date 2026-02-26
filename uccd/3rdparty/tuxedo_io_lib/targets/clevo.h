@@ -32,7 +32,7 @@ public:
 
   static inline bool canIdentify( IO &io, bool &identified )
   {
-    int result;
+    int result = 0;
     int ret = io.ioctlCall( R_HWCHECK_CL, result );
     identified = ( result == 1 );
     return ret;

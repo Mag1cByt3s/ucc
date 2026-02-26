@@ -248,7 +248,7 @@ private:
 
   // ── State machine ─────────────────────────────────────────────────
   UccDBusData& m_dbusData;
-  WaterCoolerState m_state = WaterCoolerState::Disconnected;
+  std::atomic<WaterCoolerState> m_state = WaterCoolerState::Disconnected;
   WaterCoolerState m_previousState = WaterCoolerState::Disconnected;
   std::chrono::steady_clock::time_point m_lastDiscoveryStart;
   std::chrono::steady_clock::time_point m_errorEntryTime;
@@ -267,6 +267,9 @@ private:
   QBluetoothDeviceInfo m_connectedDeviceInfo;
   QBluetoothDeviceInfo m_lastKnownDeviceInfo;
   bool m_hasKnownDevice = false;
+
+  // Store trusted MAC to prevent impersonation
+  QString m_trustedDeviceMacAddress;
 
   QList< DeviceInfo > m_discoveredDevices;
   ucc::LCTDeviceModel m_connectedModel = ucc::LCTDeviceModel::LCT21001;

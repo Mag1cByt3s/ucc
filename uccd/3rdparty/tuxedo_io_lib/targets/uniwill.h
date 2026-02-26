@@ -33,7 +33,7 @@ public:
 
   static inline bool canIdentify( IO &io, bool &identified )
   {
-    int result;
+    int result = 0;
     int ret = io.ioctlCall( R_HWCHECK_UW, result );
     identified = ( result == 1 );
     return ret;
@@ -94,6 +94,9 @@ public:
 
   virtual bool setFanSpeedPercent( const int fanNr, const int fanSpeedPercent )
   {
+    if ( fanSpeedPercent < 0 || fanSpeedPercent > 100 )
+      return false;
+
     int fanSpeedRaw = static_cast< int >( std::round( static_cast< double >( MAX_FAN_SPEED ) * fanSpeedPercent / 100.0 ) );
     bool result;
 
@@ -292,7 +295,7 @@ public:
     const unsigned long ioctl_tdp_min[] = { R_UW_TDP0_MIN, R_UW_TDP1_MIN, R_UW_TDP2_MIN };
     if ( tdpIndex < 0 || tdpIndex > 2 )
     {
-      return -EINVAL;
+      return false;
     }
 
     return m_io.ioctlCall( ioctl_tdp_min[ tdpIndex ], minValue );
@@ -303,7 +306,7 @@ public:
     const unsigned long ioctl_tdp_max[] = { R_UW_TDP0_MAX, R_UW_TDP1_MAX, R_UW_TDP2_MAX };
     if ( tdpIndex < 0 || tdpIndex > 2 )
     {
-      return -EINVAL;
+      return false;
     }
 
     return m_io.ioctlCall( ioctl_tdp_max[ tdpIndex ], maxValue );
@@ -314,7 +317,7 @@ public:
     const unsigned long ioctl_tdp_set[] = { W_UW_TDP0, W_UW_TDP1, W_UW_TDP2 };
     if ( tdpIndex < 0 || tdpIndex > 2 )
     {
-      return -EINVAL;
+      return false;
     }
 
     return m_io.ioctlCall( ioctl_tdp_set[ tdpIndex ], tdpValue );
@@ -325,7 +328,7 @@ public:
     const unsigned long ioctl_tdp_get[] = { R_UW_TDP0, R_UW_TDP1, R_UW_TDP2 };
     if ( tdpIndex < 0 || tdpIndex > 2 )
     {
-      return -EINVAL;
+      return false;
     }
 
     return m_io.ioctlCall( ioctl_tdp_get[ tdpIndex ], tdpValue );

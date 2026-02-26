@@ -51,6 +51,12 @@ public:
     closeDevice();
   }
 
+  // Prevent copying to avoid double-close of fd
+  IO(const IO&) = delete;
+  IO& operator=(const IO&) = delete;
+  IO(IO&&) = delete;
+  IO& operator=(IO&&) = delete;
+
   /**
    * @brief Check if the device is available and open
    * @return true if device is successfully opened, false otherwise

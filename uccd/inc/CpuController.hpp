@@ -190,8 +190,8 @@ public:
     if ( not numberOfCores.has_value() )
       numberOfCores = static_cast< int32_t >( cores.size() );
 
-    if ( *numberOfCores == 0 )
-      return;
+    // Clamp to valid range [1, cores.size()]
+    numberOfCores = std::clamp( *numberOfCores, 1, static_cast< int32_t >( cores.size() ) );
 
     for ( size_t i = 1; i < cores.size(); ++i )
     {

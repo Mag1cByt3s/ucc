@@ -700,6 +700,13 @@ void ProfileSettingsWorker::applyYCbCr420Workaround()
       std::string port = portEntry.port;
       bool enableYuv = portEntry.enabled;
 
+      // Validate port to prevent path traversal (check for .. and / sequences)
+      if ( port.find( ".." ) != std::string::npos || port.find( "/" ) != std::string::npos )
+      {
+        syslog( LOG_WARNING, "Invalid port name: %s (contains traversal sequences)", port.c_str() );
+        continue;
+      }
+
       std::string path = "/sys/kernel/debug/dri/" + std::to_string( card ) + "/" + port +
                          "/force_yuv420_output";
 

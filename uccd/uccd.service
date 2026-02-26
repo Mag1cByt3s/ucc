@@ -22,6 +22,14 @@ ProtectSystem=strict
 ProtectHome=yes
 NoNewPrivileges=true
 ReadWritePaths=/etc/ucc /run
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+MemoryDenyWriteExecute=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+CapabilityBoundingSet=CAP_SYS_RAWIO CAP_NET_ADMIN
+AmbientCapabilities=CAP_SYS_RAWIO CAP_NET_ADMIN
 
 [Install]
 WantedBy=multi-user.target
