@@ -33,6 +33,10 @@ static constexpr int ERROR_RETRY_BASE_SECONDS = 5;
 static constexpr int ERROR_RETRY_MAX_SECONDS = 120;
 static constexpr int ADAPTER_RESET_FAILURE_THRESHOLD = 5;
 static constexpr int INITIAL_FAN_SPEED_PERCENT = 10;
+static constexpr int FAST_RECONNECT_MAX_FAILURES = 3;       // Clear known device after this many fast-reconnect failures
+static constexpr int GATT_CACHE_PURGE_FAILURE_THRESHOLD = 3; // Purge BlueZ GATT cache after this many consecutive failures
+static constexpr int KEEPALIVE_INTERVAL_SECONDS = 10;        // Send keepalive probe every N seconds while connected
+static constexpr int KEEPALIVE_MISS_THRESHOLD = 3;           // Declare dead after N missed keepalives
 
 // ── Static UUID constants ───────────────────────────────────────────
 const QString LCTWaterCoolerWorker::NORDIC_UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
@@ -83,6 +87,9 @@ LCTWaterCoolerWorker::LCTWaterCoolerWorker( UccDBusData& dbusData, StatusCallbac
   connect( m_deviceDiscoveryAgent, &QBluetoothDeviceDiscoveryAgent::errorOccurred, this,
            []( QBluetoothDeviceDiscoveryAgent::Error error )
            { syslog( LOG_ERR, "LCTWaterCoolerWorker: discovery error %d", static_cast< int >( error ) ); } );
+
+  // Listen for system suspend/resume to cleanly tear down and reinitialize BLE
+  setupSuspendResumeHandling();
 }
 
 LCTWaterCoolerWorker::~LCTWaterCoolerWorker()
@@ -118,6 +125,10 @@ void LCTWaterCoolerWorker::stop()
 
 void LCTWaterCoolerWorker::onTick()
 {
+  // Don't run the state machine while the system is suspending
+  if ( m_suspending )
+    return;
+
   // Respect external scanning enable/disable flag
   if ( not m_dbusData.waterCoolerScanningEnabled )
   {
@@ -178,17 +189,31 @@ void LCTWaterCoolerWorker::handleDisconnected()
   // Fast-path: if we have a known device, try direct reconnect immediately
   if ( m_hasKnownDevice )
   {
-    syslog( LOG_INFO, "LCTWaterCoolerWorker: attempting fast reconnect to known device" );
-    m_state = WaterCoolerState::Reconnecting;
-    m_lastDiscoveryStart = std::chrono::steady_clock::now();
-
-    if ( not connectToKnownDevice() )
+    // If fast reconnect has failed too many times, the cached device info is likely stale
+    // (e.g. device changed its BLE address).  Force fresh discovery.
+    if ( m_fastReconnectFailures >= FAST_RECONNECT_MAX_FAILURES )
     {
-      syslog( LOG_WARNING, "LCTWaterCoolerWorker: fast reconnect failed, falling back to discovery" );
-      ++m_consecutiveFailures;
-      requestStartDiscovery();
+      syslog( LOG_WARNING, "LCTWaterCoolerWorker: fast reconnect failed %d times, clearing known device",
+              m_fastReconnectFailures );
+      m_hasKnownDevice = false;
+      m_fastReconnectFailures = 0;
+      // Fall through to discovery below
     }
-    return;
+    else
+    {
+      syslog( LOG_INFO, "LCTWaterCoolerWorker: attempting fast reconnect to known device" );
+      m_state = WaterCoolerState::Reconnecting;
+      m_lastDiscoveryStart = std::chrono::steady_clock::now();
+
+      if ( not connectToKnownDevice() )
+      {
+        syslog( LOG_WARNING, "LCTWaterCoolerWorker: fast reconnect failed, falling back to discovery" );
+        ++m_consecutiveFailures;
+        ++m_fastReconnectFailures;
+        requestStartDiscovery();
+      }
+      return;
+    }
   }
 
   // No known device — throttle discovery retries
@@ -249,6 +274,7 @@ void LCTWaterCoolerWorker::handleReconnecting()
   {
     syslog( LOG_WARNING, "LCTWaterCoolerWorker: fast reconnect timed out, falling back to discovery" );
     ++m_consecutiveFailures;
+    ++m_fastReconnectFailures;
 
     // Cleanup the failed attempt so we start fresh
     cleanupBleController();
@@ -285,6 +311,16 @@ void LCTWaterCoolerWorker::handleConnected()
     syslog( LOG_WARNING, "LCTWaterCoolerWorker: lost connection to water cooler" );
     ++m_consecutiveFailures;
     m_state = WaterCoolerState::Disconnected;
+    return;
+  }
+
+  // Periodic keepalive probe to detect silent BLE disconnections
+  const auto now = std::chrono::steady_clock::now();
+  const auto sinceLast = std::chrono::duration_cast< std::chrono::seconds >( now - m_lastKeepalive ).count();
+  if ( sinceLast >= KEEPALIVE_INTERVAL_SECONDS )
+  {
+    sendKeepaliveProbe();
+    m_lastKeepalive = now;
   }
 }
 
@@ -297,6 +333,16 @@ void LCTWaterCoolerWorker::handleError()
   if ( secondsSinceLastDiscovery() > backoffSeconds )
   {
     ++m_consecutiveFailures;
+
+    // After a few failures, purge the BlueZ GATT cache for this device
+    // to eliminate stale handle mappings that can cause silent write failures.
+    if ( m_consecutiveFailures == GATT_CACHE_PURGE_FAILURE_THRESHOLD && m_hasKnownDevice )
+    {
+      const QString mac = m_lastKnownDeviceInfo.address().toString();
+      syslog( LOG_WARNING, "LCTWaterCoolerWorker: %d consecutive failures, purging BlueZ cache for %s",
+              m_consecutiveFailures, mac.toStdString().c_str() );
+      purgeBlueZDeviceCache( mac );
+    }
 
     // After persistent failures, intervene at the system level
     if ( m_consecutiveFailures >= ADAPTER_RESET_FAILURE_THRESHOLD )
@@ -331,8 +377,11 @@ void LCTWaterCoolerWorker::onConnectionReady()
   if ( m_state == WaterCoolerState::Connecting or m_state == WaterCoolerState::Reconnecting )
     m_state = WaterCoolerState::Connected;
 
-  // Reset failure counter on successful connection
+  // Reset failure counters on successful connection
   m_consecutiveFailures = 0;
+  m_fastReconnectFailures = 0;
+  m_missedKeepalives = 0;
+  m_lastKeepalive = std::chrono::steady_clock::now();
 
   // Do NOT send initial pump/fan commands here.  The hardware powers up at its
   // own default voltage (typically V11) and may silently ignore BLE writes
@@ -815,8 +864,14 @@ bool LCTWaterCoolerWorker::startDiscoveryInternal()
   if ( not m_deviceDiscoveryAgent )
     return false;
 
-  if ( m_isDiscovering )
+  // Guard against stale m_isDiscovering flag: also check the agent's actual state.
+  // This prevents a race where m_isDiscovering is true but the agent has already
+  // stopped (e.g. error signal arrived between flag check and agent query).
+  if ( m_isDiscovering && m_deviceDiscoveryAgent->isActive() )
     return true; // Already running
+
+  // If our flag was stale, reset it
+  m_isDiscovering = false;
 
   m_discoveredDevices.clear();
   m_deviceDiscoveryAgent->setLowEnergyDiscoveryTimeout( 10000 );
@@ -1067,6 +1122,131 @@ bool LCTWaterCoolerWorker::resetBluetoothAdapter()
   // Give the adapter a moment to stabilize before BLE operations resume
   QThread::msleep( 1000 );
   return true;
+}
+
+bool LCTWaterCoolerWorker::purgeBlueZDeviceCache( const QString& macAddress )
+{
+  // Ask BlueZ to forget the device, which clears its cached GATT attribute table.
+  // This fixes stale-handle issues where the peripheral's GATT database changed
+  // (firmware update, reboot) but BlueZ still uses old cached handles.
+  syslog( LOG_INFO, "LCTWaterCoolerWorker: purging BlueZ cache for device %s", macAddress.toStdString().c_str() );
+
+  cleanupBleController();
+
+  QProcess proc;
+  proc.start( "bluetoothctl", { "remove", macAddress } );
+  if ( not proc.waitForFinished( 5000 ) )
+  {
+    syslog( LOG_ERR, "LCTWaterCoolerWorker: bluetoothctl remove timed out" );
+    return false;
+  }
+
+  // exit code 1 is okay — means device was already unknown to BlueZ
+  if ( proc.exitCode() != 0 )
+    syslog( LOG_INFO, "LCTWaterCoolerWorker: bluetoothctl remove returned %d (device may not be paired)",
+            proc.exitCode() );
+  else
+    syslog( LOG_INFO, "LCTWaterCoolerWorker: BlueZ device cache purged successfully" );
+
+  return true;
+}
+
+// ── Suspend / Resume ────────────────────────────────────────────────
+
+void LCTWaterCoolerWorker::setupSuspendResumeHandling()
+{
+  // Connect to logind's PrepareForSleep signal so we can cleanly tear down BLE
+  // before the system suspends, and reinitialize after it wakes up.
+  // This prevents the stale HCI state that causes reconnection failures after resume.
+  auto systemBus = QDBusConnection::systemBus();
+  if ( not systemBus.isConnected() )
+  {
+    syslog( LOG_WARNING, "LCTWaterCoolerWorker: system D-Bus not available, suspend handling disabled" );
+    return;
+  }
+
+  bool ok = systemBus.connect( "org.freedesktop.login1",        // service
+                               "/org/freedesktop/login1",        // path
+                               "org.freedesktop.login1.Manager", // interface
+                               "PrepareForSleep",                // signal
+                               this,                             // receiver
+                               SLOT( onPrepareForSleep( bool ) ) );
+
+  if ( ok )
+    syslog( LOG_INFO, "LCTWaterCoolerWorker: registered for suspend/resume notifications" );
+  else
+    syslog( LOG_WARNING, "LCTWaterCoolerWorker: failed to connect PrepareForSleep signal" );
+}
+
+void LCTWaterCoolerWorker::onPrepareForSleep( bool suspending )
+{
+  if ( suspending )
+  {
+    syslog( LOG_INFO, "LCTWaterCoolerWorker: system suspending, tearing down BLE" );
+    m_suspending = true;
+
+    // Cleanly disconnect and destroy BLE objects before the kernel suspends
+    // the USB bus.  This prevents dangling HCI handles on resume.
+    stopDiscoveryInternal();
+    cleanupBleController();
+    m_state = WaterCoolerState::Disconnected;
+    m_dbusData.waterCoolerConnected = false;
+  }
+  else
+  {
+    syslog( LOG_INFO, "LCTWaterCoolerWorker: system resumed, restarting BLE" );
+    m_suspending = false;
+    m_consecutiveFailures = 0;
+
+    // Give the adapter a moment to reinitialize after resume
+    QTimer::singleShot( 2000, this,
+                        [this]()
+                        {
+                          if ( m_dbusData.waterCoolerScanningEnabled )
+                          {
+                            syslog( LOG_INFO, "LCTWaterCoolerWorker: post-resume discovery start" );
+                            m_lastDiscoveryStart = std::chrono::steady_clock::time_point{};
+                            m_state = WaterCoolerState::Disconnected;
+                            // handleDisconnected() will run on next tick
+                          }
+                        } );
+  }
+}
+
+// ── BLE Keepalive ───────────────────────────────────────────────────
+
+void LCTWaterCoolerWorker::sendKeepaliveProbe()
+{
+  if ( not m_isConnected.load() or not m_bleController )
+    return;
+
+  // Check the controller state — if BlueZ already knows the link is gone,
+  // we can detect it here even if the disconnect signal hasn't fired yet.
+  if ( m_bleController->state() == QLowEnergyController::UnconnectedState )
+  {
+    syslog( LOG_WARNING, "LCTWaterCoolerWorker: keepalive detected BLE controller is unconnected" );
+    ++m_missedKeepalives;
+  }
+  else if ( not m_txCharacteristic.isValid() or not m_uartService )
+  {
+    syslog( LOG_WARNING, "LCTWaterCoolerWorker: keepalive detected invalid UART state" );
+    ++m_missedKeepalives;
+  }
+  else
+  {
+    // Successfully verified controller is still alive
+    m_missedKeepalives = 0;
+    return;
+  }
+
+  if ( m_missedKeepalives >= KEEPALIVE_MISS_THRESHOLD )
+  {
+    syslog( LOG_WARNING, "LCTWaterCoolerWorker: %d missed keepalives, forcing disconnect", m_missedKeepalives );
+    m_isConnected = false;
+    m_missedKeepalives = 0;
+    ++m_consecutiveFailures;
+    m_state = WaterCoolerState::Disconnected;
+  }
 }
 
 // ── State machine helpers ───────────────────────────────────────────

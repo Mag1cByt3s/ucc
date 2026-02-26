@@ -17,6 +17,8 @@
 
 #include <QBluetoothDeviceDiscoveryAgent>
 #include <QBluetoothDeviceInfo>
+#include <QDBusConnection>
+#include <QDBusInterface>
 #include <QList>
 #include <QLowEnergyCharacteristic>
 #include <QLowEnergyController>
@@ -206,6 +208,14 @@ private:
   bool writeReceive( const QByteArray& data );
   bool turnOffDevice( uint8_t cmd );
   bool resetBluetoothAdapter();
+  bool purgeBlueZDeviceCache( const QString& macAddress );
+
+  // Suspend / resume
+  void setupSuspendResumeHandling();
+  void onPrepareForSleep( bool suspending );
+
+  // BLE keepalive
+  void sendKeepaliveProbe();
 
   // State machine helpers
   void requestStartDiscovery();
@@ -243,6 +253,7 @@ private:
   std::chrono::steady_clock::time_point m_lastDiscoveryStart;
   std::chrono::steady_clock::time_point m_errorEntryTime;
   int m_consecutiveFailures = 0;
+  int m_fastReconnectFailures = 0;
   StatusCallback m_statusCallback;
   QTimer* m_tickTimer = nullptr;
 
@@ -276,4 +287,11 @@ private:
   // BLE write throttle – minimum gap between successive UART writes
   static constexpr int BLE_WRITE_GAP_MS = 80;
   std::chrono::steady_clock::time_point m_lastBleWrite{};
+
+  // Keepalive tracking
+  std::chrono::steady_clock::time_point m_lastKeepalive{};
+  int m_missedKeepalives = 0;
+
+  // Suspend/resume state
+  bool m_suspending = false;
 };
