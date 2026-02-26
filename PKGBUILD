@@ -25,6 +25,7 @@ depends=(
   'systemd-libs'
   'hicolor-icon-theme'
   'dbus'
+  'polkit'
 )
 
 # --- Build-time dependencies ---

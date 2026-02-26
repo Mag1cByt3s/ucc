@@ -454,53 +454,74 @@ bool HardwareMonitorWorker::checkAmdDGpuHwmonPath() noexcept
 
 std::string HardwareMonitorWorker::getIntelIGpuDrmPathImpl() const noexcept
 {
+  namespace fs = std::filesystem;
   try
   {
-    std::string intelIGpuPattern = GpuDeviceDetector().getIntelIGpuPatternPublic();
+    const std::string intelIGpuPattern = GpuDeviceDetector().getIntelIGpuPatternPublic();
+    const std::regex idRegex( "PCI_ID=" + intelIGpuPattern );
 
-    // Find the DRM card directory whose device uevent contains a matching Intel PCI ID.
-    // Matches both i915 (pre-Lunar Lake) and xe (Lunar Lake+) kernel drivers.
-    std::string command =
-        "grep -lP 'PCI_ID=" + intelIGpuPattern + "' "
-        "/sys/bus/pci/devices/*/drm/card*/device/uevent 2>/dev/null "
-        "| sed 's|/device/uevent$||' | head -1";
+    for ( const auto &pciDev : fs::directory_iterator( "/sys/bus/pci/devices" ) )
+    {
+      const auto drmDir = pciDev.path() / "drm";
+      std::error_code ec;
+      if ( not fs::is_directory( drmDir, ec ) )
+        continue;
 
-    std::string output = TccUtils::executeCommand( command );
+      for ( const auto &card : fs::directory_iterator( drmDir ) )
+      {
+        auto ueventPath = card.path() / "device" / "uevent";
+        std::ifstream ueventFile( ueventPath );
+        if ( not ueventFile )
+          continue;
 
-    while ( not output.empty() and ( output.back() == '\n' or output.back() == '\r' or
-                                     output.back() == ' ' or output.back() == '\t' ) )
-      output.pop_back();
-
-    return output;
+        std::string line;
+        while ( std::getline( ueventFile, line ) )
+        {
+          if ( std::regex_search( line, idRegex ) )
+            return card.path().string();
+        }
+      }
+    }
+    return "";
   }
   catch ( ... ) { return ""; }
 }
 
 std::string HardwareMonitorWorker::getAmdIGpuHwmonPathImpl() const noexcept
 {
+  namespace fs = std::filesystem;
   try
   {
-    std::string amdIGpuPattern = "1002:(164E|1506|15DD|15D8|15E7|1636|1638|164C|164D|1681|15BF|"
+    const std::string amdIGpuPattern = "1002:(164E|1506|15DD|15D8|15E7|1636|1638|164C|164D|1681|15BF|"
                                  "15C8|1304|1305|1306|1307|1309|130A|130B|130C|130D|130E|130F|"
                                  "1310|1311|1312|1313|1315|1316|1317|1318|131B|131C|131D|13C0|"
                                  "9830|9831|9832|9833|9834|9835|9836|9837|9838|9839|983a|983b|983c|"
                                  "983d|983e|983f|9850|9851|9852|9853|9854|9855|9856|9857|9858|"
                                  "9859|985A|985B|985C|985D|985E|985F|9870|9874|9875|9876|9877|"
                                  "98E4|13FE|143F|74A0|1435|163f|1900|1901|1114|150E)";
+    const std::regex idRegex( "PCI_ID=" + amdIGpuPattern );
 
-    std::string command =
-        "for d in /sys/class/hwmon/hwmon*/device/uevent; do "
-        "grep -q 'DRIVER=amdgpu' \"$d\" && grep -q -P 'PCI_ID=" + amdIGpuPattern + "' \"$d\" && "
-        "dirname \"$d\" | sed 's|/device$||'; "
-        "done | head -1";
+    for ( const auto &hwmonEntry : fs::directory_iterator( "/sys/class/hwmon" ) )
+    {
+      auto ueventPath = hwmonEntry.path() / "device" / "uevent";
+      std::ifstream ueventFile( ueventPath );
+      if ( not ueventFile )
+        continue;
 
-    std::string output = TccUtils::executeCommand( command );
-
-    while ( not output.empty() and ( output.back() == '\n' or output.back() == '\r' or
-                                     output.back() == ' ' or output.back() == '\t' ) )
-      output.pop_back();
-
-    return output;
+      bool hasAmdGpu = false;
+      bool hasMatchingId = false;
+      std::string line;
+      while ( std::getline( ueventFile, line ) )
+      {
+        if ( line == "DRIVER=amdgpu" )
+          hasAmdGpu = true;
+        if ( std::regex_search( line, idRegex ) )
+          hasMatchingId = true;
+        if ( hasAmdGpu and hasMatchingId )
+          return hwmonEntry.path().string();
+      }
+    }
+    return "";
   }
   catch ( ... ) { return ""; }
 }
@@ -514,7 +535,7 @@ bool HardwareMonitorWorker::checkNvidiaSmiInstalledImpl() const noexcept
 {
   try
   {
-    std::string output = TccUtils::executeCommand( "which nvidia-smi" );
+    std::string output = ucc::executeProcess( "which", { "nvidia-smi" } );
     while ( not output.empty() and ( output.back() == '\n' or output.back() == '\r' or
                                      output.back() == ' ' or output.back() == '\t' ) )
       output.pop_back();
@@ -608,9 +629,11 @@ DGpuInfo HardwareMonitorWorker::getNvidiaDGpuValues() const noexcept
 {
   if ( m_isNvidiaSmiInstalled )
   {
-    std::string command = "nvidia-smi --query-gpu=temperature.gpu,power.draw,power.max_limit,"
-                         "enforced.power.limit,clocks.gr,clocks.max.gr --format=csv,noheader";
-    std::string output = TccUtils::executeCommand( command );
+    std::string output = ucc::executeProcess(
+        "nvidia-smi",
+        { "--query-gpu=temperature.gpu,power.draw,power.max_limit,"
+          "enforced.power.limit,clocks.gr,clocks.max.gr",
+          "--format=csv,noheader" } );
     if ( not output.empty() )
       return parseNvidiaOutput( output );
   }
@@ -842,15 +865,8 @@ bool HardwareMonitorWorker::checkPrimeSupported() const noexcept
 
   try
   {
-    auto pipe = popen( "which prime-select 2>/dev/null", "r" );
-    if ( not pipe )
-      return false;
-
-    char buffer[256];
-    std::string result;
-    if ( fgets( buffer, sizeof( buffer ), pipe ) )
-      result = buffer;
-    pclose( pipe );
+    // Use executeProcess() instead of popen("which prime-select") for safety
+    std::string result = ucc::executeProcess( "which", { "prime-select" } );
 
     while ( not result.empty() and ( result.back() == '\n' or result.back() == ' ' ) )
       result.pop_back();
@@ -864,15 +880,8 @@ std::string HardwareMonitorWorker::checkPrimeStatus() const noexcept
 {
   try
   {
-    auto pipe = popen( "prime-select query 2>/dev/null", "r" );
-    if ( not pipe )
-      return "off";
-
-    char buffer[256];
-    std::string result;
-    if ( fgets( buffer, sizeof( buffer ), pipe ) )
-      result = buffer;
-    pclose( pipe );
+    // Use executeProcess() instead of popen("prime-select query") for safety
+    std::string result = ucc::executeProcess( "prime-select", { "query" } );
 
     while ( not result.empty() and ( result.back() == '\n' or result.back() == ' ' or result.back() == '\r' ) )
       result.pop_back();

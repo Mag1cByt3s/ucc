@@ -31,7 +31,8 @@ Depends: ${shlibs:Depends}, ${misc:Depends},
          systemd,
          tuxedo-drivers,
          qt6-qpa-plugins,
-         plasma-workspace (>= 6.0)
+         plasma-workspace (>= 6.0),
+         policykit-1
 Description: Uniwill Control Center
  Uniwill Control Center (UCC) is a comprehensive system control application
  suite for Uniwill (Tuxedo, XMG etc.) computers. Includes the system daemon,

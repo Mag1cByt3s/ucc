@@ -1463,6 +1463,7 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   m_mainsButton->blockSignals( true );
   m_batteryButton->blockSignals( true );
   m_waterCoolerButton->blockSignals( true );
+  if ( m_descriptionEdit ) m_descriptionEdit->blockSignals( true );
 
   // Load Display settings (nested in display object)
 
@@ -1486,6 +1487,10 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   }
 
   // Load Fan Control settings (nested in fan object)
+
+  // Load description
+  if ( m_descriptionEdit )
+    m_descriptionEdit->setPlainText( obj["description"].toString() );
 
   QString loadedFanProfile;
   bool fanProfileNotFound = false;
@@ -1860,6 +1865,7 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   m_mainsButton->blockSignals( false );
   m_batteryButton->blockSignals( false );
   m_waterCoolerButton->blockSignals( false );
+  if ( m_descriptionEdit ) m_descriptionEdit->blockSignals( false );
 
   // Trigger label updates by calling the slots directly
   onBrightnessSliderChanged( m_brightnessSlider->value() );

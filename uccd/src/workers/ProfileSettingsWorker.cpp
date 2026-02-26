@@ -14,6 +14,7 @@
  */
 
 #include "workers/ProfileSettingsWorker.hpp"
+#include "Utils.hpp"
 #include <tuxedo_io_lib/tuxedo_io_api.hh>
 
 // =====================================================================
@@ -833,26 +834,27 @@ void ProfileSettingsWorker::queryNVIDIAPowerLimits()
 
 int32_t ProfileSettingsWorker::executeNvidiaSmi( const std::string &command )
 {
-  std::array< char, 128 > buffer;
-  std::string result;
+  // Use executeProcess() with argument array to avoid shell injection.
+  // The 'command' parameter contains the full nvidia-smi invocation;
+  // we parse it into executable + args.
 
-  auto pipeDeleter = []( FILE *fp )
+  // All callers pass "nvidia-smi --flag1 --flag2 ..." so we split on spaces.
+  // For safety, we hard-code the executable path / name.
+  std::vector< std::string > args;
+  std::istringstream iss( command );
+  std::string token;
+  bool first = true;
+  while ( iss >> token )
   {
-    if ( fp )
-      pclose( fp );
-  };
-  std::unique_ptr< FILE, decltype( pipeDeleter ) > pipe(
-    popen( command.c_str(), "r" ), pipeDeleter );
-  if ( !pipe )
-  {
-    std::cerr << "[NVIDIAPowerCTRL] Failed to execute: " << command << std::endl;
-    return 0;
+    if ( first )
+    {
+      first = false; // skip the "nvidia-smi" executable name from the string
+      continue;
+    }
+    args.push_back( token );
   }
 
-  while ( fgets( buffer.data(), buffer.size(), pipe.get() ) != nullptr )
-  {
-    result += buffer.data();
-  }
+  std::string result = ucc::executeProcess( "nvidia-smi", args );
 
   // Trim whitespace and convert to int
   result.erase( 0, result.find_first_not_of( " \t\n\r" ) );

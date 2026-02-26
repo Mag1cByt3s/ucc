@@ -21,6 +21,9 @@
 #include <algorithm>
 #include <ranges>
 #include <cctype>
+#include <dirent.h>
+#include <unistd.h>
+#include <utmpx.h>
 
 namespace fs = std::filesystem;
 
@@ -257,27 +260,28 @@ void DisplayWorker::reenumerateBacklightDrivers()
 
 std::pair< bool, bool > DisplayWorker::checkUsers() noexcept
 {
+  // Use utmpx API instead of popen("users") to avoid shell invocation
   std::string loggedInUsers;
 
   try
   {
-    auto pipe = popen( "users 2>/dev/null", "r" );
-    if ( pipe )
+    setutxent();
+    struct utmpx *entry;
+    while ( ( entry = getutxent() ) != nullptr )
     {
-      char buffer[256];
-      if ( fgets( buffer, sizeof( buffer ), pipe ) )
-        loggedInUsers = buffer;
-      pclose( pipe );
+      if ( entry->ut_type == USER_PROCESS )
+      {
+        if ( not loggedInUsers.empty() )
+          loggedInUsers += ' ';
+        loggedInUsers += entry->ut_user;
+      }
     }
+    endutxent();
   }
   catch ( ... )
   {
     // Ignore errors
   }
-
-  // Trim whitespace
-  while ( not loggedInUsers.empty() and ( loggedInUsers.back() == '\n' or loggedInUsers.back() == ' ' ) )
-    loggedInUsers.pop_back();
 
   const bool usersAvailable = not loggedInUsers.empty();
   const bool usersChanged = loggedInUsers != m_previousUsers;
@@ -298,41 +302,93 @@ void DisplayWorker::resetRefreshRateState() noexcept
   m_displayName = "";
 }
 
+/**
+ * @brief Validate that a string looks like a safe DISPLAY value.
+ *        Must match :N or :N.N where N is a small number.
+ */
+static bool isValidDisplay( const std::string &v ) noexcept
+{
+  static const std::regex pattern( R"(^:[0-9]{1,3}(\.[0-9]{1,3})?$)" );
+  return std::regex_match( v, pattern );
+}
+
+/**
+ * @brief Validate that a string looks like a safe XAUTHORITY path.
+ *        Only allow path characters [a-zA-Z0-9/_.-].
+ */
+static bool isValidXAuthority( const std::string &v ) noexcept
+{
+  static const std::regex pattern( R"(^/[a-zA-Z0-9/_. -]+$)" );
+  return std::regex_match( v, pattern );
+}
+
+/**
+ * @brief Read environment variables from /proc/<pid>/environ directly.
+ *
+ * Replaces the old popen()/shell pipeline that was vulnerable to command
+ * injection via attacker-controlled environment variables.
+ */
 void DisplayWorker::setEnvVariables() noexcept
 {
   try
   {
-    const char *cmd = R"(cat $(printf "/proc/%s/environ " $(pgrep -vu root | tail -n 20)) 2>/dev/null | tr '\0' '\n' 2>/dev/null | awk ' /DISPLAY=/ && !countDisplay {print; countDisplay++} /XAUTHORITY=/ && !countXAuthority {print; countXAuthority++} /XDG_SESSION_TYPE=/ && !countSessionType {print; countSessionType++} /USER=/ && !countUser {print; countUser++} {if (countDisplay && countXAuthority && countSessionType && countUser) exit} ')";
-
-    auto pipe = popen( cmd, "r" );
-    if ( not pipe )
-      return;
-
-    std::string envVariables;
-    char buffer[1024];
-    while ( fgets( buffer, sizeof( buffer ), pipe ) )
-      envVariables += buffer;
-
-    pclose( pipe );
-
-    // Parse environment variables
-    std::regex displayRegex( R"(DISPLAY=(.*))" );
-    std::regex xauthorityRegex( R"(XAUTHORITY=(.*))" );
-    std::regex sessionTypeRegex( R"(XDG_SESSION_TYPE=(.*))" );
-
-    std::smatch match;
     std::string display, xauthority, sessionType;
+    const uid_t rootUid = 0;
 
-    std::istringstream iss( envVariables );
-    std::string line;
-    while ( std::getline( iss, line ) )
+    // Iterate /proc to find non-root user processes
+    for ( const auto &entry : fs::directory_iterator( "/proc" ) )
     {
-      if ( std::regex_search( line, match, displayRegex ) and display.empty() )
-        display = match[1].str();
-      else if ( std::regex_search( line, match, xauthorityRegex ) and xauthority.empty() )
-        xauthority = match[1].str();
-      else if ( std::regex_search( line, match, sessionTypeRegex ) and sessionType.empty() )
-        sessionType = match[1].str();
+      if ( not display.empty() and not xauthority.empty() and not sessionType.empty() )
+        break;
+
+      const std::string pidName = entry.path().filename().string();
+
+      // Only numeric directory names (PIDs)
+      if ( pidName.empty() or not std::isdigit( static_cast< unsigned char >( pidName[0] ) ) )
+        continue;
+
+      // Check process owner — skip root
+      std::error_code ec;
+      (void) fs::status( entry.path(), ec );  // probe accessibility
+      if ( ec )
+        continue;
+
+      // Read /proc/<pid>/loginuid to determine the owning user
+      std::string loginuidPath = entry.path().string() + "/loginuid";
+      std::ifstream loginuidFile( loginuidPath );
+      if ( loginuidFile )
+      {
+        uid_t loginuid = 0;
+        loginuidFile >> loginuid;
+        if ( loginuid == rootUid or loginuid == static_cast< uid_t >( -1 ) )
+          continue;
+      }
+      else
+      {
+        continue;
+      }
+
+      // Read /proc/<pid>/environ (NUL-separated key=value pairs)
+      std::string environPath = entry.path().string() + "/environ";
+      std::ifstream envFile( environPath, std::ios::binary );
+      if ( not envFile )
+        continue;
+
+      std::string envContent( ( std::istreambuf_iterator< char >( envFile ) ),
+                               std::istreambuf_iterator< char >() );
+
+      // Parse NUL-separated entries
+      std::istringstream envStream( envContent );
+      std::string envEntry;
+      while ( std::getline( envStream, envEntry, '\0' ) )
+      {
+        if ( display.empty() and envEntry.starts_with( "DISPLAY=" ) )
+          display = envEntry.substr( 8 );
+        else if ( xauthority.empty() and envEntry.starts_with( "XAUTHORITY=" ) )
+          xauthority = envEntry.substr( 11 );
+        else if ( sessionType.empty() and envEntry.starts_with( "XDG_SESSION_TYPE=" ) )
+          sessionType = envEntry.substr( 17 );
+      }
     }
 
     // Skip login screen sessions
@@ -341,12 +397,25 @@ void DisplayWorker::setEnvVariables() noexcept
       return;
 
     // Trim whitespace from session type
-    while ( not sessionType.empty() and ( sessionType.back() == '\n' or sessionType.back() == '\r' or sessionType.back() == ' ' ) )
+    while ( not sessionType.empty() and
+            ( sessionType.back() == '\n' or sessionType.back() == '\r' or sessionType.back() == ' ' ) )
       sessionType.pop_back();
 
     // Convert to lowercase
     for ( char &c : sessionType )
       c = static_cast< char >( std::tolower( static_cast< unsigned char >( c ) ) );
+
+    // --- INPUT VALIDATION: reject values that contain shell metacharacters ---
+    if ( not display.empty() and not isValidDisplay( display ) )
+    {
+      syslog( LOG_WARNING, "DisplayWorker: Rejected suspicious DISPLAY value" );
+      display.clear();
+    }
+    if ( not xauthority.empty() and not isValidXAuthority( xauthority ) )
+    {
+      syslog( LOG_WARNING, "DisplayWorker: Rejected suspicious XAUTHORITY value" );
+      xauthority.clear();
+    }
 
     m_displayEnvVariable = display;
     m_xAuthorityFile = xauthority;
@@ -370,19 +439,15 @@ std::optional< DisplayInfo > DisplayWorker::getDisplayModes() noexcept
 
   try
   {
-    std::string cmd = "export XAUTHORITY=" + m_xAuthorityFile +
-                     " && xrandr -q -display " + m_displayEnvVariable + " --current 2>/dev/null";
+    // Use executeProcess() with argument array instead of popen() shell
+    // to prevent command injection via m_xAuthorityFile / m_displayEnvVariable
+    std::string result = ucc::executeProcess(
+        "xrandr",
+        { "-q", "-display", m_displayEnvVariable, "--current" },
+        { "XAUTHORITY=" + m_xAuthorityFile } );
 
-    auto pipe = popen( cmd.c_str(), "r" );
-    if ( not pipe )
+    if ( result.empty() )
       return std::nullopt;
-
-    std::string result;
-    char buffer[1024];
-    while ( fgets( buffer, sizeof( buffer ), pipe ) )
-      result += buffer;
-
-    pclose( pipe );
 
     return parseXrandrOutput( result );
   }
@@ -577,19 +642,18 @@ void DisplayWorker::setDisplayMode( int xRes, int yRes, int refRate ) noexcept
 
   try
   {
-    std::string cmd = "export XAUTHORITY=" + m_xAuthorityFile +
-                     " && xrandr -display " + m_displayEnvVariable +
-                     " --output " + m_displayName +
-                     " --mode " + std::to_string( xRes ) + "x" + std::to_string( yRes ) +
-                     " -r " + std::to_string( refRate ) +
-                     " 2>/dev/null";
+    // Use executeProcess() with argument array instead of popen() shell
+    // to prevent command injection via m_xAuthorityFile / m_displayEnvVariable / m_displayName
+    std::string modeStr = std::to_string( xRes ) + "x" + std::to_string( yRes );
+    (void) ucc::executeProcess(
+        "xrandr",
+        { "-display", m_displayEnvVariable,
+          "--output", m_displayName,
+          "--mode", modeStr,
+          "-r", std::to_string( refRate ) },
+        { "XAUTHORITY=" + m_xAuthorityFile } );
 
-    auto pipe = popen( cmd.c_str(), "r" );
-    if ( pipe )
-    {
-      pclose( pipe );
-      syslog( LOG_INFO, "DisplayWorker: Set display mode to %dx%d @ %dHz", xRes, yRes, refRate );
-    }
+    syslog( LOG_INFO, "DisplayWorker: Set display mode to %dx%d @ %dHz", xRes, yRes, refRate );
   }
   catch ( ... )
   {

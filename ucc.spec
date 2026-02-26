@@ -32,6 +32,7 @@ Requires:       qt6-qtconnectivity
 Requires:       qt6-qtcharts
 Requires:       plasma-workspace >= 6.0
 Requires:       tuxedo-drivers
+Requires:       polkit
 Requires(post): systemd
 Requires(preun): systemd
 Requires(postun): systemd
@@ -101,6 +102,7 @@ systemctl daemon-reload > /dev/null 2>&1 || true
 %{_unitdir}/uccd-sleep.service
 %{_datadir}/dbus-1/system-services/com.uniwill.uccd.service
 %{_datadir}/dbus-1/system.d/com.uniwill.uccd.conf
+%{_datadir}/polkit-1/actions/com.uniwill.uccd.policy
 %dir %{_sysconfdir}/ucc
 %{_datadir}/applications/ucc-gui.desktop
 # Icons (SVG and PNG, all sizes)

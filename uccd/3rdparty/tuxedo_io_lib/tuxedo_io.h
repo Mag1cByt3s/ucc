@@ -120,7 +120,7 @@ private:
    */
   void openDevice(const std::string &devicePath)
   {
-    m_fileHandle = open(devicePath.c_str(), O_RDWR);
+    m_fileHandle = open(devicePath.c_str(), O_RDWR | O_CLOEXEC);
   }
 
   /**

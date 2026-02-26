@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+
+  <vendor>Uniwill Control Center</vendor>
+  <vendor_url>https://github.com/nanomatters/ucc</vendor_url>
+
+  <!--
+    Read-only queries: any active session may call these without authentication.
+  -->
+  <action id="com.uniwill.uccd.read">
+    <description>Read hardware status from UCC daemon</description>
+    <message>Authentication is required to read hardware information.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <!--
+    Normal control operations: profile switching, keyboard backlight,
+    display brightness, fan profiles via the GUI, charging profile.
+    Allowed for the active session user without prompting for a password.
+  -->
+  <action id="com.uniwill.uccd.control">
+    <description>Control UCC daemon settings (profiles, backlight, etc.)</description>
+    <message>Authentication is required to change system settings.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <!--
+    Dangerous hardware operations: setting TDP, disabling fans, setting
+    arbitrary charge thresholds, toggling CPU cores, NVIDIA cTGP offset,
+    water cooler pump voltage.
+    Requires admin authentication (password prompt).
+  -->
+  <action id="com.uniwill.uccd.manage-hardware">
+    <description>Manage dangerous hardware settings (TDP, fans, power)</description>
+    <message>Authentication is required to change critical hardware settings. This could affect system stability.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+</policyconfig>

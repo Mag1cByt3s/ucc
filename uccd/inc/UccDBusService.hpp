@@ -21,6 +21,7 @@
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusError>
+#include <QDBusContext>
 #include <QVariantMap>
 #include <atomic>
 #include <string>
@@ -29,6 +30,7 @@
 #include <mutex>
 #include <optional>
 #include "CommonTypes.hpp"
+#include "PolkitAuthority.hpp"
 #include "workers/DaemonWorker.hpp"
 #include "workers/HardwareMonitorWorker.hpp"
 #include "workers/DisplayWorker.hpp"
@@ -214,6 +216,21 @@ public:
 };
 
 /**
+ * @brief QObject registered on the D-Bus system bus.
+ *
+ * Inherits QDBusContext so adaptor slots can retrieve the caller's
+ * connection and message for Polkit authorization checks.
+ */
+class UccDBusObject : public QObject, protected QDBusContext
+{
+  Q_OBJECT
+public:
+  explicit UccDBusObject( QObject *parent = nullptr ) : QObject( parent ) {}
+  using QDBusContext::connection;
+  using QDBusContext::message;
+};
+
+/**
  * @brief TCC DBus Interface Adaptor
  *
  * Implements the com.uniwill.uccd DBus interface using Qt's DBus adaptor framework.
@@ -396,6 +413,17 @@ private:
 
   void resetDataCollectionTimeout();
   QVariantMap exportFanData( const FanData &fanData );
+
+  /**
+   * @brief Check Polkit authorization for the current D-Bus caller.
+   *
+   * Retrieves the incoming D-Bus message from the parent UccDBusObject
+   * (which inherits QDBusContext) and delegates to PolkitAuthority.
+   *
+   * @param actionId One of PolkitAuthority::ACTION_* constants
+   * @return true if the caller is authorized
+   */
+  bool checkAuth( const char *actionId ) noexcept;
 };
 
 /**
@@ -491,7 +519,7 @@ private:
   static constexpr const char* INTERFACE_NAME = "com.uniwill.uccd";
   UccDBusData m_dbusData;
   TuxedoIOAPI m_io;
-  std::unique_ptr< QObject > m_dbusObject;  // The QObject registered on the D-Bus bus
+  std::unique_ptr< UccDBusObject > m_dbusObject;  // The QObject registered on the D-Bus bus
   std::unique_ptr< UccDBusInterfaceAdaptor > m_adaptor;
   bool m_started;
 

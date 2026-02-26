@@ -56,6 +56,16 @@ in
     # (com.uniwill.ucc.private, via QML2_IMPORT_PATH / QT_QML_IMPORT_PATH).
     environment.systemPackages = [ cfg.package ];
 
+    # Install the Polkit policy so that unprivileged GUI users can
+    # authenticate for privileged D-Bus operations.
+    security.polkit.enable = true;
+
+    # Make the D-Bus service config and Polkit policy discoverable at the
+    # system level.  environment.systemPackages alone is not sufficient for
+    # system-bus configs and Polkit action definitions.
+    services.dbus.packages = [ cfg.package ];
+    environment.pathsToLink = [ "/share/polkit-1" ];
+
     systemd.tmpfiles.rules = [
       "d /etc/ucc 0755 root root - -"
       "d /etc/ucc/autosave 0755 root root - -"

@@ -70,6 +70,17 @@ target_compile_options(uccd PRIVATE
   -Wdouble-promotion
   -Wformat=2
   -fexceptions
+  # Security hardening
+  -fstack-protector-strong
+  -D_FORTIFY_SOURCE=2
+  -fPIE
+)
+
+# Linker hardening flags
+target_link_options(uccd PRIVATE
+  -pie
+  -Wl,-z,relro,-z,now
+  -Wl,-z,noexecstack
 )
 
 # Installation target
@@ -90,4 +101,9 @@ install(FILES com.uniwill.uccd.service
 # Install DBus policy file to allow user access
 install(FILES com.uniwill.uccd.conf
   DESTINATION share/dbus-1/system.d
+)
+
+# Install Polkit policy file for authorization
+install(FILES com.uniwill.uccd.policy
+  DESTINATION share/polkit-1/actions
 )

@@ -299,6 +299,21 @@ UccDBusInterfaceAdaptor::UccDBusInterfaceAdaptor( QObject *parent,
   syslog( LOG_INFO, "UccDBusInterfaceAdaptor: registered interface %s", UccDBusInterfaceAdaptor::INTERFACE_NAME );
 }
 
+bool UccDBusInterfaceAdaptor::checkAuth( const char *actionId ) noexcept
+{
+  auto *dbusObj = qobject_cast< UccDBusObject * >( parent() );
+  if ( not dbusObj )
+  {
+    syslog( LOG_ERR, "PolkitAuth: parent is not UccDBusObject" );
+    return false;
+  }
+  const QString methodName = dbusObj->message().member();
+  std::cerr << "[PolkitAuth] method='" << methodName.toStdString()
+            << "' action='" << actionId << "'\n";
+  return PolkitAuthority::checkAuthorization(
+      dbusObj->connection(), dbusObj->message(), actionId );
+}
+
 
 void UccDBusInterfaceAdaptor::resetDataCollectionTimeout()
 {
@@ -419,6 +434,7 @@ bool UccDBusInterfaceAdaptor::GetForceYUV420OutputSwitchAvailable()
 
 bool UccDBusInterfaceAdaptor::SetDisplayRefreshRate( const QString &display, int refreshRate )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   // Note: display parameter is currently ignored - only works with primary display
   // TODO: Support multiple displays in the future
   (void)display;
@@ -443,6 +459,7 @@ int UccDBusInterfaceAdaptor::GetDisplayBrightness()
 
 bool UccDBusInterfaceAdaptor::SetDisplayBrightness( int brightness )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( m_service )
   {
     // clamp
@@ -510,6 +527,7 @@ QString UccDBusInterfaceAdaptor::GetActiveProfileJSON()
 
 bool UccDBusInterfaceAdaptor::SetFanProfileCPU( const QString &pointsJSON )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
   if ( !m_service )
     return false;
 
@@ -551,6 +569,7 @@ bool UccDBusInterfaceAdaptor::SetFanProfileCPU( const QString &pointsJSON )
 
 bool UccDBusInterfaceAdaptor::SetFanProfileDGPU( const QString &pointsJSON )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
   if ( !m_service )
     return false;
 
@@ -592,6 +611,7 @@ bool UccDBusInterfaceAdaptor::SetFanProfileDGPU( const QString &pointsJSON )
 
 bool UccDBusInterfaceAdaptor::ApplyFanProfiles( const QString &fanProfilesJSONq )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
   if ( not m_service )
     return false;
 
@@ -647,6 +667,7 @@ bool UccDBusInterfaceAdaptor::ApplyFanProfiles( const QString &fanProfilesJSONq 
 
 bool UccDBusInterfaceAdaptor::RevertFanProfiles()
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
   if ( !m_service )
     return false;
 
@@ -675,6 +696,7 @@ bool UccDBusInterfaceAdaptor::RevertFanProfiles()
 
 bool UccDBusInterfaceAdaptor::SetTempProfile( const QString &profileName )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   std::lock_guard< std::mutex > lock( m_data.dataMutex );
   m_data.tempProfileName = profileName.toStdString();
   return true;
@@ -682,6 +704,7 @@ bool UccDBusInterfaceAdaptor::SetTempProfile( const QString &profileName )
 
 bool UccDBusInterfaceAdaptor::SetTempProfileById( const QString &id )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   std::lock_guard< std::mutex > lock( m_data.dataMutex );
   m_data.tempProfileId = id.toStdString();
   // trigger state check would be called here
@@ -690,12 +713,14 @@ bool UccDBusInterfaceAdaptor::SetTempProfileById( const QString &id )
 
 bool UccDBusInterfaceAdaptor::SetActiveProfile( const QString &id )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   // Immediately set the active profile
   return m_service->setCurrentProfileById( id.toStdString() );
 }
 
 bool UccDBusInterfaceAdaptor::ApplyProfile( const QString &profileJSON )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
   // Apply the profile configuration sent by the GUI
   return m_service->applyProfileJSON( profileJSON.toStdString() );
 }
@@ -740,6 +765,7 @@ QString UccDBusInterfaceAdaptor::GetDefaultValuesProfileJSON()
 
 bool UccDBusInterfaceAdaptor::AddCustomProfile( const QString &profileJSON )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( !m_service )
   {
     std::cerr << "[Profile] AddCustomProfile called but service not available" << std::endl;
@@ -787,6 +813,7 @@ bool UccDBusInterfaceAdaptor::AddCustomProfile( const QString &profileJSON )
 
 bool UccDBusInterfaceAdaptor::DeleteCustomProfile( const QString &profileId )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( !m_service )
   {
     std::cerr << "[Profile] DeleteCustomProfile called but service not available" << std::endl;
@@ -812,6 +839,7 @@ bool UccDBusInterfaceAdaptor::DeleteCustomProfile( const QString &profileId )
 
 bool UccDBusInterfaceAdaptor::UpdateCustomProfile( const QString &profileJSON )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( !m_service )
   {
     std::cerr << "[Profile] UpdateCustomProfile called but service not available" << std::endl;
@@ -867,6 +895,7 @@ bool UccDBusInterfaceAdaptor::UpdateCustomProfile( const QString &profileJSON )
 
 bool UccDBusInterfaceAdaptor::SaveCustomProfile( const QString &profileJSON )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( !m_service )
   {
     std::cerr << "[Profile] SaveCustomProfile called but service not available" << std::endl;
@@ -1094,6 +1123,7 @@ QString UccDBusInterfaceAdaptor::GetFanProfileNames()
 
 bool UccDBusInterfaceAdaptor::SetFanProfile( const QString &name, const QString &json )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   return setFanProfileJson( name.toStdString(), json.toStdString() );
 }
 
@@ -1124,6 +1154,7 @@ QString UccDBusInterfaceAdaptor::GetPowerState()
 
 bool UccDBusInterfaceAdaptor::SetStateMap( const QString &state, const QString &profileId )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( !m_service )
   {
     return false;
@@ -1188,6 +1219,7 @@ bool UccDBusInterfaceAdaptor::SetStateMap( const QString &state, const QString &
 
 bool UccDBusInterfaceAdaptor::SetBatchStateMap( const QString &stateMapJSON )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( !m_service )
     return false;
 
@@ -1283,6 +1315,7 @@ QString UccDBusInterfaceAdaptor::GetKeyboardBacklightStatesJSON()
 
 bool UccDBusInterfaceAdaptor::SetKeyboardBacklightStatesJSON( const QString &keyboardBacklightStatesJSON )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   std::lock_guard< std::mutex > lock( m_data.dataMutex );
   m_data.keyboardBacklightStatesNewJSON = keyboardBacklightStatesJSON.toStdString();
   return true;
@@ -1318,6 +1351,7 @@ QString UccDBusInterfaceAdaptor::GetCurrentChargingProfile()
 
 bool UccDBusInterfaceAdaptor::SetChargingProfile( const QString &profileDescriptor )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   bool result = m_service->m_profileSettingsWorker->applyChargingProfile( profileDescriptor.toStdString() );
 
   if ( result )
@@ -1343,6 +1377,7 @@ QString UccDBusInterfaceAdaptor::GetCurrentChargingPriority()
 
 bool UccDBusInterfaceAdaptor::SetChargingPriority( const QString &priorityDescriptor )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   bool result = m_service->m_profileSettingsWorker->applyChargingPriority( priorityDescriptor.toStdString() );
 
   if ( result )
@@ -1380,6 +1415,7 @@ int UccDBusInterfaceAdaptor::GetChargeEndThreshold()
 
 bool UccDBusInterfaceAdaptor::SetChargeStartThreshold( int value )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
   bool result = m_service->m_profileSettingsWorker->setChargeStartThreshold( value );
 
   if ( result )
@@ -1390,6 +1426,7 @@ bool UccDBusInterfaceAdaptor::SetChargeStartThreshold( int value )
 
 bool UccDBusInterfaceAdaptor::SetChargeEndThreshold( int value )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
   bool result = m_service->m_profileSettingsWorker->setChargeEndThreshold( value );
 
   if ( result )
@@ -1406,6 +1443,7 @@ QString UccDBusInterfaceAdaptor::GetChargeType()
 
 bool UccDBusInterfaceAdaptor::SetChargeType( const QString &type )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
   bool result = m_service->m_profileSettingsWorker->setChargeType( type.toStdString() );
 
   if ( result )
@@ -1431,6 +1469,7 @@ bool UccDBusInterfaceAdaptor::GetFnLockStatus()
 
 void UccDBusInterfaceAdaptor::SetFnLockStatus( bool status )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return;
   m_service->m_fnLockController.setStatus( status );
 }
 
@@ -1438,6 +1477,7 @@ void UccDBusInterfaceAdaptor::SetFnLockStatus( bool status )
 
 void UccDBusInterfaceAdaptor::SetSensorDataCollectionStatus( bool status )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return;
   m_data.sensorDataCollectionStatus = status;
 }
 
@@ -1448,6 +1488,7 @@ bool UccDBusInterfaceAdaptor::GetSensorDataCollectionStatus()
 
 void UccDBusInterfaceAdaptor::SetDGpuD0Metrics( bool status )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return;
   m_data.d0MetricsUsage = status;
 }
 
@@ -1535,6 +1576,7 @@ int UccDBusInterfaceAdaptor::GetWaterCoolerPumpLevel()
 
 bool UccDBusInterfaceAdaptor::EnableWaterCooler( bool enable )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   // Update shared DBus flag and request service to perform actions when disabling
   m_data.waterCoolerScanningEnabled = enable;
 
@@ -1566,6 +1608,7 @@ bool UccDBusInterfaceAdaptor::IsWaterCoolerEnabled()
 
 bool UccDBusInterfaceAdaptor::SetWaterCoolerFanSpeed( int dutyCyclePercent )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( m_service && m_service->m_waterCoolerWorker )
     return m_service->m_waterCoolerWorker->setFanSpeed( dutyCyclePercent );
 
@@ -1574,6 +1617,7 @@ bool UccDBusInterfaceAdaptor::SetWaterCoolerFanSpeed( int dutyCyclePercent )
 
 bool UccDBusInterfaceAdaptor::SetWaterCoolerPumpVoltage( int voltage )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( m_service && m_service->m_waterCoolerWorker )
     return m_service->m_waterCoolerWorker->setPumpVoltage( voltage );
 
@@ -1582,6 +1626,7 @@ bool UccDBusInterfaceAdaptor::SetWaterCoolerPumpVoltage( int voltage )
 
 bool UccDBusInterfaceAdaptor::SetWaterCoolerLEDColor( int red, int green, int blue, int mode )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( m_service && m_service->m_waterCoolerWorker )
   {
     m_service->m_waterCoolerLedMode.store( mode );
@@ -1598,6 +1643,7 @@ bool UccDBusInterfaceAdaptor::SetWaterCoolerLEDColor( int red, int green, int bl
 
 bool UccDBusInterfaceAdaptor::TurnOffWaterCoolerLED()
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( m_service && m_service->m_waterCoolerWorker )
   {
     return m_service->m_waterCoolerWorker->turnOffLED();
@@ -1607,6 +1653,7 @@ bool UccDBusInterfaceAdaptor::TurnOffWaterCoolerLED()
 
 bool UccDBusInterfaceAdaptor::TurnOffWaterCoolerFan()
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( m_service && m_service->m_waterCoolerWorker )
   {
     return m_service->m_waterCoolerWorker->turnOffFan();
@@ -1616,6 +1663,7 @@ bool UccDBusInterfaceAdaptor::TurnOffWaterCoolerFan()
 
 bool UccDBusInterfaceAdaptor::TurnOffWaterCoolerPump()
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( m_service && m_service->m_waterCoolerWorker )
   {
     return m_service->m_waterCoolerWorker->turnOffPump();
@@ -1655,6 +1703,7 @@ QByteArray UccDBusInterfaceAdaptor::GetMonitorDataSince( qlonglong sinceTimestam
 
 void UccDBusInterfaceAdaptor::SetMonitorHistoryHorizon( int seconds )
 {
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return;
   if ( m_service )
     m_service->m_metricsStore.setHorizon( seconds );
 }
@@ -2212,8 +2261,8 @@ bool UccDBusService::initDBus()
       return false;
     }
 
-    // Create the D-Bus object in the main thread
-    m_dbusObject = std::make_unique< QObject >();
+    // Create the D-Bus object in the main thread (with QDBusContext for Polkit)
+    m_dbusObject = std::make_unique< UccDBusObject >();
 
     // Create the adaptor (attaches to m_dbusObject automatically)
     m_adaptor = std::make_unique< UccDBusInterfaceAdaptor >( m_dbusObject.get(), m_dbusData, this );
@@ -3126,11 +3175,62 @@ bool UccDBusService::updateCustomProfile( const UccProfile &profile )
 
 void UccDBusService::initializeDisplayModes()
 {
-  // detect session type (x11 or wayland)
-  std::string sessionType = TccUtils::executeCommand(
-    "cat $(printf \"/proc/%s/environ \" $(pgrep -vu root | tail -n 20)) 2>/dev/null | "
-    "tr '\\0' '\\n' 2>/dev/null | grep -m1 '^XDG_SESSION_TYPE=' | cut -d= -f2"
-  );
+  // Detect session type by reading /proc/<pid>/environ directly (no shell).
+  // The old popen()-based approach was vulnerable to environment injection.
+  std::string sessionType;
+  const uid_t rootUid = 0;
+
+  try
+  {
+    namespace fs = std::filesystem;
+    for ( const auto &entry : fs::directory_iterator( "/proc" ) )
+    {
+      if ( not sessionType.empty() )
+        break;
+
+      const std::string pidName = entry.path().filename().string();
+      if ( pidName.empty() or not std::isdigit( static_cast< unsigned char >( pidName[0] ) ) )
+        continue;
+
+      // Skip root-owned processes
+      std::string loginuidPath = entry.path().string() + "/loginuid";
+      std::ifstream loginuidFile( loginuidPath );
+      if ( loginuidFile )
+      {
+        uid_t uid = 0;
+        loginuidFile >> uid;
+        if ( uid == rootUid or uid == static_cast< uid_t >( -1 ) )
+          continue;
+      }
+      else
+      {
+        continue;
+      }
+
+      std::string environPath = entry.path().string() + "/environ";
+      std::ifstream envFile( environPath, std::ios::binary );
+      if ( not envFile )
+        continue;
+
+      std::string envContent( ( std::istreambuf_iterator< char >( envFile ) ),
+                               std::istreambuf_iterator< char >() );
+
+      std::istringstream envStream( envContent );
+      std::string envEntry;
+      while ( std::getline( envStream, envEntry, '\0' ) )
+      {
+        if ( envEntry.starts_with( "XDG_SESSION_TYPE=" ) )
+        {
+          sessionType = envEntry.substr( 17 );
+          break;
+        }
+      }
+    }
+  }
+  catch ( ... )
+  {
+    // Fall through with empty sessionType
+  }
 
   // trim whitespace
   while ( not sessionType.empty() and

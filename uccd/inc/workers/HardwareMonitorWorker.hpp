@@ -24,6 +24,8 @@
 #include <vector>
 #include <set>
 #include <sstream>
+#include <fstream>
+#include <regex>
 
 /**
  * @brief GPU device counts by vendor/type
@@ -143,22 +145,35 @@ private:
 
   [[nodiscard]] int countDevicesMatchingPattern( const std::string &pattern ) const noexcept
   {
+    namespace fs = std::filesystem;
     try
     {
-      std::string command =
-          "for f in /sys/bus/pci/devices/*/uevent; do "
-          "grep -q 'PCI_CLASS=30000' \"$f\" && grep -q -P 'PCI_ID=" + pattern + "' \"$f\" && echo \"$f\"; "
-          "done";
-
-      std::string output = TccUtils::executeCommand( command );
-      if ( output.empty() )
-        return 0;
-
+      const std::regex idRegex( "PCI_ID=" + pattern );
       int count = 0;
-      for ( char c : output )
-        if ( c == '\n' ) count++;
-      if ( not output.empty() and output.back() != '\n' )
-        count++;
+
+      for ( const auto &entry : fs::directory_iterator( "/sys/bus/pci/devices" ) )
+      {
+        auto ueventPath = entry.path() / "uevent";
+        std::ifstream ueventFile( ueventPath );
+        if ( not ueventFile )
+          continue;
+
+        bool hasDisplayClass = false;
+        bool hasMatchingId   = false;
+        std::string line;
+        while ( std::getline( ueventFile, line ) )
+        {
+          if ( line == "PCI_CLASS=30000" )
+            hasDisplayClass = true;
+          if ( std::regex_search( line, idRegex ) )
+            hasMatchingId = true;
+          if ( hasDisplayClass and hasMatchingId )
+            break;
+        }
+
+        if ( hasDisplayClass and hasMatchingId )
+          ++count;
+      }
       return count;
     }
     catch ( ... ) { return 0; }
@@ -166,32 +181,35 @@ private:
 
   [[nodiscard]] int countNvidiaDevices() const noexcept
   {
+    namespace fs = std::filesystem;
     try
     {
       const std::string nvidiaVendorId = "0x10de";
-      std::string command =
-          "grep -lx '" + nvidiaVendorId + "' /sys/bus/pci/devices/*/vendor 2>/dev/null || echo ''";
-      std::string output = TccUtils::executeCommand( command );
-      if ( output.empty() )
-        return 0;
-
       std::set< std::string > uniqueDevices;
-      std::istringstream iss( output );
-      std::string line;
 
-      while ( std::getline( iss, line ) )
+      for ( const auto &entry : fs::directory_iterator( "/sys/bus/pci/devices" ) )
       {
-        if ( not line.empty() )
+        auto vendorPath = entry.path() / "vendor";
+        std::ifstream vendorFile( vendorPath );
+        if ( not vendorFile )
+          continue;
+
+        std::string vendorValue;
+        std::getline( vendorFile, vendorValue );
+
+        // Trim trailing whitespace / newline
+        while ( not vendorValue.empty() and
+                ( vendorValue.back() == '\n' or vendorValue.back() == '\r' or vendorValue.back() == ' ' ) )
+          vendorValue.pop_back();
+
+        if ( vendorValue == nvidiaVendorId )
         {
-          size_t lastSlash = line.rfind( '/' );
-          if ( lastSlash != std::string::npos and lastSlash > 0 )
-          {
-            std::string devicePath = line.substr( 0, lastSlash );
-            size_t lastDot = devicePath.rfind( '.' );
-            if ( lastDot != std::string::npos )
-              devicePath = devicePath.substr( 0, lastDot );
-            uniqueDevices.insert( devicePath );
-          }
+          // Group by base device (strip PCI function suffix, e.g. ".0")
+          std::string devicePath = entry.path().string();
+          size_t lastDot = devicePath.rfind( '.' );
+          if ( lastDot != std::string::npos )
+            devicePath = devicePath.substr( 0, lastDot );
+          uniqueDevices.insert( devicePath );
         }
       }
       return static_cast< int >( uniqueDevices.size() );
