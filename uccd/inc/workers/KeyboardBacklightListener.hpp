@@ -417,10 +417,10 @@ private:
         std::string stateObj = statesJSON.substr( pos, end - pos + 1 );
         KeyboardBacklightState kbs;
 
-        kbs.brightness = extractInt( stateObj, "brightness" );
-        kbs.red = extractInt( stateObj, "red" );
-        kbs.green = extractInt( stateObj, "green" );
-        kbs.blue = extractInt( stateObj, "blue" );
+        kbs.brightness = std::clamp( extractInt( stateObj, "brightness" ), 0, m_capabilities.maxBrightness );
+        kbs.red   = std::clamp( extractInt( stateObj, "red" ),   0, 255 );
+        kbs.green = std::clamp( extractInt( stateObj, "green" ), 0, 255 );
+        kbs.blue  = std::clamp( extractInt( stateObj, "blue" ),  0, 255 );
 
         newStates.push_back( kbs );
         pos = end + 1;

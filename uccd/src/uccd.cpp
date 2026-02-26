@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/file.h>
 #include <fcntl.h>
 #include <filesystem>
 #include <cstdlib>
@@ -76,32 +77,57 @@ void cleanup_syslog()
   closelog();
 }
 
-// PID file management
-void write_pid_file()
+// Global file descriptor for PID file lock
+static int g_pidfile_fd = -1;
+
+// Acquire exclusive lock on PID file (create if needed)
+bool acquire_pid_lock()
 {
-  std::ofstream pidfile( PID_FILE.data() );
-  if ( pidfile.is_open() )
+  // Use O_CREAT|O_RDWR to create+open; use flock() for atomic exclusive lock
+  g_pidfile_fd = open( PID_FILE.data(), O_CREAT | O_RDWR | O_CLOEXEC, 0644 );
+  if ( g_pidfile_fd < 0 )
   {
-    pidfile << getpid();
-    pidfile.close();
-    syslog( LOG_INFO, "PID file written: %s (pid=%d)", PID_FILE.data(), getpid() );
+    syslog( LOG_ERR, "Failed to open/create PID file: %s", std::strerror( errno ) );
+    return false;
   }
-  else
+
+  // Try to acquire exclusive lock (non-blocking)
+  if ( flock( g_pidfile_fd, LOCK_EX | LOCK_NB ) < 0 )
   {
-    syslog( LOG_WARNING, "Failed to write PID file: %s", PID_FILE.data() );
+    if ( errno == EWOULDBLOCK )
+    {
+      // File is locked by another instance — read its PID for error message
+      char pidbuf[32] = {0};
+      lseek( g_pidfile_fd, 0, SEEK_SET );
+      ssize_t n = read( g_pidfile_fd, pidbuf, sizeof(pidbuf) - 1 );
+      if ( n > 0 )
+        pidbuf[n] = '\0';
+      std::cerr << "Error: Another instance of the daemon is already running (PID " 
+                << pidbuf << ")." << std::endl;
+    }
+    else
+    {
+      syslog( LOG_ERR, "Failed to lock PID file: %s", std::strerror( errno ) );
+    }
+    close( g_pidfile_fd );
+    g_pidfile_fd = -1;
+    return false;
   }
+
+  return true;
 }
 
-void remove_pid_file()
+// Release and clean up PID file lock
+void release_pid_lock()
 {
-  try
+  if ( g_pidfile_fd >= 0 )
   {
-    std::filesystem::remove( PID_FILE );
+    flock( g_pidfile_fd, LOCK_UN );
+    close( g_pidfile_fd );
+    g_pidfile_fd = -1;
   }
-  catch ( const std::exception& e )
-  {
-    syslog( LOG_WARNING, "Failed to remove PID file: %s", e.what() );
-  }
+  using namespace std::filesystem;
+  try { remove( PID_FILE ); } catch ( ... ) { }
 }
 
 // Create /etc/ucc directory if it doesn't exist
@@ -134,35 +160,10 @@ void ensure_config_directory()
   }
 }
 
-// Check if another instance is already running
+// Check if another instance is already running (with atomic locking)
 int check_single_instance()
 {
-  std::ifstream pidfile( PID_FILE.data() );
-  if ( pidfile.is_open() )
-  {
-    pid_t existing_pid = 0;
-    pidfile >> existing_pid;
-    pidfile.close();
-
-    if ( existing_pid > 0 && kill( existing_pid, 0 ) == 0 )
-    {
-      std::cerr << "Error: Another instance of the daemon is already running (PID "
-                << existing_pid << ")." << std::endl;
-      return 1;
-    }
-
-    // Stale PID file, try to clean it up
-    try
-    {
-      std::filesystem::remove( PID_FILE );
-    }
-    catch ( const std::exception& e )
-    {
-      // Ignore cleanup errors
-    }
-  }
-
-  return 0;
+  return acquire_pid_lock() ? 0 : 1;
 }
 
 // Main daemon loop
@@ -242,8 +243,21 @@ int run_daemon()
     dbusService.start();
     syslog( LOG_INFO, "DBus service started" );
 
-    // Write PID file
-    write_pid_file();
+    // Write PID to locked file
+    if ( g_pidfile_fd >= 0 )
+    {
+      if ( ftruncate( g_pidfile_fd, 0 ) == 0 )
+      {
+        lseek( g_pidfile_fd, 0, SEEK_SET );
+        std::string pidstr = std::to_string( getpid() );
+        ssize_t written = write( g_pidfile_fd, pidstr.c_str(), pidstr.length() );
+        fsync( g_pidfile_fd );
+        if ( written > 0 )
+        {
+          syslog( LOG_INFO, "PID file written: %s (pid=%d)", PID_FILE.data(), getpid() );
+        }
+      }
+    }
 
     // Create a QSocketNotifier to watch for signals written into the pipe
     QSocketNotifier* notifier = nullptr;
@@ -266,7 +280,7 @@ int run_daemon()
     dbusService.shutdown();
 
     // Cleanup on exit
-    remove_pid_file();
+    release_pid_lock();
     cleanup_syslog();
     return result;
   }

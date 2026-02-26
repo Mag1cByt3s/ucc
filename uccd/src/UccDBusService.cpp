@@ -1416,6 +1416,8 @@ int UccDBusInterfaceAdaptor::GetChargeEndThreshold()
 bool UccDBusInterfaceAdaptor::SetChargeStartThreshold( int value )
 {
   if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
+  if ( value < 0 || value > 100 )
+    return false;
   bool result = m_service->m_profileSettingsWorker->setChargeStartThreshold( value );
 
   if ( result )
@@ -1427,6 +1429,8 @@ bool UccDBusInterfaceAdaptor::SetChargeStartThreshold( int value )
 bool UccDBusInterfaceAdaptor::SetChargeEndThreshold( int value )
 {
   if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
+  if ( value < 0 || value > 100 )
+    return false;
   bool result = m_service->m_profileSettingsWorker->setChargeEndThreshold( value );
 
   if ( result )
@@ -1609,6 +1613,8 @@ bool UccDBusInterfaceAdaptor::IsWaterCoolerEnabled()
 bool UccDBusInterfaceAdaptor::SetWaterCoolerFanSpeed( int dutyCyclePercent )
 {
   if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( dutyCyclePercent < 0 || dutyCyclePercent > 100 )
+    return false;
   if ( m_service && m_service->m_waterCoolerWorker )
     return m_service->m_waterCoolerWorker->setFanSpeed( dutyCyclePercent );
 
@@ -1618,6 +1624,9 @@ bool UccDBusInterfaceAdaptor::SetWaterCoolerFanSpeed( int dutyCyclePercent )
 bool UccDBusInterfaceAdaptor::SetWaterCoolerPumpVoltage( int voltage )
 {
   if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  // V12(1) is reserved and V1bis excluded. Valid: {0, 2, 3, 4}
+  if ( voltage != 0 && voltage != 2 && voltage != 3 && voltage != 4 )
+    return false;
   if ( m_service && m_service->m_waterCoolerWorker )
     return m_service->m_waterCoolerWorker->setPumpVoltage( voltage );
 

@@ -778,6 +778,10 @@ void ProfileSettingsWorker::applyNVIDIACTGPOffset()
 
   int32_t ctgpOffset = getNVIDIAProfileOffset();
 
+  // Clamp cTGP offset to valid range: [-(max-default), (max-default)]
+  const int32_t maxAdjustment = m_nvidiaPowerCTRLMaxPowerLimit - m_nvidiaPowerCTRLDefaultPowerLimit;
+  ctgpOffset = std::clamp( ctgpOffset, -maxAdjustment, maxAdjustment );
+
   std::ofstream file( NVIDIA_CTGP_OFFSET );
   if ( !file.is_open() )
   {

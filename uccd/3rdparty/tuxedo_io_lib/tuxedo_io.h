@@ -101,7 +101,10 @@ public:
     if ( not isAvailable() )
       return false;
 
-    auto buffer = std::make_unique<char[]>(bufferLength);
+    // Allocate one extra byte and ensure NUL termination
+    auto buffer = std::make_unique<char[]>(bufferLength + 1);
+    buffer[bufferLength] = '\0';  // Prevent buffer overread in case kernel doesn't NUL-term
+
     int result = ioctl(m_fileHandle, request, buffer.get());
     if ( result >= 0 )
     {
