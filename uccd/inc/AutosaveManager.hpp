@@ -105,8 +105,9 @@ public:
       // Serialize to JSON
       std::string json = autosaveToJSON( autosave );
 
-      // Write to file
-      std::ofstream file( m_autosavePath, std::ios::trunc );
+      // Write to temporary file first for atomic operation
+      std::string tempPath = m_autosavePath + ".tmp";
+      std::ofstream file( tempPath, std::ios::trunc );
       if ( !file.is_open() )
       {
         return false;
@@ -115,7 +116,19 @@ public:
       file << json;
       file.close();
 
-      // Set file permissions
+      // Atomic rename (POSIX guarantees this is atomic)
+      try
+      {
+        std::filesystem::rename( tempPath, m_autosavePath );
+      }
+      catch ( const std::exception &e )
+      {
+        std::filesystem::remove( tempPath );
+        std::cerr << "[Autosave] Failed to rename temp file: " << e.what() << std::endl;
+        return false;
+      }
+
+      // Set file permissions after atomic write to prevent race
       chmod( m_autosavePath.c_str(), m_autosaveFileMod );
 
       return true;

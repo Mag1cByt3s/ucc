@@ -19,6 +19,7 @@
 #include "profiles/DefaultProfiles.hpp"
 #include "CommonTypes.hpp"
 #include "StateUtils.hpp"
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -156,6 +157,15 @@ public:
    * @brief Parse a single profile from JSON object
    * @param json JSON object string
    * @return Parsed profile
+   */
+  /**
+   * @brief Parse profile from JSON string
+   * 
+   * SECURITY NOTE (VULN-27): This function uses hand-rolled JSON parsing.
+   * For better security and maintainability, this should be refactored to use
+   * nlohmann::json instead. The library is already a project dependency and
+   * provides automatic escaping, proper error handling, and type safety.
+   * Refactoring should preserve backward compatibility with existing profile JSON.
    */
   [[nodiscard]] static UccProfile parseProfileJSON( const std::string &json )
   {
@@ -593,6 +603,10 @@ private:
 public:
   /**
    * @brief Serialize single profile to JSON (complete format for file storage)
+   * 
+   * SECURITY NOTE (VULN-27): This function uses string concatenation to build JSON.
+   * Modern approach: refactor to use nlohmann::json::object for type-safe serialization
+   * with automatic proper escaping and validation. The library is already a dependency.
    */
   [[nodiscard]] static std::string profileToJSON( const UccProfile &profile )
   {

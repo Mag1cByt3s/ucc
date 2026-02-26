@@ -84,7 +84,8 @@ static int g_pidfile_fd = -1;
 bool acquire_pid_lock()
 {
   // Use O_CREAT|O_RDWR to create+open; use flock() for atomic exclusive lock
-  g_pidfile_fd = open( PID_FILE.data(), O_CREAT | O_RDWR | O_CLOEXEC, 0644 );
+  // Mode 0600: read/write only for owner to prevent other users from reading PID
+  g_pidfile_fd = open( PID_FILE.data(), O_CREAT | O_RDWR | O_CLOEXEC, 0600 );
   if ( g_pidfile_fd < 0 )
   {
     syslog( LOG_ERR, "Failed to open/create PID file: %s", std::strerror( errno ) );

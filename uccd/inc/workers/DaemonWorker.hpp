@@ -219,9 +219,10 @@ protected:
       if ( !m_destroying )
         onExit();
     }
-    catch ( const std::exception & )
+    catch ( const std::exception &e )
     {
-      // silently ignore exceptions to prevent thread from crashing
+      // Log exception to prevent silent thread failures
+      syslog( LOG_ERR, "DaemonWorker %s caught exception: %s", typeid(*this).name(), e.what() );
     }
   }
   /**

@@ -21,11 +21,11 @@
 
 #define IOCTL_MAGIC 0xEC
 
-#define MAGIC_READ_CL	IOCTL_MAGIC + 1
-#define MAGIC_WRITE_CL	IOCTL_MAGIC + 2
+#define MAGIC_READ_CL	(IOCTL_MAGIC + 1)
+#define MAGIC_WRITE_CL	(IOCTL_MAGIC + 2)
 
-#define MAGIC_READ_UW	IOCTL_MAGIC + 3
-#define MAGIC_WRITE_UW	IOCTL_MAGIC + 4
+#define MAGIC_READ_UW	(IOCTL_MAGIC + 3)
+#define MAGIC_WRITE_UW	(IOCTL_MAGIC + 4)
 
 #define MOD_API_MIN_VERSION "0.2.6" // IMPORTANT: Needs to be updated when a new ioctl is added
 

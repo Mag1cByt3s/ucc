@@ -1107,7 +1107,13 @@ bool LCTWaterCoolerWorker::turnOffDevice( uint8_t cmd )
 
 bool LCTWaterCoolerWorker::resetBluetoothAdapter()
 {
-  syslog( LOG_WARNING, "LCTWaterCoolerWorker: resetting Bluetooth adapter via bluetoothctl" );
+  // WARNING: This function power-cycles the Bluetooth adapter, which will:
+  //  - Disconnect ALL active Bluetooth connections on the system
+  //  - Cause ALL paired Bluetooth devices to become temporarily unavailable
+  //  - Block all Bluetooth operations during reset (1.5+ seconds)
+  // This is a heavy-handed recovery mechanism and should only be used after
+  // persistent connection failures.  Callers should document this side effect.
+  syslog( LOG_WARNING, "LCTWaterCoolerWorker: resetting Bluetooth adapter via bluetoothctl (WARNING: disconnects all BT devices)" );
 
   cleanupBleController();
 

@@ -328,7 +328,7 @@ void TrayBackend::setODMPerformanceProfile( const QString &profile )
 
 void TrayBackend::openControlCenter()
 {
-  QProcess::startDetached( "ucc-gui", QStringList() );
+  QProcess::startDetached( "/usr/bin/ucc-gui", QStringList() );
 }
 
 void TrayBackend::refreshAll()
