@@ -1225,7 +1225,7 @@ bool UccDBusInterfaceAdaptor::SetStateMap( const QString &state, const QString &
 
 bool UccDBusInterfaceAdaptor::SetBatchStateMap( const QString &stateMapJSON )
 {
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
   if ( !m_service )
     return false;
 
@@ -1285,6 +1285,16 @@ bool UccDBusInterfaceAdaptor::SetBatchStateMap( const QString &stateMapJSON )
   if ( !wrote )
     std::cerr << "[Settings] Failed to persist batch stateMap update" << std::endl;
   m_service->updateDBusSettingsData();
+
+  // If the current power state was among the changed entries, apply the new profile immediately
+  const std::string currentStateKey = profileStateToString( m_service->m_currentState );
+  if ( map.contains( QString::fromStdString( currentStateKey ) ) )
+  {
+    std::cout << "[DBus] SetBatchStateMap: Current state '" << currentStateKey
+              << "' was updated, applying profile" << std::endl;
+    m_service->applyProfileForCurrentState();
+  }
+
   return wrote;
 }
 

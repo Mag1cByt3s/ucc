@@ -1954,8 +1954,12 @@ void MainWindow::updateProfileEditingWidgets( bool isCustom )
   // CPU controls
   if ( m_cpuCoresSlider ) m_cpuCoresSlider->setEnabled( isCustom );
   if ( m_governorCombo ) m_governorCombo->setEnabled( isCustom );
+  if ( m_eppCombo ) m_eppCombo->setEnabled( isCustom );
   if ( m_minFrequencySlider ) m_minFrequencySlider->setEnabled( isCustom );
   if ( m_maxFrequencySlider ) m_maxFrequencySlider->setEnabled( isCustom );
+
+  // Keyboard profile
+  if ( m_profileKeyboardProfileCombo ) m_profileKeyboardProfileCombo->setEnabled( isCustom );
 
   // ODM Power controls
   if ( m_odmPowerLimit1Slider ) m_odmPowerLimit1Slider->setEnabled( isCustom );
