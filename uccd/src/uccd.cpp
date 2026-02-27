@@ -41,9 +41,8 @@
 #include "workers/HardwareMonitorWorker.hpp"
 #include "UccDBusService.hpp"
 #include "SettingsManager.hpp"
+#include "version.h"
 
-// C++20 features used
-constexpr std::string_view VERSION = "0.1.1";
 constexpr std::string_view DAEMON_NAME = "uccd";
 constexpr std::string_view PID_FILE = "/run/uccd.pid";
 
@@ -67,7 +66,7 @@ static void signal_fd_handler( int sig )
 void init_syslog()
 {
   openlog( DAEMON_NAME.data(), LOG_PID, LOG_DAEMON );
-  syslog( LOG_INFO, "uccd starting - version %s", VERSION.data() );
+  syslog( LOG_INFO, "uccd starting - version %s", UCC_VERSION_FULL );
 }
 
 // Cleanup syslog
@@ -174,6 +173,8 @@ int run_daemon()
   int argc = 1;
   char* argv[] = {const_cast<char*>("uccd")};
   QCoreApplication app(argc, argv);
+  app.setApplicationName( "uccd" );
+  app.setApplicationVersion( UCC_VERSION_FULL );
 
   init_syslog();
 
@@ -309,7 +310,7 @@ void print_usage( std::string_view program_name )
 // Print version information
 void print_version()
 {
-  std::cout << DAEMON_NAME << " version " << VERSION << "\n"
+  std::cout << DAEMON_NAME << " version " << UCC_VERSION_FULL << "\n"
             << "Daemon for Uniwill Control Center\n";
 }
 
@@ -437,7 +438,7 @@ int main( int argc, char* argv[] )
   if ( debug_mode )
   {
     // Debug mode: run in foreground with logging to console
-    std::cout << DAEMON_NAME << " version " << VERSION << " - Debug mode" << std::endl;
+    std::cout << DAEMON_NAME << " version " << UCC_VERSION_FULL << " - Debug mode" << std::endl;
     std::cout << "Running in foreground with console logging..." << std::endl;
     if ( check_single_instance() != 0 )
     {

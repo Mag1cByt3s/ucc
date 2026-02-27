@@ -3,9 +3,39 @@
 cmake_minimum_required( VERSION 3.20 )
 
 project( ucc
-  VERSION 0.1.1
+  VERSION 0.1.2
   DESCRIPTION "Uniwill Control Center - Qt/KDE application suite"
   LANGUAGES CXX
+)
+
+# ---------- Version / release tag -------------------------------------------
+# Detect short git commit hash; used as the RELEASE component in version.h.
+find_package( Git QUIET )
+if( GIT_FOUND )
+  execute_process(
+    COMMAND ${GIT_EXECUTABLE} -C "${CMAKE_SOURCE_DIR}" rev-parse --short HEAD
+    OUTPUT_VARIABLE UCC_GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+    RESULT_VARIABLE _git_result
+  )
+  if( NOT _git_result EQUAL 0 )
+    set( UCC_GIT_HASH "" )
+  endif()
+else()
+  set( UCC_GIT_HASH "" )
+endif()
+
+if( UCC_GIT_HASH )
+  set( UCC_VERSION_FULL "${PROJECT_VERSION}+${UCC_GIT_HASH}" )
+else()
+  set( UCC_VERSION_FULL "${PROJECT_VERSION}" )
+endif()
+
+configure_file(
+  "${CMAKE_SOURCE_DIR}/include/version.h.in"
+  "${CMAKE_BINARY_DIR}/include/version.h"
+  @ONLY
 )
 
 # C++ Standard
@@ -66,8 +96,8 @@ option( BUILD_CLI "Build the command-line interface" ON )
 option( BUILD_TRAY "Build the system tray applet" ON )
 option( BUILD_GNOME "Install the GNOME Shell extension" ON )
 
-# Include directories
-include_directories( ${CMAKE_SOURCE_DIR}/include )
+# Include directories (source headers + generated version.h)
+include_directories( ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include )
 
 
 # Subdirectories
@@ -141,7 +171,7 @@ install(FILES icons/ucc-tray_128.png DESTINATION share/icons/hicolor/128x128/app
 # Summary
 message(STATUS "")
 message(STATUS "=== Uniwill Control Center Build Configuration ===")
-message(STATUS "  Version:          ${PROJECT_VERSION}")
+message(STATUS "  Version:          ${UCC_VERSION_FULL}")
 message(STATUS "  Build type:       ${CMAKE_BUILD_TYPE}")
 message(STATUS "  C++ Standard:     ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Qt Version:       ${Qt6_VERSION}")

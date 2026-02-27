@@ -22,6 +22,7 @@
 #include "MainWindow.hpp"
 #include "SystemMonitor.hpp"
 #include "UccdClient.hpp"
+#include "version.h"
 
 int main( int argc, char *argv[] )
 {
@@ -42,7 +43,7 @@ int main( int argc, char *argv[] )
     app.setOrganizationName( "UniwillControlCenter" );
     app.setOrganizationDomain( "uniwill.local" );
     app.setApplicationName( "ucc-gui" );
-    app.setApplicationVersion( "0.1.1" );
+    app.setApplicationVersion( UCC_VERSION_FULL );
 
     ucc::SystemMonitor monitor;
     QTextStream out( stdout );
@@ -75,7 +76,7 @@ int main( int argc, char *argv[] )
   app.setOrganizationName( "UniwillControlCenter" );
   app.setOrganizationDomain( "uniwill.local" );
   app.setApplicationName( "ucc-gui" );
-  app.setApplicationVersion( "0.1.1" );
+  app.setApplicationVersion( UCC_VERSION_FULL );
 
   // ensure window decorations and the application use the theme icon we installed
   app.setWindowIcon( QIcon::fromTheme( "ucc-gui" ) );

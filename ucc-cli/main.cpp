@@ -17,6 +17,7 @@
 
 #include "UccdClient.hpp"
 #include "CommonTypes.hpp"
+#include "version.h"
 
 #include <QCoreApplication>
 #include <QJsonDocument>
@@ -39,11 +40,9 @@
 // Helpers
 // ---------------------------------------------------------------------------
 
-static constexpr const char *VERSION = "0.1.1";
-
 static void printVersion()
 {
-  std::printf( "ucc-cli %s\n", VERSION );
+  std::printf( "ucc-cli %s\n", UCC_VERSION_FULL );
 }
 
 /// Pretty-print a JSON string (compact → indented).
@@ -1809,7 +1808,7 @@ int main( int argc, char *argv[] )
 {
   QCoreApplication app( argc, argv );
   app.setApplicationName( "ucc-cli" );
-  app.setApplicationVersion( VERSION );
+  app.setApplicationVersion( UCC_VERSION_FULL );
   app.setOrganizationName( "Uniwill" );
 
   if ( argc < 2 )
