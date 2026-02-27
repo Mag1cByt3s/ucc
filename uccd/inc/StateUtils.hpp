@@ -19,6 +19,7 @@
 #include "PowerSupplyController.hpp"
 #include <filesystem>
 #include <iostream>
+#include <syslog.h>
 
 inline ProfileState determineState() noexcept
 {

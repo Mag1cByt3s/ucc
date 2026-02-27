@@ -95,6 +95,12 @@ option( BUILD_GUI "Build the main GUI application" ON )
 option( BUILD_CLI "Build the command-line interface" ON )
 option( BUILD_TRAY "Build the system tray applet" ON )
 option( BUILD_GNOME "Install the GNOME Shell extension" ON )
+option( BUILD_TESTS "Build the unit test suite" OFF )
+
+# Conditionally find Qt6::Test if tests are enabled
+if( BUILD_TESTS )
+  find_package( Qt6 REQUIRED COMPONENTS Test )
+endif()
 
 # Include directories (source headers + generated version.h)
 include_directories( ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include )
@@ -114,6 +120,11 @@ endif()
 
 if( BUILD_TRAY )
   add_subdirectory( ucc-tray )
+endif()
+
+if( BUILD_TESTS )
+  enable_testing()
+  add_subdirectory( tests )
 endif()
 
 # Install SVG icons to /usr/share/pixmaps for legacy compatibility
@@ -182,6 +193,7 @@ message(STATUS "    GUI App:        ${BUILD_GUI}")
 message(STATUS "    CLI Tool:       ${BUILD_CLI}")
 message(STATUS "    Tray Applet:    ${BUILD_TRAY}")
 message(STATUS "    GNOME Ext:      ${BUILD_GNOME}")
+message(STATUS "    Unit Tests:     ${BUILD_TESTS}")
 message(STATUS "")
 message(STATUS "  Install prefix:   ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "===================================================")
