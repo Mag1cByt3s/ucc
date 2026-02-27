@@ -19,7 +19,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
   project(
     ucc-tray
-    VERSION 0.1.0
+    VERSION 0.1.1
     DESCRIPTION "Uniwill Control Center tray"
     LANGUAGES CXX
   )

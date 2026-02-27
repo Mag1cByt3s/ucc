@@ -39,7 +39,7 @@
 // Helpers
 // ---------------------------------------------------------------------------
 
-static constexpr const char *VERSION = "0.1.0";
+static constexpr const char *VERSION = "0.1.1";
 
 static void printVersion()
 {

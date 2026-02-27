@@ -1,7 +1,7 @@
 %global _hardened_build 1
 
 Name:           ucc
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Uniwill Control Center - System control application suite
 License:        GPL-3.0-or-later

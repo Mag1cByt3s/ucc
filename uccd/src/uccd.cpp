@@ -43,7 +43,7 @@
 #include "SettingsManager.hpp"
 
 // C++20 features used
-constexpr std::string_view VERSION = "0.1.0";
+constexpr std::string_view VERSION = "0.1.1";
 constexpr std::string_view DAEMON_NAME = "uccd";
 constexpr std::string_view PID_FILE = "/run/uccd.pid";
 

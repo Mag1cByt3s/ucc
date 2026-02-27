@@ -42,7 +42,7 @@ int main( int argc, char *argv[] )
     app.setOrganizationName( "UniwillControlCenter" );
     app.setOrganizationDomain( "uniwill.local" );
     app.setApplicationName( "ucc-gui" );
-    app.setApplicationVersion( "0.1.0" );
+    app.setApplicationVersion( "0.1.1" );
 
     ucc::SystemMonitor monitor;
     QTextStream out( stdout );
@@ -75,7 +75,7 @@ int main( int argc, char *argv[] )
   app.setOrganizationName( "UniwillControlCenter" );
   app.setOrganizationDomain( "uniwill.local" );
   app.setApplicationName( "ucc-gui" );
-  app.setApplicationVersion( "0.1.0" );
+  app.setApplicationVersion( "0.1.1" );
 
   // ensure window decorations and the application use the theme icon we installed
   app.setWindowIcon( QIcon::fromTheme( "ucc-gui" ) );

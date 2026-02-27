@@ -1,4 +1,4 @@
-ucc (0.1.0+20260213.100246) unstable; urgency=medium
+ucc (0.1.1+20260213.100246) unstable; urgency=medium
 
   * Initial release
   * Core daemon with system control
