@@ -901,7 +901,7 @@ bool UccDBusInterfaceAdaptor::UpdateCustomProfile( const QString &profileJSON )
 
 bool UccDBusInterfaceAdaptor::SaveCustomProfile( const QString &profileJSON )
 {
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
   if ( !m_service )
   {
     std::cerr << "[Profile] SaveCustomProfile called but service not available" << std::endl;
@@ -2851,10 +2851,17 @@ bool UccDBusService::setCurrentProfileById( const std::string &id )
           m_profileSettingsWorker->setChargeEndThreshold( profile.chargeEndThreshold );
         }
       }
+
       if ( m_profileSettingsWorker && m_profileSettingsWorker->isNVIDIAPowerCTRLAvailable() )
       {
         std::cout << "[Profile] Notifying NVIDIA power control" << std::endl;
         m_profileSettingsWorker->onNVIDIAPowerProfileChanged();
+      }
+
+      if ( m_keyboardBacklightListener && !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
+      {
+        std::cout << "[Profile] Applying keyboard backlight settings from profile" << std::endl;
+        m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
       }
 
       // Emit ProfileChanged signal for DBus clients
