@@ -17,6 +17,7 @@
 #include <QDir>
 #include <QFile>
 #include <QDebug>
+#include <QStandardPaths>
 
 #include <algorithm>
 #include <ranges>
@@ -340,7 +341,19 @@ void TrayBackend::setODMPerformanceProfile( const QString &profile )
 
 void TrayBackend::openControlCenter()
 {
-  QProcess::startDetached( "/usr/bin/env ucc-gui", QStringList() );
+  // Note: QProcess does not invoke a shell; arguments must be passed separately.
+  // "/usr/bin/env ucc-gui" would be treated as a literal executable path and fail.
+  const QString uccGui = QStandardPaths::findExecutable( "ucc-gui" );
+
+  qint64 pid = 0;
+  bool ok = false;
+  if ( !uccGui.isEmpty() )
+    ok = QProcess::startDetached( uccGui, QStringList{}, QString{}, &pid );
+  else
+    ok = QProcess::startDetached( "/usr/bin/env", QStringList{ "ucc-gui" }, QString{}, &pid );
+
+  if ( !ok )
+    qWarning() << "[TrayBackend] Failed to start ucc-gui (found:" << uccGui << ")";
 }
 
 void TrayBackend::refreshAll()
@@ -836,5 +849,3 @@ QString TrayBackend::resolveKeyboardProfileId( const QString &daemonValue ) cons
   // Unknown — return the raw value
   return daemonValue;
 }
-
-
