@@ -1373,7 +1373,7 @@ bool UccDBusInterfaceAdaptor::SetChargingProfile( const QString &profileDescript
   if ( result )
   {
     std::lock_guard< std::mutex > lock( m_data.dataMutex );
-    m_data.currentChargingProfile = m_service->m_profileSettingsWorker->getCurrentChargingProfile();
+    m_data.currentChargingProfile = profileDescriptor.toStdString();
   }
 
   return result;
@@ -1399,7 +1399,7 @@ bool UccDBusInterfaceAdaptor::SetChargingPriority( const QString &priorityDescri
   if ( result )
   {
     std::lock_guard< std::mutex > lock( m_data.dataMutex );
-    m_data.currentChargingPriority = m_service->m_profileSettingsWorker->getCurrentChargingPriority();
+    m_data.currentChargingPriority = priorityDescriptor.toStdString();
   }
 
   return result;
@@ -1419,14 +1419,12 @@ QString UccDBusInterfaceAdaptor::GetChargeEndAvailableThresholds()
 
 int UccDBusInterfaceAdaptor::GetChargeStartThreshold()
 {
-  // Read current value directly from hardware
-  return m_service->m_profileSettingsWorker->getChargeStartThreshold();
+  return m_data.chargeStartThreshold;
 }
 
 int UccDBusInterfaceAdaptor::GetChargeEndThreshold()
 {
-  // Read current value directly from hardware
-  return m_service->m_profileSettingsWorker->getChargeEndThreshold();
+  return m_data.chargeEndThreshold;
 }
 
 bool UccDBusInterfaceAdaptor::SetChargeStartThreshold( int value )
@@ -1457,8 +1455,8 @@ bool UccDBusInterfaceAdaptor::SetChargeEndThreshold( int value )
 
 QString UccDBusInterfaceAdaptor::GetChargeType()
 {
-  // Read current value directly from hardware
-  return QString::fromStdString( m_service->m_profileSettingsWorker->getChargeType() );
+  std::lock_guard< std::mutex > lock( m_data.dataMutex );
+  return QString::fromStdString( m_data.chargeType );
 }
 
 bool UccDBusInterfaceAdaptor::SetChargeType( const QString &type )
@@ -1836,31 +1834,21 @@ UccDBusService::UccDBusService()
   // check tuxedo wmi availability
   m_dbusData.tuxedoWmiAvailable = m_io.wmiAvailable();
 
-  // set default system JSON values (match TypeScript daemon structure)
+  // set default system JSON values (sentinels for GPU/CPU monitoring data)
   m_dbusData.primeState = "-1";
   m_dbusData.dGpuInfoValuesJSON = "{\"temp\":-1,\"powerDraw\":-1,\"maxPowerLimit\":-1,\"enforcedPowerLimit\":-1,\"coreFrequency\":-1,\"maxCoreFrequency\":-1}";
   m_dbusData.iGpuInfoValuesJSON = "{\"vendor\":\"unknown\",\"temp\":-1,\"coreFrequency\":-1,\"maxCoreFrequency\":-1,\"powerDraw\":-1}";
-  // cpuPowerValuesJSON is set by CpuPowerWorker
-  m_dbusData.nvidiaPowerCTRLAvailable = true;
-  m_dbusData.nvidiaPowerCTRLDefaultPowerLimit = 95;
-  m_dbusData.nvidiaPowerCTRLMaxPowerLimit = 175;
-  m_dbusData.odmPowerLimitsJSON = "[{\"min\":25,\"max\":162,\"current\":162,\"descriptor\":\"pl1\"},{\"min\":25,\"max\":162,\"current\":162,\"descriptor\":\"pl2\"},{\"min\":25,\"max\":185,\"current\":185,\"descriptor\":\"pl4\"}]";
-  m_dbusData.chargingProfilesAvailable = "[\"high_capacity\",\"balanced\",\"stationary\"]";
-  m_dbusData.currentChargingProfile = "balanced";
-  m_dbusData.chargingPrioritiesAvailable = "[]";
-  m_dbusData.currentChargingPriority = "";
-  m_dbusData.chargeStartAvailableThresholds = "[]";
-  m_dbusData.chargeEndAvailableThresholds = "[]";
-  m_dbusData.chargeStartThreshold = -1;
-  m_dbusData.chargeEndThreshold = -1;
-  m_dbusData.chargeType = "Unknown";
-  m_dbusData.fnLockSupported = true;
-  m_dbusData.fnLockStatus = false;
 
   // Keyboard backlight will be detected and initialized by KeyboardBacklightListener
   m_dbusData.keyboardBacklightCapabilitiesJSON = "null";
   m_dbusData.keyboardBacklightStatesJSON = "[]";
   m_dbusData.keyboardBacklightStatesNewJSON = "";
+
+  // Read all hardware capabilities directly using m_io / sysfs BEFORE any
+  // workers or profiles are created.  This populates TDP limits, NVIDIA
+  // power limits, charging profiles, and YCbCr420 availability with real
+  // hardware values so the D-Bus data is never populated with fake defaults.
+  readHardwareCapabilities();
 
   // initialize profiles first (safer, doesn't start threads)
   initializeProfiles();
@@ -2124,12 +2112,6 @@ UccDBusService::UccDBusService()
     }
   );
 
-  // Update DBus availability flag from profile settings worker
-  m_dbusData.forceYUV420OutputSwitchAvailable = m_profileSettingsWorker->isYCbCr420Available();
-
-  // Initialize NVIDIA Power Control listener on first profile set
-  // Removed from constructor to prevent automatic initialization
-
   // Initialize Keyboard Backlight listener
   m_keyboardBacklightListener = std::make_unique< KeyboardBacklightListener >(
     [this]( const std::string &json ) {
@@ -2153,20 +2135,6 @@ UccDBusService::UccDBusService()
     }
   );
 
-  // Update DBus data with charging initial states from profile settings worker
-  {
-    std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
-    m_dbusData.chargingProfilesAvailable = m_profileSettingsWorker->getChargingProfilesAvailableJSON();
-    m_dbusData.currentChargingProfile = m_profileSettingsWorker->getCurrentChargingProfile();
-    m_dbusData.chargingPrioritiesAvailable = m_profileSettingsWorker->getChargingPrioritiesAvailableJSON();
-    m_dbusData.currentChargingPriority = m_profileSettingsWorker->getCurrentChargingPriority();
-    m_dbusData.chargeStartAvailableThresholds = m_profileSettingsWorker->getChargeStartAvailableThresholdsJSON();
-    m_dbusData.chargeEndAvailableThresholds = m_profileSettingsWorker->getChargeEndAvailableThresholdsJSON();
-    m_dbusData.chargeStartThreshold = m_profileSettingsWorker->getChargeStartThreshold();
-    m_dbusData.chargeEndThreshold = m_profileSettingsWorker->getChargeEndThreshold();
-    m_dbusData.chargeType = m_profileSettingsWorker->getChargeType();
-  }
-
   // then setup gpu callback before worker starts processing
   setupGpuDataCallback();
 
@@ -2176,12 +2144,244 @@ UccDBusService::UccDBusService()
   serializeProfilesJSON();
 
   // start worker threads after all callbacks and data are ready
+  m_profileSettingsWorker->start();  // synchronous: detects ODM profile type + inits charging state
   m_hardwareMonitorWorker->start();
   m_displayWorker->start();
   m_cpuWorker->start();
   m_fanControlWorker->start();
   m_keyboardBacklightListener->start();
-  m_profileSettingsWorker->start();
+}
+
+void UccDBusService::readHardwareCapabilities()
+{
+  syslog( LOG_INFO, "[uccd] Reading hardware capabilities directly" );
+
+  // ---- ODM Power Limits (TDP) ----
+  // Read from TuxedoIOAPI — identical logic to ProfileSettingsWorker::getTDPInfo()
+  {
+    int nrTDPs = 0;
+    if ( m_io.getNumberTDPs( nrTDPs ) and nrTDPs > 0 )
+    {
+      std::vector< std::string > descriptors;
+      m_io.getTDPDescriptors( descriptors );
+
+      std::ostringstream jsonStream;
+      jsonStream << "[";
+
+      for ( int i = 0; i < nrTDPs; ++i )
+      {
+        uint32_t current = 0, min = 0, max = 0;
+        m_io.getTDPMin( i, reinterpret_cast< int & >( min ) );
+        m_io.getTDPMax( i, reinterpret_cast< int & >( max ) );
+        m_io.getTDP( i, reinterpret_cast< int & >( current ) );
+
+        if ( i > 0 )
+          jsonStream << ",";
+
+        jsonStream << "{"
+                   << "\"current\":" << current << ","
+                   << "\"min\":" << min << ","
+                   << "\"max\":" << max
+                   << "}";
+
+        syslog( LOG_INFO, "[uccd] TDP[%d]: min=%u, max=%u, current=%u", i, min, max, current );
+      }
+
+      jsonStream << "]";
+      m_dbusData.odmPowerLimitsJSON = jsonStream.str();
+    }
+    else
+    {
+      syslog( LOG_INFO, "[uccd] No TDP hardware available" );
+      m_dbusData.odmPowerLimitsJSON = "[]";
+    }
+  }
+
+  // ---- NVIDIA Power Control ----
+  {
+    static const std::string NVIDIA_CTGP_OFFSET =
+      "/sys/devices/platform/tuxedo_nvidia_power_ctrl/ctgp_offset";
+
+    std::error_code ec;
+    const bool nvAvailable = std::filesystem::exists( NVIDIA_CTGP_OFFSET, ec )
+                          && std::filesystem::is_regular_file( NVIDIA_CTGP_OFFSET, ec );
+    m_dbusData.nvidiaPowerCTRLAvailable = nvAvailable;
+
+    if ( nvAvailable )
+    {
+      // Query power limits via nvidia-smi
+      auto runNvidiaSmi = []( const std::string &queryFlag ) -> int32_t {
+        try
+        {
+          std::string result = ucc::executeProcess( "nvidia-smi",
+            { "--format=csv,noheader,nounits", "--query-gpu=" + queryFlag } );
+          result.erase( 0, result.find_first_not_of( " \t\n\r" ) );
+          result.erase( result.find_last_not_of( " \t\n\r" ) + 1 );
+          return std::stoi( result );
+        }
+        catch ( ... )
+        {
+          return 0;
+        }
+      };
+
+      m_dbusData.nvidiaPowerCTRLDefaultPowerLimit = runNvidiaSmi( "power.default_limit" );
+      m_dbusData.nvidiaPowerCTRLMaxPowerLimit = runNvidiaSmi( "power.max_limit" );
+
+      syslog( LOG_INFO, "[uccd] NVIDIA power limits — Default: %dW, Max: %dW",
+              m_dbusData.nvidiaPowerCTRLDefaultPowerLimit.load(),
+              m_dbusData.nvidiaPowerCTRLMaxPowerLimit.load() );
+    }
+    else
+    {
+      syslog( LOG_INFO, "[uccd] NVIDIA power control not available" );
+    }
+  }
+
+  // ---- Charging ----
+  {
+    static const std::string CHARGING_PROFILE_PATH =
+      "/sys/devices/platform/tuxedo_keyboard/charging_profile/charging_profile";
+    static const std::string CHARGING_PROFILES_AVAILABLE_PATH =
+      "/sys/devices/platform/tuxedo_keyboard/charging_profile/charging_profiles_available";
+    static const std::string CHARGING_PRIORITY_PATH =
+      "/sys/devices/platform/tuxedo_keyboard/charging_priority/charging_prio";
+    static const std::string CHARGING_PRIORITIES_AVAILABLE_PATH =
+      "/sys/devices/platform/tuxedo_keyboard/charging_priority/charging_prios_available";
+
+    // Charging profiles
+    if ( SysfsNode< std::string >( CHARGING_PROFILE_PATH ).isAvailable() and
+         SysfsNode< std::string >( CHARGING_PROFILES_AVAILABLE_PATH ).isAvailable() )
+    {
+      auto profiles = SysfsNode< std::vector< std::string > >( CHARGING_PROFILES_AVAILABLE_PATH, " " ).read();
+      if ( profiles.has_value() and not profiles->empty() )
+      {
+        std::ostringstream oss;
+        oss << "[";
+        for ( size_t i = 0; i < profiles->size(); ++i )
+        {
+          if ( i > 0 ) oss << ",";
+          oss << "\"" << ( *profiles )[ i ] << "\"";
+        }
+        oss << "]";
+        m_dbusData.chargingProfilesAvailable = oss.str();
+
+        auto current = SysfsNode< std::string >( CHARGING_PROFILE_PATH ).read();
+        if ( current.has_value() )
+          m_dbusData.currentChargingProfile = *current;
+
+        syslog( LOG_INFO, "[uccd] Charging profiles: %s, current: %s",
+                m_dbusData.chargingProfilesAvailable.c_str(),
+                m_dbusData.currentChargingProfile.c_str() );
+      }
+    }
+
+    // Charging priorities
+    if ( SysfsNode< std::string >( CHARGING_PRIORITY_PATH ).isAvailable() and
+         SysfsNode< std::string >( CHARGING_PRIORITIES_AVAILABLE_PATH ).isAvailable() )
+    {
+      auto prios = SysfsNode< std::vector< std::string > >( CHARGING_PRIORITIES_AVAILABLE_PATH, " " ).read();
+      if ( prios.has_value() and not prios->empty() )
+      {
+        std::ostringstream oss;
+        oss << "[";
+        for ( size_t i = 0; i < prios->size(); ++i )
+        {
+          if ( i > 0 ) oss << ",";
+          oss << "\"" << ( *prios )[ i ] << "\"";
+        }
+        oss << "]";
+        m_dbusData.chargingPrioritiesAvailable = oss.str();
+
+        auto current = SysfsNode< std::string >( CHARGING_PRIORITY_PATH ).read();
+        if ( current.has_value() )
+          m_dbusData.currentChargingPriority = *current;
+      }
+    }
+
+    // Charge thresholds
+    auto battery = PowerSupplyController::getFirstBattery();
+    if ( battery )
+    {
+      m_dbusData.chargeStartThreshold = battery->getChargeControlStartThreshold();
+      m_dbusData.chargeEndThreshold = battery->getChargeControlEndThreshold();
+
+      // Map charge type
+      auto chargeType = battery->getChargeType();
+      switch ( chargeType )
+      {
+        case ChargeType::Trickle:      m_dbusData.chargeType = "Trickle"; break;
+        case ChargeType::Fast:         m_dbusData.chargeType = "Fast"; break;
+        case ChargeType::Standard:     m_dbusData.chargeType = "Standard"; break;
+        case ChargeType::Adaptive:     m_dbusData.chargeType = "Adaptive"; break;
+        case ChargeType::Custom:       m_dbusData.chargeType = "Custom"; break;
+        case ChargeType::LongLife:     m_dbusData.chargeType = "LongLife"; break;
+        case ChargeType::Bypass:       m_dbusData.chargeType = "Bypass"; break;
+        case ChargeType::NotAvailable: m_dbusData.chargeType = "N/A"; break;
+        default:                       m_dbusData.chargeType = "Unknown"; break;
+      }
+
+      // Threshold ranges
+      auto startThresholds = battery->getChargeControlStartAvailableThresholds();
+      auto endThresholds = battery->getChargeControlEndAvailableThresholds();
+
+      if ( !startThresholds.empty() )
+      {
+        std::ostringstream oss;
+        oss << "[";
+        for ( size_t i = 0; i < startThresholds.size(); ++i )
+        {
+          if ( i > 0 ) oss << ",";
+          oss << startThresholds[ i ];
+        }
+        oss << "]";
+        m_dbusData.chargeStartAvailableThresholds = oss.str();
+      }
+
+      if ( !endThresholds.empty() )
+      {
+        std::ostringstream oss;
+        oss << "[";
+        for ( size_t i = 0; i < endThresholds.size(); ++i )
+        {
+          if ( i > 0 ) oss << ",";
+          oss << endThresholds[ i ];
+        }
+        oss << "]";
+        m_dbusData.chargeEndAvailableThresholds = oss.str();
+      }
+    }
+  }
+
+  // ---- YCbCr 4:2:0 ----
+  {
+    m_dbusData.forceYUV420OutputSwitchAvailable = false;
+
+    for ( const auto &cardEntry : m_settings.ycbcr420Workaround )
+    {
+      int card = cardEntry.card;
+      for ( const auto &portEntry : cardEntry.ports )
+      {
+        std::string path = "/sys/kernel/debug/dri/" + std::to_string( card ) + "/" +
+                           portEntry.port + "/force_yuv420_output";
+
+        std::error_code ec;
+        if ( std::filesystem::exists( path, ec ) && std::filesystem::is_regular_file( path, ec ) )
+        {
+          m_dbusData.forceYUV420OutputSwitchAvailable = true;
+          syslog( LOG_INFO, "[uccd] YCbCr 4:2:0 output available at %s", path.c_str() );
+          break;
+        }
+      }
+      if ( m_dbusData.forceYUV420OutputSwitchAvailable.load() )
+        break;
+    }
+  }
+
+  // Rebuild settings JSON with real charging data
+  m_dbusData.settingsJSON = buildSettingsJSON( m_dbusData.keyboardBacklightStatesJSON,
+                                               m_dbusData.currentChargingProfile,
+                                               m_settings );
 }
 
 void UccDBusService::setupGpuDataCallback()
@@ -2416,7 +2616,7 @@ void UccDBusService::onWork()
   m_dbusData.tuxedoWmiAvailable = m_io.wmiAvailable();
 
   // Periodic NVIDIA cTGP offset validation (every 5 ticks = 5 s)
-  if ( m_profileSettingsWorker && m_profileSettingsWorker->isNVIDIAPowerCTRLAvailable() )
+  if ( m_dbusData.nvidiaPowerCTRLAvailable.load() && m_profileSettingsWorker )
   {
     ++m_nvidiaValidationCounter;
     if ( m_nvidiaValidationCounter >= 5 )
@@ -2828,41 +3028,56 @@ bool UccDBusService::setCurrentProfileById( const std::string &id )
         std::cout << "[Profile] Applying TDP settings from profile" << std::endl;
         m_profileSettingsWorker->reapplyProfile();
 
+        // Re-read TDP values after apply so D-Bus data reflects new hardware state
+        readHardwareCapabilities();
+
         // Apply charging profile if the profile specifies one
-        if ( !profile.chargingProfile.empty() && m_profileSettingsWorker->hasChargingProfile() )
+        if ( !profile.chargingProfile.empty() && m_dbusData.chargingProfilesAvailable != "[]" )
         {
           std::cout << "[Profile] Applying charging profile '" << profile.chargingProfile << "'" << std::endl;
-          m_profileSettingsWorker->applyChargingProfile( profile.chargingProfile );
-          std::lock_guard< std::mutex > lk( m_dbusData.dataMutex );
-          m_dbusData.currentChargingProfile = m_profileSettingsWorker->getCurrentChargingProfile();
+          if ( m_profileSettingsWorker->applyChargingProfile( profile.chargingProfile ) )
+          {
+            std::lock_guard< std::mutex > lk( m_dbusData.dataMutex );
+            m_dbusData.currentChargingProfile = profile.chargingProfile;
+          }
         }
 
         // Apply charging priority if the profile specifies one
-        if ( !profile.chargingPriority.empty() && m_profileSettingsWorker->hasChargingPriority() )
+        if ( !profile.chargingPriority.empty() && m_dbusData.chargingPrioritiesAvailable != "[]" )
         {
           std::cout << "[Profile] Applying charging priority '" << profile.chargingPriority << "'" << std::endl;
-          m_profileSettingsWorker->applyChargingPriority( profile.chargingPriority );
+          if ( m_profileSettingsWorker->applyChargingPriority( profile.chargingPriority ) )
+          {
+            std::lock_guard< std::mutex > lk( m_dbusData.dataMutex );
+            m_dbusData.currentChargingPriority = profile.chargingPriority;
+          }
         }
 
         // Apply charge type and thresholds if the profile specifies them
         if ( !profile.chargeType.empty() )
         {
           std::cout << "[Profile] Applying charge type '" << profile.chargeType << "'" << std::endl;
-          m_profileSettingsWorker->setChargeType( profile.chargeType );
+          if ( m_profileSettingsWorker->setChargeType( profile.chargeType ) )
+          {
+            std::lock_guard< std::mutex > lk( m_dbusData.dataMutex );
+            m_dbusData.chargeType = profile.chargeType;
+          }
         }
         if ( profile.chargeStartThreshold >= 0 )
         {
           std::cout << "[Profile] Applying charge start threshold " << profile.chargeStartThreshold << std::endl;
-          m_profileSettingsWorker->setChargeStartThreshold( profile.chargeStartThreshold );
+          if ( m_profileSettingsWorker->setChargeStartThreshold( profile.chargeStartThreshold ) )
+            m_dbusData.chargeStartThreshold = profile.chargeStartThreshold;
         }
         if ( profile.chargeEndThreshold >= 0 )
         {
           std::cout << "[Profile] Applying charge end threshold " << profile.chargeEndThreshold << std::endl;
-          m_profileSettingsWorker->setChargeEndThreshold( profile.chargeEndThreshold );
+          if ( m_profileSettingsWorker->setChargeEndThreshold( profile.chargeEndThreshold ) )
+            m_dbusData.chargeEndThreshold = profile.chargeEndThreshold;
         }
       }
 
-      if ( m_profileSettingsWorker && m_profileSettingsWorker->isNVIDIAPowerCTRLAvailable() )
+      if ( m_dbusData.nvidiaPowerCTRLAvailable.load() && m_profileSettingsWorker )
       {
         std::cout << "[Profile] Notifying NVIDIA power control" << std::endl;
         m_profileSettingsWorker->onNVIDIAPowerProfileChanged();
@@ -3010,37 +3225,52 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
       std::cout << "[Profile] Applying TDP settings from profile" << std::endl;
       m_profileSettingsWorker->reapplyProfile();
 
+      // Re-read TDP values after apply so D-Bus data reflects new hardware state
+      readHardwareCapabilities();
+
       // Apply charging profile if the profile specifies one
-      if ( !profile.chargingProfile.empty() && m_profileSettingsWorker->hasChargingProfile() )
+      if ( !profile.chargingProfile.empty() && m_dbusData.chargingProfilesAvailable != "[]" )
       {
         std::cout << "[Profile] Applying charging profile '" << profile.chargingProfile << "'" << std::endl;
-        m_profileSettingsWorker->applyChargingProfile( profile.chargingProfile );
-        std::lock_guard< std::mutex > lk( m_dbusData.dataMutex );
-        m_dbusData.currentChargingProfile = m_profileSettingsWorker->getCurrentChargingProfile();
+        if ( m_profileSettingsWorker->applyChargingProfile( profile.chargingProfile ) )
+        {
+          std::lock_guard< std::mutex > lk( m_dbusData.dataMutex );
+          m_dbusData.currentChargingProfile = profile.chargingProfile;
+        }
       }
 
       // Apply charging priority if the profile specifies one
-      if ( !profile.chargingPriority.empty() && m_profileSettingsWorker->hasChargingPriority() )
+      if ( !profile.chargingPriority.empty() && m_dbusData.chargingPrioritiesAvailable != "[]" )
       {
         std::cout << "[Profile] Applying charging priority '" << profile.chargingPriority << "'" << std::endl;
-        m_profileSettingsWorker->applyChargingPriority( profile.chargingPriority );
+        if ( m_profileSettingsWorker->applyChargingPriority( profile.chargingPriority ) )
+        {
+          std::lock_guard< std::mutex > lk( m_dbusData.dataMutex );
+          m_dbusData.currentChargingPriority = profile.chargingPriority;
+        }
       }
 
       // Apply charge type and thresholds if the profile specifies them
       if ( !profile.chargeType.empty() )
       {
         std::cout << "[Profile] Applying charge type '" << profile.chargeType << "'" << std::endl;
-        m_profileSettingsWorker->setChargeType( profile.chargeType );
+        if ( m_profileSettingsWorker->setChargeType( profile.chargeType ) )
+        {
+          std::lock_guard< std::mutex > lk( m_dbusData.dataMutex );
+          m_dbusData.chargeType = profile.chargeType;
+        }
       }
       if ( profile.chargeStartThreshold >= 0 )
       {
         std::cout << "[Profile] Applying charge start threshold " << profile.chargeStartThreshold << std::endl;
-        m_profileSettingsWorker->setChargeStartThreshold( profile.chargeStartThreshold );
+        if ( m_profileSettingsWorker->setChargeStartThreshold( profile.chargeStartThreshold ) )
+          m_dbusData.chargeStartThreshold = profile.chargeStartThreshold;
       }
       if ( profile.chargeEndThreshold >= 0 )
       {
         std::cout << "[Profile] Applying charge end threshold " << profile.chargeEndThreshold << std::endl;
-        m_profileSettingsWorker->setChargeEndThreshold( profile.chargeEndThreshold );
+        if ( m_profileSettingsWorker->setChargeEndThreshold( profile.chargeEndThreshold ) )
+          m_dbusData.chargeEndThreshold = profile.chargeEndThreshold;
       }
     }
 
@@ -3434,15 +3664,39 @@ void UccDBusService::loadSettings()
   }
   else
   {
-    // Use defaults - DON'T WRITE FILE YET
-    // FIX #1 (CRITICAL): On fresh install, keep settings in memory only.
-    // Let them be created when the first profile is actually saved.
-    // This prevents the empty file overwrite bug on daemon restart.
+    // Fresh install — create default settings with sensible stateMap.
+    // Pick the default profile with the highest total TDP so the GUI
+    // immediately shows meaningful power-limit values instead of 0 W.
     m_settings = TccSettings();
 
-    // No settings file – stateMap stays empty.
-    // uccd will not apply any profile until ucc-gui explicitly assigns one.
-    std::cout << "[Settings] No settings file found. Waiting for ucc-gui to assign profiles." << std::endl;
+    std::string bestProfileId;
+    int64_t     bestTdpSum = -1;
+
+    for ( const auto &profile : m_defaultProfiles )
+    {
+      int64_t sum = 0;
+      for ( int v : profile.odmPowerLimits.tdpValues )
+        sum += v;
+
+      if ( sum > bestTdpSum )
+      {
+        bestTdpSum = sum;
+        bestProfileId = profile.id;
+      }
+    }
+
+    if ( bestProfileId.empty() && !m_defaultProfiles.empty() )
+      bestProfileId = m_defaultProfiles.back().id;
+
+    if ( !bestProfileId.empty() )
+    {
+      m_settings.stateMap[ "power_ac" ]  = bestProfileId;
+      m_settings.stateMap[ "power_bat" ] = bestProfileId;
+      m_settings.stateMap[ "power_wc" ]  = bestProfileId;
+    }
+
+    std::cout << "[Settings] No settings file found — initialized default stateMap "
+              << "(all states=" << bestProfileId << ")" << std::endl;
     updateDBusSettingsData();
   }
 
@@ -3916,21 +4170,43 @@ void UccDBusService::fillDeviceSpecificDefaults( std::vector< UccProfile > &prof
   const int32_t cpuMinFreq = getCpuMinFrequency();
   const int32_t cpuMaxFreq = getCpuMaxFrequency();
 
-  // Get TDP info from hardware
+  // Get TDP info directly from hardware I/O
   std::vector< TDPInfo > tdpInfo;
-  if ( m_profileSettingsWorker )
   {
-    tdpInfo = m_profileSettingsWorker->getTDPInfo();
-    std::cout << "[fillDeviceSpecificDefaults] TDP info available: " << tdpInfo.size() << " entries" << std::endl;
-    for ( size_t i = 0; i < tdpInfo.size(); ++i )
+    int nrTDPs = 0;
+    if ( m_io.getNumberTDPs( nrTDPs ) and nrTDPs > 0 )
     {
-      std::cout << "[fillDeviceSpecificDefaults]   TDP[" << i << "]: min=" << tdpInfo[i].min
-                << ", max=" << tdpInfo[i].max << ", current=" << tdpInfo[i].current << std::endl;
+      std::vector< std::string > descriptors;
+      m_io.getTDPDescriptors( descriptors );
+
+      for ( int i = 0; i < nrTDPs; ++i )
+      {
+        TDPInfo info;
+        info.current = 0;
+        info.min = 0;
+        info.max = 0;
+        info.descriptor = ( i < static_cast< int >( descriptors.size() ) )
+                            ? descriptors[ static_cast< size_t >( i ) ]
+                            : "";
+
+        m_io.getTDPMin( i, reinterpret_cast< int & >( info.min ) );
+        m_io.getTDPMax( i, reinterpret_cast< int & >( info.max ) );
+        m_io.getTDP( i, reinterpret_cast< int & >( info.current ) );
+
+        tdpInfo.push_back( info );
+      }
+
+      std::cout << "[fillDeviceSpecificDefaults] TDP info available: " << tdpInfo.size() << " entries" << std::endl;
+      for ( size_t i = 0; i < tdpInfo.size(); ++i )
+      {
+        std::cout << "[fillDeviceSpecificDefaults]   TDP[" << i << "]: min=" << tdpInfo[i].min
+                  << ", max=" << tdpInfo[i].max << ", current=" << tdpInfo[i].current << std::endl;
+      }
     }
-  }
-  else
-  {
-    std::cout << "[fillDeviceSpecificDefaults] No ODM power limit worker available" << std::endl;
+    else
+    {
+      std::cout << "[fillDeviceSpecificDefaults] No TDP hardware available" << std::endl;
+    }
   }
 
   for ( auto &profile : profiles )
@@ -3967,6 +4243,32 @@ void UccDBusService::fillDeviceSpecificDefaults( std::vector< UccProfile > &prof
       {
         profile.odmPowerLimits.tdpValues.push_back( static_cast< int >( tdpInfo[i].max ) );
         std::cout << "[fillDeviceSpecificDefaults]     Added TDP[" << i << "] = " << tdpInfo[i].max << std::endl;
+      }
+    }
+
+    // Clamp existing TDP values to hardware min/max range.
+    // Default profiles have hardcoded placeholders (e.g. {5,10,15}) that
+    // may lie outside the actual hardware capabilities.
+    if ( !tdpInfo.empty() )
+    {
+      for ( size_t i = 0; i < profile.odmPowerLimits.tdpValues.size() && i < tdpInfo.size(); ++i )
+      {
+        int &val = profile.odmPowerLimits.tdpValues[ i ];
+        const int hwMin = static_cast< int >( tdpInfo[ i ].min );
+        const int hwMax = static_cast< int >( tdpInfo[ i ].max );
+
+        if ( val < hwMin )
+        {
+          std::cout << "[fillDeviceSpecificDefaults]   TDP[" << i << "] " << val
+                    << " below hw min " << hwMin << ", clamping" << std::endl;
+          val = hwMin;
+        }
+        else if ( val > hwMax )
+        {
+          std::cout << "[fillDeviceSpecificDefaults]   TDP[" << i << "] " << val
+                    << " above hw max " << hwMax << ", clamping" << std::endl;
+          val = hwMax;
+        }
       }
     }
 

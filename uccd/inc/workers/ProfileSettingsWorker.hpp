@@ -101,12 +101,6 @@ public:
   void start();
 
   // =====================================================================
-  //  ODM Profile API  (was ODMProfileWorker)
-  // =====================================================================
-
-  void reapplyODMProfile() { applyODMProfile(); }
-
-  // =====================================================================
   //  ODM Power Limit API  (was ODMPowerLimitWorker)
   // =====================================================================
 
@@ -121,116 +115,25 @@ public:
       applyNVIDIACTGPOffset();
   }
 
-  std::vector< TDPInfo > getTDPInfo();
-  bool setTDPValues( const std::vector< uint32_t > &values );
-
   // =====================================================================
   //  Charging API  (was ChargingWorker)
   // =====================================================================
 
-  bool hasChargingProfile() const noexcept
-  {
-    return SysfsNode< std::string >( CHARGING_PROFILE ).isAvailable() and
-           SysfsNode< std::string >( CHARGING_PROFILES_AVAILABLE ).isAvailable();
-  }
-
-  std::vector< std::string > getChargingProfilesAvailable() const noexcept
-  {
-    if ( not hasChargingProfile() )
-      return {};
-
-    auto profiles =
-      SysfsNode< std::vector< std::string > >( CHARGING_PROFILES_AVAILABLE, " " ).read();
-    return profiles.value_or( std::vector< std::string >{} );
-  }
-
-  std::string getCurrentChargingProfile() const noexcept
-  {
-    if ( m_currentChargingProfile.empty() )
-      return "";
-
-    return m_currentChargingProfile;
-  }
-
   bool applyChargingProfile( const std::string &profileDescriptor ) noexcept;
-
-  // --- Charging Priority ---
-
-  bool hasChargingPriority() const noexcept
-  {
-    return SysfsNode< std::string >( CHARGING_PRIORITY ).isAvailable() and
-           SysfsNode< std::string >( CHARGING_PRIORITIES_AVAILABLE ).isAvailable();
-  }
-
-  std::vector< std::string > getChargingPrioritiesAvailable() const noexcept
-  {
-    if ( not hasChargingPriority() )
-      return {};
-
-    auto prios = SysfsNode< std::vector< std::string > >( CHARGING_PRIORITIES_AVAILABLE, " " ).read();
-    return prios.value_or( std::vector< std::string >{} );
-  }
-
-  std::string getCurrentChargingPriority() const noexcept
-  {
-    if ( m_currentChargingPriority.empty() )
-      return "";
-
-    return m_currentChargingPriority;
-  }
-
   bool applyChargingPriority( const std::string &priorityDescriptor ) noexcept;
 
   // --- Charge Thresholds ---
 
-  std::vector< int > getChargeStartAvailableThresholds() const noexcept;
-  std::vector< int > getChargeEndAvailableThresholds() const noexcept;
-
-  int getChargeStartThreshold() const noexcept
-  {
-    auto battery = PowerSupplyController::getFirstBattery();
-    if ( not battery )
-      return -1;
-
-    return battery->getChargeControlStartThreshold();
-  }
-
   bool setChargeStartThreshold( int value ) noexcept;
-
-  int getChargeEndThreshold() const noexcept
-  {
-    auto battery = PowerSupplyController::getFirstBattery();
-    if ( not battery )
-      return -1;
-
-    return battery->getChargeControlEndThreshold();
-  }
-
   bool setChargeEndThreshold( int value ) noexcept;
 
   // --- Charge Type ---
 
-  std::string getChargeType() const noexcept;
   bool setChargeType( const std::string &type ) noexcept;
-
-  // --- Charging JSON ---
-
-  std::string getChargingProfilesAvailableJSON() const noexcept;
-  std::string getChargingPrioritiesAvailableJSON() const noexcept;
-  std::string getChargeStartAvailableThresholdsJSON() const noexcept;
-  std::string getChargeEndAvailableThresholdsJSON() const noexcept;
-
-  // =====================================================================
-  //  YCbCr 4:2:0 API  (was YCbCr420WorkaroundWorker)
-  // =====================================================================
-
-  bool isYCbCr420Available() const noexcept { return m_ycbcr420Available; }
 
   // =====================================================================
   //  NVIDIA Power Control API  (was NVIDIAPowerCTRLListener)
   // =====================================================================
-
-  bool isNVIDIAPowerCTRLAvailable() const noexcept { return m_nvidiaPowerCTRLAvailable; }
 
   /**
    * @brief Called when the active profile changes to apply the new cTGP offset.
@@ -314,13 +217,47 @@ private:
 
   // ----- ODM Power Limit internals -----
 
+  std::vector< TDPInfo > getTDPInfo();
+  bool setTDPValues( const std::vector< uint32_t > &values );
   void logLine( const std::string &message );
+  void publishODMPowerLimitsJSON( const std::vector< TDPInfo > &tdpInfo );
   void applyODMPowerLimits();
 
   // ----- Charging internals -----
 
   std::string m_currentChargingProfile;
   std::string m_currentChargingPriority;
+
+  bool hasChargingProfile() const noexcept
+  {
+    return SysfsNode< std::string >( CHARGING_PROFILE ).isAvailable() and
+           SysfsNode< std::string >( CHARGING_PROFILES_AVAILABLE ).isAvailable();
+  }
+
+  bool hasChargingPriority() const noexcept
+  {
+    return SysfsNode< std::string >( CHARGING_PRIORITY ).isAvailable() and
+           SysfsNode< std::string >( CHARGING_PRIORITIES_AVAILABLE ).isAvailable();
+  }
+
+  std::vector< std::string > getChargingProfilesAvailable() const noexcept
+  {
+    if ( not hasChargingProfile() )
+      return {};
+
+    auto profiles =
+      SysfsNode< std::vector< std::string > >( CHARGING_PROFILES_AVAILABLE, " " ).read();
+    return profiles.value_or( std::vector< std::string >{} );
+  }
+
+  std::vector< std::string > getChargingPrioritiesAvailable() const noexcept
+  {
+    if ( not hasChargingPriority() )
+      return {};
+
+    auto prios = SysfsNode< std::vector< std::string > >( CHARGING_PRIORITIES_AVAILABLE, " " ).read();
+    return prios.value_or( std::vector< std::string >{} );
+  }
 
   void initializeChargingSettings() noexcept;
 

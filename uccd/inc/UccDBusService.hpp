@@ -184,7 +184,7 @@ public:
       defaultValuesProfileJSON( "{}" ),
       settingsJSON( "{}" ),
       odmProfilesAvailable(),
-      odmPowerLimitsJSON( "{}" ),
+      odmPowerLimitsJSON( "[]" ),
       keyboardBacklightCapabilitiesJSON( "{}" ),
       keyboardBacklightStatesJSON( "{}" ),
       keyboardBacklightStatesNewJSON( "{}" ),
@@ -210,7 +210,7 @@ public:
         waterCoolerConnected( false ),
         waterCoolerScanningEnabled( ucc::WATER_COOLER_INITIAL_STATE ),
         waterCoolerSupported( false ),
-        cTGPAdjustmentSupported( true ),
+        cTGPAdjustmentSupported( false ),
         cpuFrequencyMHz( -1 )
   {
   }
@@ -567,6 +567,7 @@ private:
   static constexpr int WC_DISCONNECT_DEBOUNCE_S = 10;         // seconds stable before accepting "disconnected"
 
   void setupGpuDataCallback();
+  void readHardwareCapabilities();
   void updateFanData();
   void loadProfiles();
   void loadSettings();

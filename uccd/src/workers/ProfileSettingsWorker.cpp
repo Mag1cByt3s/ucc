@@ -23,30 +23,14 @@
 
 void ProfileSettingsWorker::start()
 {
-  // --- ODM Profile ---
+  // Detect which ODM profile mechanism is available (needed by applyODMProfile())
   detectODMProfileType();
-  const UccProfile profile = m_getActiveProfile();
-  if ( !profile.id.empty() )
-  {
-    applyODMProfile();
-  }
 
-  // --- ODM Power Limits ---
-  logLine( "ProfileSettingsWorker: ODM Power Limits onStart" );
-  if ( !m_getActiveProfile().id.empty() )
-  {
-    applyODMPowerLimits();
-  }
-
-  // --- Charging ---
+  // Hardware capabilities (TDP limits, charging, YCbCr420, NVIDIA power limits)
+  // are read directly by UccDBusService::readHardwareCapabilities() before this
+  // worker is created.  We only need to initialise charging internal state here
+  // so that the getter methods (getCurrentChargingProfile etc.) work.
   initializeChargingSettings();
-
-  // --- YCbCr420 ---
-  checkYCbCr420Availability();
-  applyYCbCr420Workaround();
-
-  // --- NVIDIA Power Control ---
-  initNVIDIAPowerCTRL();
 }
 
 std::vector< TDPInfo > ProfileSettingsWorker::getTDPInfo()
@@ -161,48 +145,6 @@ bool ProfileSettingsWorker::applyChargingPriority( const std::string &priorityDe
   return false;
 }
 
-std::vector< int > ProfileSettingsWorker::getChargeStartAvailableThresholds() const noexcept
-{
-  auto battery = PowerSupplyController::getFirstBattery();
-  if ( not battery )
-    return {};
-
-  if ( battery->getChargeControlStartThreshold() == -1 )
-    return {};
-
-  auto thresholds = battery->getChargeControlStartAvailableThresholds();
-
-  if ( thresholds.empty() )
-  {
-    thresholds.resize( 101 );
-    for ( size_t i = 0; i <= 100; ++i )
-      thresholds[ i ] = static_cast< int >( i );
-  }
-
-  return thresholds;
-}
-
-std::vector< int > ProfileSettingsWorker::getChargeEndAvailableThresholds() const noexcept
-{
-  auto battery = PowerSupplyController::getFirstBattery();
-  if ( not battery )
-    return {};
-
-  if ( battery->getChargeControlEndThreshold() == -1 )
-    return {};
-
-  auto thresholds = battery->getChargeControlEndAvailableThresholds();
-
-  if ( thresholds.empty() )
-  {
-    thresholds.resize( 101 );
-    for ( size_t i = 0; i <= 100; ++i )
-      thresholds[ i ] = static_cast< int >( i );
-  }
-
-  return thresholds;
-}
-
 bool ProfileSettingsWorker::setChargeStartThreshold( int value ) noexcept
 {
   auto battery = PowerSupplyController::getFirstBattery();
@@ -235,28 +177,6 @@ bool ProfileSettingsWorker::setChargeEndThreshold( int value ) noexcept
   return false;
 }
 
-std::string ProfileSettingsWorker::getChargeType() const noexcept
-{
-  auto battery = PowerSupplyController::getFirstBattery();
-  if ( not battery )
-    return "Unknown";
-
-  ChargeType type = battery->getChargeType();
-
-  switch ( type )
-  {
-    case ChargeType::Trickle:      return "Trickle";
-    case ChargeType::Fast:         return "Fast";
-    case ChargeType::Standard:     return "Standard";
-    case ChargeType::Adaptive:     return "Adaptive";
-    case ChargeType::Custom:       return "Custom";
-    case ChargeType::LongLife:     return "LongLife";
-    case ChargeType::Bypass:       return "Bypass";
-    case ChargeType::NotAvailable: return "N/A";
-    default:                       return "Unknown";
-  }
-}
-
 bool ProfileSettingsWorker::setChargeType( const std::string &type ) noexcept
 {
   auto battery = PowerSupplyController::getFirstBatteryWithChargeType();
@@ -271,74 +191,6 @@ bool ProfileSettingsWorker::setChargeType( const std::string &type ) noexcept
 
   syslog( LOG_WARNING, "Failed writing charge type" );
   return false;
-}
-
-std::string ProfileSettingsWorker::getChargingProfilesAvailableJSON() const noexcept
-{
-  auto profiles = getChargingProfilesAvailable();
-
-  std::ostringstream oss;
-  oss << "[";
-  for ( size_t i = 0; i < profiles.size(); ++i )
-  {
-    if ( i > 0 )
-      oss << ",";
-    oss << "\"" << profiles[ i ] << "\"";
-  }
-  oss << "]";
-
-  return oss.str();
-}
-
-std::string ProfileSettingsWorker::getChargingPrioritiesAvailableJSON() const noexcept
-{
-  auto prios = getChargingPrioritiesAvailable();
-
-  std::ostringstream oss;
-  oss << "[";
-  for ( size_t i = 0; i < prios.size(); ++i )
-  {
-    if ( i > 0 )
-      oss << ",";
-    oss << "\"" << prios[ i ] << "\"";
-  }
-  oss << "]";
-
-  return oss.str();
-}
-
-std::string ProfileSettingsWorker::getChargeStartAvailableThresholdsJSON() const noexcept
-{
-  auto thresholds = getChargeStartAvailableThresholds();
-
-  std::ostringstream oss;
-  oss << "[";
-  for ( size_t i = 0; i < thresholds.size(); ++i )
-  {
-    if ( i > 0 )
-      oss << ",";
-    oss << thresholds[ i ];
-  }
-  oss << "]";
-
-  return oss.str();
-}
-
-std::string ProfileSettingsWorker::getChargeEndAvailableThresholdsJSON() const noexcept
-{
-  auto thresholds = getChargeEndAvailableThresholds();
-
-  std::ostringstream oss;
-  oss << "[";
-  for ( size_t i = 0; i < thresholds.size(); ++i )
-  {
-    if ( i > 0 )
-      oss << ",";
-    oss << thresholds[ i ];
-  }
-  oss << "]";
-
-  return oss.str();
 }
 
 void ProfileSettingsWorker::validateNVIDIACTGPOffset()
@@ -547,6 +399,28 @@ void ProfileSettingsWorker::logLine( const std::string &message )
   }
 }
 
+void ProfileSettingsWorker::publishODMPowerLimitsJSON( const std::vector< TDPInfo > &tdpInfo )
+{
+  std::ostringstream jsonStream;
+  jsonStream << "[";
+
+  for ( size_t i = 0; i < tdpInfo.size(); ++i )
+  {
+    if ( i > 0 )
+      jsonStream << ",";
+
+    jsonStream << "{"
+               << "\"current\":" << tdpInfo[ i ].current << ","
+               << "\"min\":" << tdpInfo[ i ].min << ","
+               << "\"max\":" << tdpInfo[ i ].max
+               << "}";
+  }
+
+  jsonStream << "]";
+
+  m_setOdmPowerLimitsJSON( jsonStream.str() );
+}
+
 void ProfileSettingsWorker::applyODMPowerLimits()
 {
   logLine( "ProfileSettingsWorker: applyODMPowerLimits() called" );
@@ -610,24 +484,7 @@ void ProfileSettingsWorker::applyODMPowerLimits()
     logLine( "ProfileSettingsWorker: Failed to write TDP values" );
   }
 
-  std::ostringstream jsonStream;
-  jsonStream << "[";
-
-  for ( size_t i = 0; i < tdpInfo.size(); ++i )
-  {
-    if ( i > 0 )
-      jsonStream << ",";
-
-    jsonStream << "{"
-               << "\"current\":" << tdpInfo[ i ].current << ","
-               << "\"min\":" << tdpInfo[ i ].min << ","
-               << "\"max\":" << tdpInfo[ i ].max
-               << "}";
-  }
-
-  jsonStream << "]";
-
-  m_setOdmPowerLimitsJSON( jsonStream.str() );
+  publishODMPowerLimitsJSON( tdpInfo );
 }
 
 // =====================================================================
@@ -758,8 +615,13 @@ void ProfileSettingsWorker::initNVIDIAPowerCTRL()
 
   if ( m_nvidiaPowerCTRLAvailable )
   {
+    // Always query hardware power limits so the GUI has real values
     queryNVIDIAPowerLimits();
-    applyNVIDIACTGPOffset();
+
+    // Only apply cTGP offset if a profile is active
+    const UccProfile profile = m_getActiveProfile();
+    if ( !profile.id.empty() )
+      applyNVIDIACTGPOffset();
   }
 }
 

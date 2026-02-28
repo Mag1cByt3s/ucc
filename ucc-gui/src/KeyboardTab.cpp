@@ -343,14 +343,18 @@ void MainWindow::onKeyboardProfileChanged(const QString& profileId)
   // Apply colors to keyboard visualizer if available
   if ( !statesArray.isEmpty() && m_keyboardVisualizer )
   {
+    m_keyboardVisualizer->blockSignals( true );
     m_keyboardVisualizer->updateFromJSON( statesArray );
+    m_keyboardVisualizer->blockSignals( false );
   }
-  else if ( !statesArray.isEmpty() )
+
+  // Always send the flat states array to hardware (uccd's parser expects a JSON array, not the wrapped object)
+  if ( !statesArray.isEmpty() )
   {
-    // Apply directly to hardware
-    if ( not m_UccdClient->setKeyboardBacklight( json.toStdString() ) )
+    QJsonDocument statesDoc( statesArray );
+    if ( not m_UccdClient->setKeyboardBacklight( statesDoc.toJson( QJsonDocument::Compact ).toStdString() ) )
     {
-      statusBar()->showMessage( "Failed to load keyboard profile", 3000 );
+      statusBar()->showMessage( "Failed to apply keyboard profile", 3000 );
     }
   }
 

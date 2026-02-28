@@ -1,5 +1,7 @@
 build
+build-test
 dist
+Testing
 .cache
 *.bak
 result
@@ -7,3 +9,4 @@ result-*
 .qtcreator
 *.user
 build-local.sh
+verify-build.sh
