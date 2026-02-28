@@ -9,7 +9,7 @@
 
 #include "TrayBackend.hpp"
 
-#include <QProcess>
+#include "GuiLauncher.hpp"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -17,7 +17,6 @@
 #include <QDir>
 #include <QFile>
 #include <QDebug>
-#include <QStandardPaths>
 
 #include <algorithm>
 #include <ranges>
@@ -341,19 +340,7 @@ void TrayBackend::setODMPerformanceProfile( const QString &profile )
 
 void TrayBackend::openControlCenter()
 {
-  // Note: QProcess does not invoke a shell; arguments must be passed separately.
-  // "/usr/bin/env ucc-gui" would be treated as a literal executable path and fail.
-  const QString uccGui = QStandardPaths::findExecutable( "ucc-gui" );
-
-  qint64 pid = 0;
-  bool ok = false;
-  if ( !uccGui.isEmpty() )
-    ok = QProcess::startDetached( uccGui, QStringList{}, QString{}, &pid );
-  else
-    ok = QProcess::startDetached( "/usr/bin/env", QStringList{ "ucc-gui" }, QString{}, &pid );
-
-  if ( !ok )
-    qWarning() << "[TrayBackend] Failed to start ucc-gui (found:" << uccGui << ")";
+  ucc::launchGui();
 }
 
 void TrayBackend::refreshAll()
