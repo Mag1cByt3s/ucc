@@ -170,8 +170,7 @@ public:
 
   /**
    * @brief Apply keyboard backlight states from a profile's keyboard data.
-   * @param keyboardDataJSON  JSON string — either a flat array or a wrapper
-   *                          object with a "states" key.
+   * @param keyboardDataJSON  JSON object string: {"brightness":N,"states":[...]}
    * @return true on success
    */
   bool applyProfileKeyboardStates( const std::string &keyboardDataJSON )
@@ -181,7 +180,7 @@ public:
 
     try
     {
-      std::string statesJSON = extractStatesFromKeyboardJSON( keyboardDataJSON );
+      std::string statesJSON = extractStatesArray( keyboardDataJSON );
       if ( !statesJSON.empty() )
         return applyStatesFromJSON( statesJSON );
     }
@@ -400,29 +399,30 @@ private:
     return oss.str();
   }
 
-  std::string extractStatesFromKeyboardJSON( const std::string &keyboardJSON ) const
+  /**
+   * @brief Extract the "states" array from a JSON object string.
+   * @param json  JSON object: {"states":[...], ...}
+   * @return The serialised [...] array, or empty string.
+   */
+  std::string extractStatesArray( const std::string &json ) const
   {
     std::string search = "\"states\":";
-    size_t pos = keyboardJSON.find( search );
+    size_t pos = json.find( search );
     if ( pos == std::string::npos )
-    {
-      if ( keyboardJSON.find( '[' ) == 0 )
-        return keyboardJSON;
       return "";
-    }
 
     pos += search.length();
 
-    size_t arrayStart = keyboardJSON.find( '[', pos );
+    size_t arrayStart = json.find( '[', pos );
     if ( arrayStart == std::string::npos )
       return "";
 
     int depth = 0;
     size_t arrayEnd = arrayStart;
-    for ( size_t i = arrayStart; i < keyboardJSON.length(); ++i )
+    for ( size_t i = arrayStart; i < json.length(); ++i )
     {
-      if ( keyboardJSON[i] == '[' ) ++depth;
-      else if ( keyboardJSON[i] == ']' ) --depth;
+      if ( json[i] == '[' ) ++depth;
+      else if ( json[i] == ']' ) --depth;
       if ( depth == 0 )
       {
         arrayEnd = i;
@@ -431,7 +431,7 @@ private:
     }
 
     if ( arrayEnd > arrayStart )
-      return keyboardJSON.substr( arrayStart, arrayEnd - arrayStart + 1 );
+      return json.substr( arrayStart, arrayEnd - arrayStart + 1 );
 
     return "";
   }

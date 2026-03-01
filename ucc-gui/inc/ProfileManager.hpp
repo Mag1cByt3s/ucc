@@ -58,6 +58,8 @@ public:
   // Active profile
   QString activeProfileId() const { return m_activeProfileId; }
   QString activeProfileName() const;
+  QString activeKeyboardProfileId() const { return m_activeKeyboardProfileId; }
+  QString activeFanProfileId() const { return m_activeFanProfileId; }
   QString powerState() const { return m_powerState; }
   int activeProfileIndex() const { return m_activeProfileIndex; }
   bool isConnected() const { return m_connected; }
@@ -110,6 +112,8 @@ signals:
   void customProfilesChanged();
   void allProfilesChanged();
   void activeProfileChanged();
+  void activeKeyboardProfileChanged( const QString &keyboardProfileId );
+  void activeFanProfileChanged( const QString &fanProfileId );
   void powerStateChanged();
   void activeProfileIndexChanged();
   void connectedChanged();
@@ -119,7 +123,9 @@ signals:
 
 private:
   void updateProfiles();
-  void onProfileChanged( const std::string &profileId );
+  void onProfileChanged( const std::string &profileId,
+                         const std::string &keyboardProfileId,
+                         const std::string &fanProfileId );
   void onPowerStateChanged( const QString &state );
   QString resolveStateMapToProfileId( const QString &state );
   void updateAllProfiles();
@@ -149,6 +155,8 @@ private:
   QStringList m_customKeyboardProfiles;
 
   QString m_activeProfileId;
+  QString m_activeKeyboardProfileId;
+  QString m_activeFanProfileId;
   QString m_powerState;
   int m_activeProfileIndex = -1;
   bool m_connected = false;

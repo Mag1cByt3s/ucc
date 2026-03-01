@@ -219,7 +219,7 @@ signals:
 private slots:
   void pollMetrics();
   void pollSlowState();
-  void onDaemonProfileChanged( const QString &profileId );
+  void onDaemonProfileChanged( const QString &profileId, const QString &keyboardProfileId, const QString &fanProfileId );
   void onSettingsFileChanged( const QString &path );
   void onConnectionStatusChanged( bool connected );
 

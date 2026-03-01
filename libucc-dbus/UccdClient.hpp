@@ -193,12 +193,12 @@ public:
   bool isConnected() const;
 
 signals:
-  void profileChanged( const QString &profileId );
+  void profileChanged( const QString &profileId, const QString &keyboardProfileId, const QString &fanProfileId );
   void powerStateChanged( const QString &state );
   void connectionStatusChanged( bool connected );
 
 private slots:
-  void onProfileChangedSignal( const QString &profileId );
+  void onProfileChangedSignal( const QString &profileId, const QString &keyboardProfileId, const QString &fanProfileId );
   void onPowerStateChangedSignal( const QString &state );
   void onServiceRegistered( const QString &service );
   void onServiceUnregistered( const QString &service );

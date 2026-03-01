@@ -115,14 +115,14 @@ void UccdClient::subscribeDbusSignals()
   // multiple reconnect cycles.
   QDBusConnection::systemBus().disconnect( DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,
                   "ProfileChanged", this,
-                  SLOT( onProfileChangedSignal( QString ) ) );
+                  SLOT( onProfileChangedSignal( QString, QString, QString ) ) );
   QDBusConnection::systemBus().disconnect( DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,
                   "PowerStateChanged", this,
                   SLOT( onPowerStateChangedSignal( QString ) ) );
 
   QDBusConnection::systemBus().connect( DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,
                "ProfileChanged", this,
-               SLOT( onProfileChangedSignal( QString ) ) );
+               SLOT( onProfileChangedSignal( QString, QString, QString ) ) );
   QDBusConnection::systemBus().connect( DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,
                "PowerStateChanged", this,
                SLOT( onPowerStateChangedSignal( QString ) ) );
@@ -190,9 +190,9 @@ bool UccdClient::isConnected() const
 }
 
 // Signal handlers
-void UccdClient::onProfileChangedSignal( const QString &profileId )
+void UccdClient::onProfileChangedSignal( const QString &profileId, const QString &keyboardProfileId, const QString &fanProfileId )
 {
-  emit profileChanged( profileId );
+  emit profileChanged( profileId, keyboardProfileId, fanProfileId );
 }
 
 void UccdClient::onPowerStateChangedSignal( const QString &state )

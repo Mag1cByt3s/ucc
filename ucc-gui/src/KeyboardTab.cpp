@@ -307,6 +307,7 @@ void MainWindow::onKeyboardProfileChanged(const QString& profileId)
   // Get the keyboard profile data by ID
   QString json = m_profileManager->getKeyboardProfile( profileId );
   qDebug() << "[KBD PROFILE] loading profile:" << profileId << "json length:" << json.size();
+
   if ( json.isEmpty() or json == "{}" )
   {
     qDebug() << "No keyboard profile data for" << profileId;
@@ -325,15 +326,11 @@ void MainWindow::onKeyboardProfileChanged(const QString& profileId)
 
     // Check for top-level brightness (new format)
     if ( obj.contains( "brightness" ) )
-    {
       brightness = obj["brightness"].toInt( -1 );
-    }
 
     // Get states array
     if ( obj.contains( "states" ) && obj["states"].isArray() )
-    {
       statesArray = obj["states"].toArray();
-    }
   }
   else if ( doc.isArray() )
   {
@@ -348,11 +345,15 @@ void MainWindow::onKeyboardProfileChanged(const QString& profileId)
     m_keyboardVisualizer->blockSignals( false );
   }
 
-  // Always send the flat states array to hardware (uccd's parser expects a JSON array, not the wrapped object)
+  // Send the states to hardware, wrapped with the keyboard profile ID
+  // so uccd can notify other clients about the profile selection change.
   if ( !statesArray.isEmpty() )
   {
-    QJsonDocument statesDoc( statesArray );
-    if ( not m_UccdClient->setKeyboardBacklight( statesDoc.toJson( QJsonDocument::Compact ).toStdString() ) )
+    QJsonObject wrapper;
+    wrapper[ "keyboardProfileId" ] = profileId;
+    wrapper[ "states" ] = statesArray;
+    QJsonDocument wrapperDoc( wrapper );
+    if ( not m_UccdClient->setKeyboardBacklight( wrapperDoc.toJson( QJsonDocument::Compact ).toStdString() ) )
     {
       statusBar()->showMessage( "Failed to apply keyboard profile", 3000 );
     }

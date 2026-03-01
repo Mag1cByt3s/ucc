@@ -129,6 +129,8 @@ namespace ucc
     // Slot: called when DBus connection status changes
     void onUccdConnectionChanged( bool connected );
     void loadProfileDetails( const QString &profileId );
+    void updateKeyboardEditorFromProfile( const QString &keyboardProfileId );
+    void updateFanEditorFromProfile( const QString &fanProfileId );
     QString buildProfileJSON() const;
     void markChanged();
     void updateButtonStates();

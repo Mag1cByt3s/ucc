@@ -800,6 +800,20 @@ void MainWindow::connectSignals()
   connect( m_profileManager.get(), &ProfileManager::customKeyboardProfilesChanged,
            this, &MainWindow::onCustomKeyboardProfilesChanged );
 
+  // Sub-profile sync: when a remote client (e.g. tray) changes the
+  // keyboard or fan profile, update the combo boxes and editors without
+  // writing back to hardware (the hardware already has the new state).
+  connect( m_profileManager.get(), &ProfileManager::activeKeyboardProfileChanged,
+           this, [this]( const QString &kbId ) {
+    if ( m_initializing ) return;
+    updateKeyboardEditorFromProfile( kbId );
+  } );
+  connect( m_profileManager.get(), &ProfileManager::activeFanProfileChanged,
+           this, [this]( const QString &fpId ) {
+    if ( m_initializing ) return;
+    updateFanEditorFromProfile( fpId );
+  } );
+
   connect( m_profileCombo, QOverload< int >::of( &QComboBox::currentIndexChanged ),
            this, &MainWindow::onProfileIndexChanged );
 
@@ -1330,6 +1344,19 @@ void MainWindow::onAllProfilesChanged()
   // Custom profiles may have changed; reload fan profiles (adds custom entries to the fan combo)
   reloadFanProfiles();
 
+  // Override stored keyboard/fan profile with the daemon's live state.
+  // A remote client (e.g. tray applet) may have changed the sub-profile
+  // while the GUI was not running, or the ProfileChanged signal may have
+  // arrived with updated sub-profile IDs.
+  {
+    QString liveKbId = m_profileManager->activeKeyboardProfileId();
+    QString liveFpId = m_profileManager->activeFanProfileId();
+    if ( !liveKbId.isEmpty() )
+      updateKeyboardEditorFromProfile( liveKbId );
+    if ( !liveFpId.isEmpty() )
+      updateFanEditorFromProfile( liveFpId );
+  }
+
   // If we were in the middle of saving, mark as complete
   if ( m_saveInProgress )
   {
@@ -1382,6 +1409,109 @@ void MainWindow::onBrightnessSliderChanged( int value )
 void MainWindow::onCpuCoresChanged( int value )
 {
   m_cpuCoresValue->setText( QString::number( value ) );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-profile sync helpers: update combo + editor without writing to hardware
+// ---------------------------------------------------------------------------
+
+void MainWindow::updateKeyboardEditorFromProfile( const QString &keyboardProfileId )
+{
+  // Update keyboard tab combo
+  if ( m_keyboardProfileCombo )
+  {
+    m_keyboardProfileCombo->blockSignals( true );
+    for ( int i = 0; i < m_keyboardProfileCombo->count(); ++i )
+    {
+      if ( m_keyboardProfileCombo->itemData( i ).toString() == keyboardProfileId )
+      {
+        m_keyboardProfileCombo->setCurrentIndex( i );
+        break;
+      }
+    }
+    m_keyboardProfileCombo->blockSignals( false );
+  }
+
+  // Update profile-page keyboard combo
+  if ( m_profileKeyboardProfileCombo )
+  {
+    m_profileKeyboardProfileCombo->blockSignals( true );
+    for ( int i = 0; i < m_profileKeyboardProfileCombo->count(); ++i )
+    {
+      if ( m_profileKeyboardProfileCombo->itemData( i ).toString() == keyboardProfileId )
+      {
+        m_profileKeyboardProfileCombo->setCurrentIndex( i );
+        break;
+      }
+    }
+    m_profileKeyboardProfileCombo->blockSignals( false );
+  }
+
+  // Update the keyboard visualizer without writing to hardware
+  QString json = m_profileManager->getKeyboardProfile( keyboardProfileId );
+  if ( json.isEmpty() || json == "{}" )
+    return;
+
+  QJsonDocument doc = QJsonDocument::fromJson( json.toUtf8() );
+  if ( !doc.isObject() )
+    return;
+
+  QJsonObject obj = doc.object();
+  int brightness = obj.value( "brightness" ).toInt( -1 );
+  QJsonArray statesArray = obj.value( "states" ).toArray();
+
+  if ( !statesArray.isEmpty() && m_keyboardVisualizer )
+  {
+    m_keyboardVisualizer->blockSignals( true );
+    m_keyboardVisualizer->updateFromJSON( statesArray );
+    m_keyboardVisualizer->blockSignals( false );
+  }
+
+  if ( brightness >= 0 && m_keyboardBrightnessSlider )
+  {
+    m_keyboardBrightnessSlider->blockSignals( true );
+    m_keyboardBrightnessSlider->setValue( brightness );
+    m_keyboardBrightnessSlider->blockSignals( false );
+  }
+
+  updateKeyboardProfileButtonStates();
+}
+
+void MainWindow::updateFanEditorFromProfile( const QString &fanProfileId )
+{
+  // Update fan tab combo
+  if ( m_fanControlTab && m_fanControlTab->fanProfileCombo() )
+  {
+    auto *combo = m_fanControlTab->fanProfileCombo();
+    combo->blockSignals( true );
+    for ( int i = 0; i < combo->count(); ++i )
+    {
+      if ( combo->itemData( i ).toString() == fanProfileId )
+      {
+        combo->setCurrentIndex( i );
+        break;
+      }
+    }
+    combo->blockSignals( false );
+  }
+
+  // Update profile-page fan combo
+  if ( m_profileFanProfileCombo )
+  {
+    m_profileFanProfileCombo->blockSignals( true );
+    for ( int i = 0; i < m_profileFanProfileCombo->count(); ++i )
+    {
+      if ( m_profileFanProfileCombo->itemData( i ).toString() == fanProfileId )
+      {
+        m_profileFanProfileCombo->setCurrentIndex( i );
+        break;
+      }
+    }
+    m_profileFanProfileCombo->blockSignals( false );
+  }
+
+  // Load fan curve data into editors without writing to hardware
+  onFanProfileChanged( fanProfileId );
 }
 
 void MainWindow::onMaxFrequencyChanged( int value )
@@ -1881,23 +2011,15 @@ void MainWindow::loadProfileDetails( const QString &profileId )
     onFanProfileChanged( loadedFanProfile );
   }
 
-  // Load keyboard profile for display only — block signals to prevent hardware writes
-  // (brightness slider → setGlobalBrightness → colorsChanged → setKeyboardBacklight)
-  // If the saved keyboard profile was not found (e.g. deleted), fall back to
-  // whatever the combo currently shows so the editor stays in sync.
+  // Load keyboard profile for display only — must NOT write to hardware.
+  // onKeyboardProfileChanged() pushes states to the daemon, which would revert
+  // live changes made by the tray applet while the GUI was not running.
+  // Use updateKeyboardEditorFromProfile() which only updates the UI widgets.
   if ( loadedKeyboardProfile.isEmpty() && m_keyboardProfileCombo->count() > 0 )
     loadedKeyboardProfile = m_keyboardProfileCombo->currentData().toString();
 
   if ( !loadedKeyboardProfile.isEmpty() )
-  {
-    if ( m_keyboardBrightnessSlider ) m_keyboardBrightnessSlider->blockSignals( true );
-    if ( m_keyboardVisualizer ) m_keyboardVisualizer->blockSignals( true );
-
-    onKeyboardProfileChanged( loadedKeyboardProfile );
-
-    if ( m_keyboardBrightnessSlider ) m_keyboardBrightnessSlider->blockSignals( false );
-    if ( m_keyboardVisualizer ) m_keyboardVisualizer->blockSignals( false );
-  }
+    updateKeyboardEditorFromProfile( loadedKeyboardProfile );
 
 
   // Enable/disable editing widgets based on whether profile is custom
@@ -2727,6 +2849,8 @@ void MainWindow::onApplyFanProfilesClicked()
   root[ "gpu" ] = gpuArr;
   root[ "waterCoolerFan" ] = wcFanArr;
   root[ "pump" ] = pumpArr;
+  if ( !m_currentFanProfile.isEmpty() )
+    root[ "fanProfileId" ] = m_currentFanProfile;
 
   QJsonDocument doc( root );
   QString json = QString::fromUtf8( doc.toJson( QJsonDocument::Compact ) );

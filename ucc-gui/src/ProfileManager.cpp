@@ -47,8 +47,8 @@ ProfileManager::ProfileManager( QObject *parent )
   // Always wire daemon signals — they won't fire while disconnected but will
   // start arriving as soon as uccd appears (see connectionStatusChanged below).
   connect( m_client.get(), &UccdClient::profileChanged,
-           this, [this]( const QString &profileId ) {
-    onProfileChanged( profileId.toStdString() );
+           this, [this]( const QString &profileId, const QString &keyboardProfileId, const QString &fanProfileId ) {
+    onProfileChanged( profileId.toStdString(), keyboardProfileId.toStdString(), fanProfileId.toStdString() );
   } );
   connect( m_client.get(), &UccdClient::powerStateChanged,
            this, [this]( const QString &state ) {
@@ -181,6 +181,33 @@ void ProfileManager::updateProfiles()
       qWarning() << "Failed to get active profile:" << e.what();
     }
   }
+
+  // Query the daemon's live active profile to learn the current keyboard and
+  // fan sub-profile IDs.  These may differ from the stored profile if a remote
+  // client (e.g. the tray applet) changed them at runtime.
+  try
+  {
+    if ( auto json = m_client->getActiveProfileJSON() )
+    {
+      QJsonDocument doc = QJsonDocument::fromJson( QString::fromStdString( *json ).toUtf8() );
+      if ( doc.isObject() )
+      {
+        QJsonObject obj = doc.object();
+
+        // Keyboard profile ID
+        QString kbId = obj[ "selectedKeyboardProfile" ].toString();
+        if ( !kbId.isEmpty() )
+          m_activeKeyboardProfileId = kbId;
+
+        // Fan profile ID
+        auto fanObj = obj[ "fan" ].toObject();
+        QString fpId = fanObj[ "fanProfile" ].toString();
+        if ( !fpId.isEmpty() )
+          m_activeFanProfileId = fpId;
+      }
+    }
+  }
+  catch ( ... ) {}
 
   updateAllProfiles();
   updateActiveProfileIndex();
@@ -428,7 +455,9 @@ QString ProfileManager::getProfileDetails( const QString &profileId )
 // Profile changed signal (from daemon)
 // ---------------------------------------------------------------------------
 
-void ProfileManager::onProfileChanged( const std::string &profileId )
+void ProfileManager::onProfileChanged( const std::string &profileId,
+                                       const std::string &keyboardProfileId,
+                                       const std::string &fanProfileId )
 {
   const QString qId = QString::fromStdString( profileId );
 
@@ -437,6 +466,25 @@ void ProfileManager::onProfileChanged( const std::string &profileId )
     m_activeProfileId = qId;
     emit activeProfileChanged();
     qDebug() << "Active profile updated from signal:" << qId;
+  }
+
+  // Propagate keyboard / fan sub-profile changes regardless of whether the
+  // top-level profile ID changed.  Clients that only care about sub-profiles
+  // (e.g. keyboard editor combo) listen to these dedicated signals.
+  if ( const QString kbId = QString::fromStdString( keyboardProfileId );
+       !kbId.isEmpty() && kbId != m_activeKeyboardProfileId )
+  {
+    m_activeKeyboardProfileId = kbId;
+    emit activeKeyboardProfileChanged( kbId );
+    qDebug() << "Active keyboard profile updated from signal:" << kbId;
+  }
+
+  if ( const QString fpId = QString::fromStdString( fanProfileId );
+       !fpId.isEmpty() && fpId != m_activeFanProfileId )
+  {
+    m_activeFanProfileId = fpId;
+    emit activeFanProfileChanged( fpId );
+    qDebug() << "Active fan profile updated from signal:" << fpId;
   }
 
   updateProfiles();

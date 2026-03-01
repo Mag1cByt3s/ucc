@@ -300,6 +300,7 @@ void TrayBackend::setActiveFanProfile( const QString &fanProfileId )
       if ( src.contains( "tableGPU" ) )         dst[ "gpu" ]            = src[ "tableGPU" ];
       if ( src.contains( "tablePump" ) )        dst[ "pump" ]           = src[ "tablePump" ];
       if ( src.contains( "tableWaterCoolerFan" ) ) dst[ "waterCoolerFan" ] = src[ "tableWaterCoolerFan" ];
+      dst[ "fanProfileId" ] = fanProfileId;
       const std::string applyJson =
         QJsonDocument( dst ).toJson( QJsonDocument::Compact ).toStdString();
       m_client->applyFanProfiles( applyJson );
@@ -319,9 +320,19 @@ void TrayBackend::setActiveKeyboardProfile( const QString &keyboardProfileId )
   } );
   if ( it != m_keyboardProfilesData.end() )
   {
-    auto json = it->toObject()[ "json" ].toString();
-    if ( !json.isEmpty() )
-      m_client->setKeyboardBacklight( json.toStdString() );
+    auto profileData = it->toObject()[ "json" ].toString();
+    if ( !profileData.isEmpty() )
+    {
+      QJsonDocument doc = QJsonDocument::fromJson( profileData.toUtf8() );
+      if ( doc.isObject() )
+      {
+        QJsonObject obj = doc.object();
+        // Inject the keyboard profile ID so uccd can notify subscribers
+        obj[ "keyboardProfileId" ] = keyboardProfileId;
+        m_client->setKeyboardBacklight(
+          QJsonDocument( obj ).toJson( QJsonDocument::Compact ).toStdString() );
+      }
+    }
   }
   m_keyboardProfileOverride = true;
   m_activeProfileKeyboardId = keyboardProfileId;
@@ -513,16 +524,42 @@ void TrayBackend::pollSlowState()
 // Daemon signal handlers
 // ---------------------------------------------------------------------------
 
-void TrayBackend::onDaemonProfileChanged( const QString &profileId )
+void TrayBackend::onDaemonProfileChanged( const QString &profileId, const QString &keyboardProfileId, const QString &fanProfileId )
 {
+  bool changed = false;
+
   if ( profileId != m_activeProfileId )
   {
     m_activeProfileId = profileId;
-    // Resolve name
     int idx = m_profileIds.indexOf( profileId );
     m_activeProfileName = ( idx >= 0 ) ? m_profileNames[ idx ] : profileId;
+    // Reset overrides when the system profile itself changes
+    m_fanProfileOverride = false;
+    m_keyboardProfileOverride = false;
+    m_wcEnabledOverride = false;
+    changed = true;
+  }
+
+  if ( !keyboardProfileId.isEmpty() && keyboardProfileId != m_activeProfileKeyboardId )
+  {
+    m_keyboardProfileOverride = false;
+    m_activeProfileKeyboardId = keyboardProfileId;
+    m_activeProfileKeyboardName = resolveKeyboardProfileName( keyboardProfileId );
+    changed = true;
+  }
+
+  if ( !fanProfileId.isEmpty() && fanProfileId != m_activeProfileFanId )
+  {
+    m_fanProfileOverride = false;
+    m_activeProfileFanId = fanProfileId;
+    m_activeProfileFanName = resolveFanProfileName( fanProfileId );
+    changed = true;
+  }
+
+  if ( changed )
+  {
     emit activeProfileChanged();
-    pollSlowState();  // refresh power limits etc
+    pollSlowState();
   }
 }
 

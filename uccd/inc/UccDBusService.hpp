@@ -391,7 +391,7 @@ public slots:
   int GetCpuFrequencyMHz();
 
 signals:
-  void ProfileChanged( const QString &profileId );
+  void ProfileChanged( const QString &profileId, const QString &keyboardProfileId, const QString &fanProfileId );
   void ModeReapplyPendingChanged( bool pending );
   void PowerStateChanged( const QString &state );
   void WaterCoolerStatusChanged( const QString &status );
@@ -399,7 +399,9 @@ signals:
 public:
   // signal emitters (call these from service code)
   void emitModeReapplyPendingChanged( bool pending );
-  void emitProfileChanged( const std::string &profileId );
+  void emitProfileChanged( const std::string &profileId,
+                           const std::string &keyboardProfileId = {},
+                           const std::string &fanProfileId = {} );
   void emitPowerStateChanged( const std::string &state );
   void emitWaterCoolerStatusChanged( const std::string &status );
 

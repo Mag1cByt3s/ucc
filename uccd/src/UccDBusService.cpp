@@ -663,6 +663,30 @@ bool UccDBusInterfaceAdaptor::ApplyFanProfiles( const QString &fanProfilesJSONq 
       std::cerr << "[DBus] Applied temporary fan profiles" << std::endl;
     }
 
+    // If the caller provided a fan profile ID, update the active profile
+    // reference and notify all clients so they stay in sync.
+    {
+      auto extractStr = []( const std::string &json, const std::string &key ) -> std::string {
+        std::string search = "\"" + key + "\":\"";
+        size_t pos = json.find( search );
+        if ( pos == std::string::npos ) return {};
+        pos += search.length();
+        size_t end = json.find( '"', pos );
+        if ( end == std::string::npos ) return {};
+        return json.substr( pos, end - pos );
+      };
+      std::string fanProfileId = extractStr( fanProfilesJSON, "fanProfileId" );
+      if ( !fanProfileId.empty() )
+      {
+        m_service->m_activeProfile.fan.fanProfile = fanProfileId;
+        m_service->updateDBusActiveProfileData();
+        if ( m_service->m_adaptor )
+          emitProfileChanged( m_service->m_activeProfile.id,
+                              m_service->m_activeProfile.keyboard.keyboardProfileId,
+                              fanProfileId );
+      }
+    }
+
     return true;
   }
   catch ( ... )
@@ -1334,16 +1358,46 @@ bool UccDBusInterfaceAdaptor::SetKeyboardBacklightStatesJSON( const QString &key
   if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
   if ( !m_service->m_settings.keyboardBacklightControlEnabled ) return false;
 
-  auto statesJSON = keyboardBacklightStatesJSON.toStdString();
+  auto inputJSON = keyboardBacklightStatesJSON.toStdString();
 
-  if ( !m_service->m_keyboardBacklightController.applyStatesFromJSON( statesJSON ) )
+  // The caller sends a JSON object:
+  //   { "keyboardProfileId": "...", "states": [...] }
+  // Extract optional metadata before applying to hardware.
+  auto extractStr = []( const std::string &json, const std::string &key ) -> std::string {
+    std::string search = "\"" + key + "\":\"";
+    size_t pos = json.find( search );
+    if ( pos == std::string::npos ) return {};
+    pos += search.length();
+    size_t end = json.find( '"', pos );
+    if ( end == std::string::npos ) return {};
+    return json.substr( pos, end - pos );
+  };
+  std::string keyboardProfileId = extractStr( inputJSON, "keyboardProfileId" );
+
+  // Apply the states array to hardware (extracts "states" from the object)
+  if ( !m_service->m_keyboardBacklightController.applyProfileKeyboardStates( inputJSON ) )
     return false;
 
-  // Update the D-Bus readable state so clients see the new values
+  // Update the D-Bus readable state with the states *array* so
+  // GetKeyboardBacklightStatesJSON returns a clean array.
   {
     std::lock_guard< std::mutex > lock( m_data.dataMutex );
-    m_data.keyboardBacklightStatesJSON = statesJSON;
+    m_data.keyboardBacklightStatesJSON =
+      m_service->m_keyboardBacklightController.currentStatesJSON();
   }
+
+  // If the caller provided a keyboard profile ID, update the active profile
+  // reference and notify all clients so they stay in sync.
+  if ( !keyboardProfileId.empty() )
+  {
+    m_service->m_activeProfile.keyboard.keyboardProfileId = keyboardProfileId;
+    m_service->updateDBusActiveProfileData();
+    if ( m_service->m_adaptor )
+      emitProfileChanged( m_service->m_activeProfile.id,
+                          keyboardProfileId,
+                          m_service->m_activeProfile.fan.fanProfile );
+  }
+
   return true;
 }
 
@@ -1763,11 +1817,15 @@ void UccDBusInterfaceAdaptor::emitModeReapplyPendingChanged( bool pending )
   }, Qt::QueuedConnection );
 }
 
-void UccDBusInterfaceAdaptor::emitProfileChanged( const std::string &profileId )
+void UccDBusInterfaceAdaptor::emitProfileChanged( const std::string &profileId,
+                                                   const std::string &keyboardProfileId,
+                                                   const std::string &fanProfileId )
 {
-  QString id = QString::fromStdString( profileId );
-  QMetaObject::invokeMethod( this, [this, id]() {
-    emit ProfileChanged( id );
+  QString id   = QString::fromStdString( profileId );
+  QString kbId = QString::fromStdString( keyboardProfileId );
+  QString fpId = QString::fromStdString( fanProfileId );
+  QMetaObject::invokeMethod( this, [this, id, kbId, fpId]() {
+    emit ProfileChanged( id, kbId, fpId );
   }, Qt::QueuedConnection );
 }
 
@@ -3096,7 +3154,9 @@ bool UccDBusService::setCurrentProfileById( const std::string &id )
 
       // Emit ProfileChanged signal for DBus clients
       if ( m_adaptor )
-        m_adaptor->emitProfileChanged( id );
+        m_adaptor->emitProfileChanged( id,
+                                       profile.keyboard.keyboardProfileId,
+                                       profile.fan.fanProfile );
 
       return true;
     }
@@ -3115,7 +3175,9 @@ bool UccDBusService::setCurrentProfileById( const std::string &id )
   // Emit ProfileChanged signal for DBus clients
   if ( m_adaptor )
   {
-    m_adaptor->emitProfileChanged( m_activeProfile.id );
+    m_adaptor->emitProfileChanged( m_activeProfile.id,
+                                   m_activeProfile.keyboard.keyboardProfileId,
+                                   m_activeProfile.fan.fanProfile );
   }
 
   return false;
@@ -3289,7 +3351,9 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
     // Emit ProfileChanged signal for DBus clients
     if ( m_adaptor )
     {
-      m_adaptor->emitProfileChanged( profile.id );
+      m_adaptor->emitProfileChanged( profile.id,
+                                     profile.keyboard.keyboardProfileId,
+                                     profile.fan.fanProfile );
     }
 
     return true;
@@ -4061,7 +4125,9 @@ void UccDBusService::applyProfileForCurrentState()
 
     // Emit ProfileChanged signal for DBus clients
     if ( m_adaptor )
-      m_adaptor->emitProfileChanged( profile.id );
+      m_adaptor->emitProfileChanged( profile.id,
+                                     profile.keyboard.keyboardProfileId,
+                                     profile.fan.fanProfile );
   };
 
   // Try persistent (custom) profiles first
