@@ -950,12 +950,11 @@ void MainWindow::connectSignals()
   connect( m_profileKeyboardProfileCombo, QOverload< int >::of( &QComboBox::currentIndexChanged ),
            this, [this](int index) {
              markChanged();
-             // Update keyboard tab combo to match profile tab selection
+             // Keep the keyboard tab combo in sync so it reflects the selection,
+             // but do NOT apply to hardware — that happens when the profile is saved/applied.
              m_keyboardProfileCombo->blockSignals(true);
              m_keyboardProfileCombo->setCurrentIndex(index);
              m_keyboardProfileCombo->blockSignals(false);
-             // Load the keyboard profile data for the new selection
-             onKeyboardProfileChanged(m_profileKeyboardProfileCombo->currentData().toString());
            } );
 
   if ( m_profileChargingProfileCombo )
@@ -2075,8 +2074,6 @@ QString MainWindow::buildProfileJSON() const
   keyboardObj["keyboardProfileName"] = m_profileKeyboardProfileCombo->currentText();
   if ( m_keyboardBrightnessSlider )
     keyboardObj["brightness"] = m_keyboardBrightnessSlider->value();
-  if ( m_keyboardVisualizer )
-    keyboardObj["states"] = m_keyboardVisualizer->getJSONState();
   profileObj["keyboard"]               = keyboardObj;
   profileObj["selectedKeyboardProfile"] = keyboardProfileId;
 

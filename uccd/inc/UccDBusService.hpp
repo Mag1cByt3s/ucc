@@ -36,7 +36,7 @@
 #include "workers/DisplayWorker.hpp"
 #include "workers/CpuWorker.hpp"
 #include "workers/FanControlWorker.hpp"
-#include "workers/KeyboardBacklightListener.hpp"
+#include "KeyboardBacklightController.hpp"
 #include "workers/ProfileSettingsWorker.hpp"
 #include "workers/LCTWaterCoolerWorker.hpp"
 #include "FnLockController.hpp"
@@ -130,7 +130,6 @@ public:
   std::string odmPowerLimitsJSON;
   std::string keyboardBacklightCapabilitiesJSON;
   std::string keyboardBacklightStatesJSON;
-  std::string keyboardBacklightStatesNewJSON;
   std::atomic< int32_t > fansMinSpeed;
   std::atomic< bool > fansOffAvailable;
   std::string chargingProfilesAvailable;
@@ -187,7 +186,6 @@ public:
       odmPowerLimitsJSON( "[]" ),
       keyboardBacklightCapabilitiesJSON( "{}" ),
       keyboardBacklightStatesJSON( "{}" ),
-      keyboardBacklightStatesNewJSON( "{}" ),
       fansMinSpeed( 0 ),
       fansOffAvailable( false ),
       chargingProfilesAvailable( "[]" ),
@@ -592,7 +590,7 @@ private:
   std::unique_ptr< CpuWorker > m_cpuWorker;
   std::unique_ptr< ProfileSettingsWorker > m_profileSettingsWorker;
   std::unique_ptr< FanControlWorker > m_fanControlWorker;
-  std::unique_ptr< KeyboardBacklightListener > m_keyboardBacklightListener;
+  KeyboardBacklightController m_keyboardBacklightController;
   std::unique_ptr< LCTWaterCoolerWorker > m_waterCoolerWorker;
 
   // identified device

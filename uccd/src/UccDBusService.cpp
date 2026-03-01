@@ -1332,8 +1332,18 @@ QString UccDBusInterfaceAdaptor::GetKeyboardBacklightStatesJSON()
 bool UccDBusInterfaceAdaptor::SetKeyboardBacklightStatesJSON( const QString &keyboardBacklightStatesJSON )
 {
   if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  std::lock_guard< std::mutex > lock( m_data.dataMutex );
-  m_data.keyboardBacklightStatesNewJSON = keyboardBacklightStatesJSON.toStdString();
+  if ( !m_service->m_settings.keyboardBacklightControlEnabled ) return false;
+
+  auto statesJSON = keyboardBacklightStatesJSON.toStdString();
+
+  if ( !m_service->m_keyboardBacklightController.applyStatesFromJSON( statesJSON ) )
+    return false;
+
+  // Update the D-Bus readable state so clients see the new values
+  {
+    std::lock_guard< std::mutex > lock( m_data.dataMutex );
+    m_data.keyboardBacklightStatesJSON = statesJSON;
+  }
   return true;
 }
 
@@ -1839,10 +1849,9 @@ UccDBusService::UccDBusService()
   m_dbusData.dGpuInfoValuesJSON = "{\"temp\":-1,\"powerDraw\":-1,\"maxPowerLimit\":-1,\"enforcedPowerLimit\":-1,\"coreFrequency\":-1,\"maxCoreFrequency\":-1}";
   m_dbusData.iGpuInfoValuesJSON = "{\"vendor\":\"unknown\",\"temp\":-1,\"coreFrequency\":-1,\"maxCoreFrequency\":-1,\"powerDraw\":-1}";
 
-  // Keyboard backlight will be detected and initialized by KeyboardBacklightListener
+  // Keyboard backlight will be detected during worker initialization
   m_dbusData.keyboardBacklightCapabilitiesJSON = "null";
   m_dbusData.keyboardBacklightStatesJSON = "[]";
-  m_dbusData.keyboardBacklightStatesNewJSON = "";
 
   // Read all hardware capabilities directly using m_io / sysfs BEFORE any
   // workers or profiles are created.  This populates TDP limits, NVIDIA
@@ -2112,28 +2121,20 @@ UccDBusService::UccDBusService()
     }
   );
 
-  // Initialize Keyboard Backlight listener
-  m_keyboardBacklightListener = std::make_unique< KeyboardBacklightListener >(
-    [this]( const std::string &json ) {
-      std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
-      m_dbusData.keyboardBacklightCapabilitiesJSON = json;
-    },
-    [this]( const std::string &json ) {
-      std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
-      m_dbusData.keyboardBacklightStatesJSON = json;
-    },
-    [this]() -> std::string {
-      std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
-      return m_dbusData.keyboardBacklightStatesNewJSON;
-    },
-    [this]( const std::string & ) {
-      std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
-      m_dbusData.keyboardBacklightStatesNewJSON.clear();
-    },
-    [this]() {
-      return m_settings.keyboardBacklightControlEnabled;
+  // Initialize keyboard backlight controller (synchronous — no worker thread)
+  {
+    std::string capsJSON = m_keyboardBacklightController.init();
+    m_dbusData.keyboardBacklightCapabilitiesJSON = capsJSON;
+
+    if ( m_keyboardBacklightController.isAvailable() )
+    {
+      std::string defaultStates = m_keyboardBacklightController.buildDefaultStatesJSON();
+      m_dbusData.keyboardBacklightStatesJSON = defaultStates;
+
+      if ( m_settings.keyboardBacklightControlEnabled )
+        m_keyboardBacklightController.applyStatesFromJSON( defaultStates );
     }
-  );
+  }
 
   // then setup gpu callback before worker starts processing
   setupGpuDataCallback();
@@ -2149,7 +2150,6 @@ UccDBusService::UccDBusService()
   m_displayWorker->start();
   m_cpuWorker->start();
   m_fanControlWorker->start();
-  m_keyboardBacklightListener->start();
 }
 
 void UccDBusService::readHardwareCapabilities()
@@ -2542,7 +2542,6 @@ void UccDBusService::shutdown()
   // sequentially, a worker stuck in BlockingQueuedConnection will deadlock
   // because the main thread is blocked in QThread::wait().
   requestStop();
-  if ( m_keyboardBacklightListener ) m_keyboardBacklightListener->requestStop();
   if ( m_fanControlWorker ) m_fanControlWorker->requestStop();
   if ( m_cpuWorker ) m_cpuWorker->requestStop();
   if ( m_displayWorker ) m_displayWorker->requestStop();
@@ -2568,7 +2567,6 @@ void UccDBusService::shutdown()
 
   // Wait for the main service thread first, then sub-workers
   waitPumpingEvents( this );
-  waitPumpingEvents( m_keyboardBacklightListener.get() );
   waitPumpingEvents( m_fanControlWorker.get() );
   waitPumpingEvents( m_cpuWorker.get() );
   waitPumpingEvents( m_displayWorker.get() );
@@ -3083,17 +3081,22 @@ bool UccDBusService::setCurrentProfileById( const std::string &id )
         m_profileSettingsWorker->onNVIDIAPowerProfileChanged();
       }
 
-      if ( m_keyboardBacklightListener && !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
+      if ( m_keyboardBacklightController.isAvailable()
+           && m_settings.keyboardBacklightControlEnabled
+           && !profile.keyboard.keyboardProfileData.empty()
+           && profile.keyboard.keyboardProfileData != "{}" )
       {
-        std::cout << "[Profile] Applying keyboard backlight settings from profile" << std::endl;
-        m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
+        bool kbResult = m_keyboardBacklightController.applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
+        std::cout << "[Profile] Keyboard apply result: " << ( kbResult ? "SUCCESS" : "FAILED" ) << std::endl;
+      }
+      else
+      {
+        std::cout << "[Profile] Keyboard apply SKIPPED — one or more conditions not met" << std::endl;
       }
 
       // Emit ProfileChanged signal for DBus clients
       if ( m_adaptor )
-      {
         m_adaptor->emitProfileChanged( id );
-      }
 
       return true;
     }
@@ -3274,11 +3277,13 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
       }
     }
 
-    // Apply keyboard backlight settings from profile
-    if ( m_keyboardBacklightListener && !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
+    if ( m_keyboardBacklightController.isAvailable()
+         && m_settings.keyboardBacklightControlEnabled
+         && !profile.keyboard.keyboardProfileData.empty()
+         && profile.keyboard.keyboardProfileData != "{}" )
     {
       std::cout << "[Profile] Applying keyboard backlight settings from profile" << std::endl;
-      m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
+      m_keyboardBacklightController.applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
     }
 
     // Emit ProfileChanged signal for DBus clients
@@ -3390,7 +3395,10 @@ bool UccDBusService::deleteCustomProfile( const std::string &profileId )
 
 bool UccDBusService::updateCustomProfile( const UccProfile &profile )
 {
-  std::cout << "[ProfileManager] Updating profile '" << profile.name << "' in memory" << std::endl;
+  std::cout << "[ProfileManager] Updating profile '" << profile.name << "' (ID: " << profile.id << ") in memory" << std::endl;
+  std::cout << "[ProfileManager]   Active profile ID: '" << m_activeProfile.id << "'" << std::endl;
+  std::cout << "[ProfileManager]   Incoming keyboard data length: " << profile.keyboard.keyboardProfileData.size()
+            << " bytes, profileName='" << profile.keyboard.keyboardProfileName << "'" << std::endl;
 
   // Check if this is a default (hardcoded) profile
   bool isDefaultProfile = false;
@@ -3438,6 +3446,11 @@ bool UccDBusService::updateCustomProfile( const UccProfile &profile )
       {
         std::cerr << "[ProfileManager] Failed to reapply updated profile!" << std::endl;
       }
+    }
+    else
+    {
+      std::cout << "[ProfileManager] Updated profile is NOT the active profile — not reapplying" << std::endl;
+      std::cout << "[ProfileManager]   active='" << m_activeProfile.id << "' vs saved='" << profile.id << "'" << std::endl;
     }
 
     std::cout << "[ProfileManager] Profile updated successfully" << std::endl;
@@ -3847,8 +3860,11 @@ void UccDBusService::applyStartupProfile()
   if ( m_profileSettingsWorker )
     m_profileSettingsWorker->reapplyProfile();
 
-  if ( m_keyboardBacklightListener && !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
-    m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
+  if ( m_keyboardBacklightController.isAvailable()
+       && m_settings.keyboardBacklightControlEnabled
+       && !profile.keyboard.keyboardProfileData.empty()
+       && profile.keyboard.keyboardProfileData != "{}" )
+    m_keyboardBacklightController.applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
 
   if ( m_dbusData.waterCoolerSupported )
     setWaterCoolerScanningEnabled( profile.fan.enableWaterCooler );
@@ -4033,10 +4049,11 @@ void UccDBusService::applyProfileForCurrentState()
       m_cpuWorker->reapplyProfile();
     if ( m_profileSettingsWorker )
       m_profileSettingsWorker->reapplyProfile();
-    if ( m_keyboardBacklightListener
+    if ( m_keyboardBacklightController.isAvailable()
+         && m_settings.keyboardBacklightControlEnabled
          && !profile.keyboard.keyboardProfileData.empty()
          && profile.keyboard.keyboardProfileData != "{}" )
-      m_keyboardBacklightListener->applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
+      m_keyboardBacklightController.applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
 
     // Water cooler scanning state is preserved from the runtime flag
     // (set via EnableWaterCooler D-Bus call). Do NOT re-read enableWaterCooler

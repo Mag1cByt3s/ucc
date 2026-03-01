@@ -27,7 +27,6 @@ add_executable(uccd
   src/UccDBusService.cpp
   src/SystemInfo.cpp
   src/workers/ProfileSettingsWorker.cpp
-  src/workers/KeyboardBacklightListener.cpp
   src/workers/LCTWaterCoolerWorker.cpp
   src/workers/DisplayWorker.cpp
   src/workers/HardwareMonitorWorker.cpp

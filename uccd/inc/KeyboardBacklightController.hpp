@@ -15,7 +15,6 @@
 
 #pragma once
 
-#include "DaemonWorker.hpp"
 #include "SysfsNode.hpp"
 #include <string>
 #include <vector>
@@ -25,9 +24,7 @@
 #include <sstream>
 #include <algorithm>
 #include <ranges>
-#include <chrono>
 
-using namespace std::chrono_literals;
 namespace fs = std::filesystem;
 
 /**
@@ -54,34 +51,34 @@ struct KeyboardBacklightState
 };
 
 /**
- * @brief Listener for keyboard backlight changes and control
+ * @brief Synchronous controller for keyboard backlight hardware.
  *
- * Manages keyboard backlight hardware through sysfs LED interface.
+ * Replaces the former KeyboardBacklightListener polling thread with a
+ * direct, non-threaded implementation.  All public methods are meant to
+ * be called from the main / D-Bus thread.
+ *
  * Supports:
  * - White-only backlights
  * - RGB zone backlights (1-3 zones)
  * - Per-key RGB backlights
  */
-class KeyboardBacklightListener : public DaemonWorker
+class KeyboardBacklightController
 {
 public:
-  KeyboardBacklightListener( std::function< void( const std::string & ) > setCapabilitiesJSON,
-                            std::function< void( const std::string & ) > setStatesJSON,
-                            std::function< std::string() > getNewStatesJSON,
-                            std::function< void( const std::string & ) > clearNewStatesJSON,
-                            std::function< bool() > getControlEnabled )
-    : DaemonWorker( 2000ms )  // Check every 2 seconds
-    , m_setCapabilitiesJSON( setCapabilitiesJSON )
-    , m_setStatesJSON( setStatesJSON )
-    , m_getNewStatesJSON( getNewStatesJSON )
-    , m_clearNewStatesJSON( clearNewStatesJSON )
-    , m_getControlEnabled( getControlEnabled )
-  {
-  }
+  KeyboardBacklightController() = default;
+  ~KeyboardBacklightController() = default;
 
-  virtual ~KeyboardBacklightListener() = default;
+  // non-copyable, non-movable
+  KeyboardBacklightController( const KeyboardBacklightController & ) = delete;
+  KeyboardBacklightController &operator=( const KeyboardBacklightController & ) = delete;
 
-  void onStart() override
+  /**
+   * @brief Detect keyboard backlight hardware and publish initial state.
+   *
+   * Call once during daemon startup.  Returns the capabilities JSON string
+   * (or "null" when no backlight is found).
+   */
+  std::string init()
   {
     detectKeyboardBacklight();
 
@@ -89,98 +86,124 @@ public:
     {
       std::cout << "[KeyboardBacklight] Detected " << m_capabilities.zones
                 << " zone(s), max brightness: " << m_capabilities.maxBrightness << std::endl;
-
-      // Publish capabilities as JSON
-      m_setCapabilitiesJSON( capabilitiesToJSON() );
-
-      // Initialize default states with max brightness
-      std::vector< KeyboardBacklightState > defaultStates;
-      for ( int i = 0; i < m_capabilities.zones; ++i )
-      {
-        KeyboardBacklightState state;
-        state.brightness = m_capabilities.maxBrightness;
-        state.red = m_capabilities.maxRed > 0 ? m_capabilities.maxRed : 0;
-        state.green = m_capabilities.maxGreen > 0 ? m_capabilities.maxGreen : 0;
-        state.blue = m_capabilities.maxBlue > 0 ? m_capabilities.maxBlue : 0;
-        defaultStates.push_back( state );
-      }
-
-      // Build initial states JSON
-      std::string initialStatesJSON = statesToJSON( defaultStates );
-      m_setStatesJSON( initialStatesJSON );
-
-      // Apply if control is enabled
-      if ( m_getControlEnabled() )
-      {
-        std::cout << "[KeyboardBacklight] Applying initial states (brightness: "
-                  << m_capabilities.maxBrightness << ")" << std::endl;
-        applyStates( defaultStates );
-        m_currentStates = defaultStates;
-      }
+      return capabilitiesToJSON();
     }
-    else
-    {
-      std::cout << "[KeyboardBacklight] No keyboard backlight detected" << std::endl;
-      m_setCapabilitiesJSON( "null" );
-    }
-  }
 
-  void onWork() override
-  {
-    if ( m_capabilities.zones == 0 )
-      return;
-
-    // Check for new states from DBus
-    std::string newStatesJSON = m_getNewStatesJSON();
-    if ( !newStatesJSON.empty() )
-    {
-      m_clearNewStatesJSON( newStatesJSON );
-      applyStatesFromJSON( newStatesJSON );
-    }
-  }
-
-  void onExit() override
-  {
-    // No cleanup needed
-  }
-
-  void onActiveProfileChanged()
-  {
-    // Keyboard backlight is not profile-dependent currently
-    // States are global and stored in settings
+    std::cout << "[KeyboardBacklight] No keyboard backlight detected" << std::endl;
+    return "null";
   }
 
   /**
-   * @brief Apply keyboard backlight states from a profile
-   * @param keyboardDataJSON JSON string containing keyboard backlight data from profile
+   * @brief Build initial default states (max brightness, full colour).
+   * @return JSON array string, e.g. "[{\"brightness\":255,...}, ...]"
    */
-  void applyProfileKeyboardStates( const std::string &keyboardDataJSON )
+  std::string buildDefaultStatesJSON() const
   {
-    if ( m_capabilities.zones == 0 || !m_getControlEnabled() )
-      return;
+    if ( m_capabilities.zones == 0 )
+      return "[]";
+
+    std::vector< KeyboardBacklightState > defaults;
+    for ( int i = 0; i < m_capabilities.zones; ++i )
+    {
+      KeyboardBacklightState s;
+      s.brightness = m_capabilities.maxBrightness;
+      s.red = m_capabilities.maxRed > 0 ? m_capabilities.maxRed : 0;
+      s.green = m_capabilities.maxGreen > 0 ? m_capabilities.maxGreen : 0;
+      s.blue = m_capabilities.maxBlue > 0 ? m_capabilities.maxBlue : 0;
+      defaults.push_back( s );
+    }
+    return statesToJSON( defaults );
+  }
+
+  /**
+   * @brief Apply a flat JSON states array directly to hardware.
+   * @param statesJSON  A JSON array of state objects, e.g. "[{\"brightness\":128,\"red\":255,...}, ...]"
+   * @return true on success
+   *
+   * This is the main entry point called from SetKeyboardBacklightStatesJSON
+   * and profile-apply paths.
+   */
+  bool applyStatesFromJSON( const std::string &statesJSON )
+  {
+    if ( m_capabilities.zones == 0 )
+      return false;
+
+    if ( statesJSON.empty() || statesJSON == "[]" )
+      return false;
 
     try
     {
-      // Parse the keyboard data JSON
+      std::vector< KeyboardBacklightState > newStates;
+
+      size_t pos = 0;
+      while ( ( pos = statesJSON.find( '{', pos ) ) != std::string::npos )
+      {
+        size_t end = statesJSON.find( '}', pos );
+        if ( end == std::string::npos )
+          break;
+
+        std::string stateObj = statesJSON.substr( pos, end - pos + 1 );
+        KeyboardBacklightState kbs;
+
+        kbs.brightness = std::clamp( extractInt( stateObj, "brightness" ), 0, m_capabilities.maxBrightness );
+        kbs.red   = std::clamp( extractInt( stateObj, "red" ),   0, 255 );
+        kbs.green = std::clamp( extractInt( stateObj, "green" ), 0, 255 );
+        kbs.blue  = std::clamp( extractInt( stateObj, "blue" ),  0, 255 );
+
+        newStates.push_back( kbs );
+        pos = end + 1;
+      }
+
+      if ( !newStates.empty() )
+      {
+        applyStates( newStates );
+        m_currentStates = newStates;
+        return true;
+      }
+    }
+    catch ( const std::exception &e )
+    {
+      std::cerr << "[KeyboardBacklight] Error parsing states JSON: " << e.what() << std::endl;
+    }
+    return false;
+  }
+
+  /**
+   * @brief Apply keyboard backlight states from a profile's keyboard data.
+   * @param keyboardDataJSON  JSON string — either a flat array or a wrapper
+   *                          object with a "states" key.
+   * @return true on success
+   */
+  bool applyProfileKeyboardStates( const std::string &keyboardDataJSON )
+  {
+    if ( m_capabilities.zones == 0 )
+      return false;
+
+    try
+    {
       std::string statesJSON = extractStatesFromKeyboardJSON( keyboardDataJSON );
       if ( !statesJSON.empty() )
-      {
-        applyStatesFromJSON( statesJSON );
-      }
+        return applyStatesFromJSON( statesJSON );
     }
     catch ( const std::exception &e )
     {
       std::cerr << "[KeyboardBacklight] Failed to apply profile keyboard states: " << e.what() << std::endl;
     }
+    return false;
   }
 
-private:
-  std::function< void( const std::string & ) > m_setCapabilitiesJSON;
-  std::function< void( const std::string & ) > m_setStatesJSON;
-  std::function< std::string() > m_getNewStatesJSON;
-  std::function< void( const std::string & ) > m_clearNewStatesJSON;
-  std::function< bool() > m_getControlEnabled;
+  /** @brief Current states serialised as a JSON array */
+  std::string currentStatesJSON() const
+  {
+    return statesToJSON( m_currentStates );
+  }
 
+  /** @brief True when hardware was detected */
+  bool isAvailable() const { return m_capabilities.zones > 0; }
+
+  const KeyboardBacklightCapabilities &capabilities() const { return m_capabilities; }
+
+private:
   KeyboardBacklightCapabilities m_capabilities;
   std::vector< KeyboardBacklightState > m_currentStates;
   std::vector< std::string > m_ledPaths;
@@ -190,11 +213,12 @@ private:
   static constexpr const char *LEDS_WHITE_ONLY_NB05 = "/sys/bus/platform/devices/tuxedo_nb05_kbd_backlight/leds/white:kbd_backlight";
   static constexpr const char *LEDS_RGB_BASE = "/sys/devices/platform/tuxedo_keyboard/leds/rgb:kbd_backlight";
 
+  // ---- hardware detection ----
+
   void detectKeyboardBacklight()
   {
     m_capabilities = KeyboardBacklightCapabilities();
 
-    // Check for white-only backlight
     if ( checkWhiteBacklight( LEDS_WHITE_ONLY ) )
     {
       std::cout << "[KeyboardBacklight] Detected white-only keyboard backlight" << std::endl;
@@ -207,7 +231,6 @@ private:
       return;
     }
 
-    // Check for RGB backlights
     detectRGBBacklight();
   }
 
@@ -232,10 +255,8 @@ private:
 
   void detectRGBBacklight()
   {
-    // First try to find per-key RGB keyboards
     findPerKeyRGBLEDs();
 
-    // If we found per-key LEDs, we're done
     if ( m_ledPaths.size() > 3 )
     {
       std::cout << "[KeyboardBacklight] Detected per-key RGB keyboard with "
@@ -252,7 +273,6 @@ private:
       return;
     }
 
-    // Otherwise, check for standard 1-3 zone RGB
     std::vector< std::string > rgbPaths = {
       LEDS_RGB_BASE,
       std::string( LEDS_RGB_BASE ) + "_1",
@@ -263,9 +283,7 @@ private:
     for ( const auto &path : rgbPaths )
     {
       if ( fs::exists( path + "/max_brightness", ec ) )
-      {
         m_ledPaths.push_back( path );
-      }
     }
 
     if ( !m_ledPaths.empty() )
@@ -299,7 +317,6 @@ private:
       if ( !fs::exists( driverPath, ec ) )
         continue;
 
-      // Iterate through device symlinks
       for ( const auto &entry : fs::directory_iterator( driverPath, ec ) )
       {
         if ( !entry.is_symlink( ec ) )
@@ -309,7 +326,6 @@ private:
         if ( !fs::exists( ledsPath, ec ) )
           continue;
 
-        // Find all rgb:kbd_backlight* directories
         std::vector< std::pair< std::string, int > > foundLEDs;
         for ( const auto &ledEntry : fs::directory_iterator( ledsPath, ec ) )
         {
@@ -317,39 +333,32 @@ private:
           if ( name.find( "rgb:kbd_backlight" ) == std::string::npos )
             continue;
 
-          // Extract zone number for sorting
           int zoneNum = 0;
           if ( name != "rgb:kbd_backlight" )
           {
             size_t underscorePos = name.find_last_of( '_' );
             if ( underscorePos != std::string::npos )
             {
-              try
-              {
-                zoneNum = std::stoi( name.substr( underscorePos + 1 ) );
-              }
-              catch ( ... )
-              {
-                zoneNum = 0;
-              }
+              try { zoneNum = std::stoi( name.substr( underscorePos + 1 ) ); }
+              catch ( ... ) { zoneNum = 0; }
             }
           }
 
           foundLEDs.push_back( { ledEntry.path().string(), zoneNum } );
         }
 
-        // Sort by zone number
         std::ranges::sort( foundLEDs, []( const auto &a, const auto &b ) { return a.second < b.second; } );
 
-        // Add sorted paths
         for ( const auto &led : foundLEDs )
           m_ledPaths.push_back( led.first );
 
         if ( !m_ledPaths.empty() )
-          return;  // Found per-key LEDs
+          return;
       }
     }
   }
+
+  // ---- JSON serialisation helpers ----
 
   std::string capabilitiesToJSON() const
   {
@@ -357,7 +366,7 @@ private:
       return "null";
 
     std::ostringstream oss;
-    oss << "{\"modes\":[0]";  // Static mode only for now
+    oss << "{\"modes\":[0]";
     oss << ",\"zones\":" << m_capabilities.zones;
     oss << ",\"maxBrightness\":" << m_capabilities.maxBrightness;
 
@@ -391,81 +400,25 @@ private:
     return oss.str();
   }
 
-  void applyStatesFromJSON( const std::string &statesJSON )
-  {
-    if ( !m_getControlEnabled() )
-    {
-      std::cout << "[KeyboardBacklight] Control disabled, ignoring state update" << std::endl;
-      return;
-    }
-
-    if ( statesJSON.empty() || statesJSON == "[]" )
-      return;
-
-    try
-    {
-      // Simple manual parsing for array of state objects
-      std::vector< KeyboardBacklightState > newStates;
-
-      size_t pos = 0;
-      while ( ( pos = statesJSON.find( '{', pos ) ) != std::string::npos )
-      {
-        size_t end = statesJSON.find( '}', pos );
-        if ( end == std::string::npos )
-          break;
-
-        std::string stateObj = statesJSON.substr( pos, end - pos + 1 );
-        KeyboardBacklightState kbs;
-
-        kbs.brightness = std::clamp( extractInt( stateObj, "brightness" ), 0, m_capabilities.maxBrightness );
-        kbs.red   = std::clamp( extractInt( stateObj, "red" ),   0, 255 );
-        kbs.green = std::clamp( extractInt( stateObj, "green" ), 0, 255 );
-        kbs.blue  = std::clamp( extractInt( stateObj, "blue" ),  0, 255 );
-
-        newStates.push_back( kbs );
-        pos = end + 1;
-      }
-
-      if ( !newStates.empty() )
-      {
-        applyStates( newStates );
-        m_currentStates = newStates;
-
-        // Update DBus data
-        m_setStatesJSON( statesJSON );
-      }
-    }
-    catch ( const std::exception &e )
-    {
-      std::cerr << "[KeyboardBacklight] Error parsing states JSON: " << e.what() << std::endl;
-    }
-  }
-
   std::string extractStatesFromKeyboardJSON( const std::string &keyboardJSON ) const
   {
-    // Look for "states" array in the keyboard JSON
     std::string search = "\"states\":";
     size_t pos = keyboardJSON.find( search );
     if ( pos == std::string::npos )
     {
-      // Try alternative format where states might be at root level
       if ( keyboardJSON.find( '[' ) == 0 )
-      {
-        return keyboardJSON;  // The whole JSON is the states array
-      }
+        return keyboardJSON;
       return "";
     }
 
     pos += search.length();
 
-    // Find the start of the array
     size_t arrayStart = keyboardJSON.find( '[', pos );
     if ( arrayStart == std::string::npos )
       return "";
 
-    // Find the matching closing bracket
-    size_t arrayEnd = arrayStart;
     int depth = 0;
+    size_t arrayEnd = arrayStart;
     for ( size_t i = arrayStart; i < keyboardJSON.length(); ++i )
     {
       if ( keyboardJSON[i] == '[' ) ++depth;
@@ -478,9 +431,7 @@ private:
     }
 
     if ( arrayEnd > arrayStart )
-    {
       return keyboardJSON.substr( arrayStart, arrayEnd - arrayStart + 1 );
-    }
 
     return "";
   }
@@ -497,34 +448,25 @@ private:
     if ( endPos == std::string::npos )
       return 0;
 
-    std::string valueStr = json.substr( pos, endPos - pos );
-    try
-    {
-      return std::stoi( valueStr );
-    }
-    catch ( ... )
-    {
-      return 0;
-    }
+    try { return std::stoi( json.substr( pos, endPos - pos ) ); }
+    catch ( ... ) { return 0; }
   }
+
+  // ---- hardware sysfs writes ----
 
   void applyStates( const std::vector< KeyboardBacklightState > &states )
   {
     if ( states.empty() || m_ledPaths.empty() )
       return;
 
-    // Set brightness (all zones use the same brightness from first state)
     setBrightness( states[0].brightness );
 
-    // Set colors for RGB keyboards
     if ( m_capabilities.maxRed > 0 )
     {
       setBufferInput( true );
 
       for ( size_t i = 0; i < m_ledPaths.size() && i < states.size(); ++i )
-      {
         setMultiIntensity( i, states[i].red, states[i].green, states[i].blue );
-      }
 
       setBufferInput( false );
     }
@@ -535,12 +477,9 @@ private:
     if ( m_ledPaths.empty() )
       return;
 
-    // All zones share the same brightness control (use first path)
     SysfsNode< int > brightnessNode( m_ledPaths[0] + "/brightness" );
     if ( !brightnessNode.write( brightness ) )
-    {
       std::cerr << "[KeyboardBacklight] Failed to set brightness to " << brightness << std::endl;
-    }
   }
 
   void setMultiIntensity( size_t zoneIndex, int red, int green, int blue )
@@ -571,7 +510,6 @@ private:
     if ( m_ledPaths.empty() )
       return;
 
-    // Buffer control is usually in the device directory
     std::string bufferPath = m_ledPaths[0] + "/device/controls/buffer_input";
     std::error_code ec;
 
