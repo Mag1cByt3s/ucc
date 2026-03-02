@@ -113,7 +113,6 @@ in
         "hybrid-sleep.target"
         "suspend-then-hibernate.target"
       ];
-      requires = [ "uccd.service" ];
       wantedBy = [
         "suspend.target"
         "hibernate.target"
