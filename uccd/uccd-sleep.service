@@ -2,7 +2,6 @@
 Description=Uniwill Control Center Daemon Sleep Handler
 Documentation=man:uccd(8)
 After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
-Requires=uccd.service
 
 [Service]
 Type=oneshot
