@@ -68,7 +68,6 @@ in
 
     systemd.tmpfiles.rules = [
       "d /etc/ucc 0755 root root - -"
-      "d /etc/ucc/autosave 0755 root root - -"
     ];
 
     systemd.services.uccd = {
