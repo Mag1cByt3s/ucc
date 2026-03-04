@@ -7,9 +7,15 @@ let
     lib.concatStringsSep " " (map lib.escapeShellArg cfg.extraArgs);
   videoDrivers = config.services.xserver.videoDrivers or [ ];
   nvidiaPackage = lib.attrByPath [ "hardware" "nvidia" "package" ] null config;
+  hasNvidia = nvidiaPackage != null && lib.elem "nvidia" videoDrivers;
   nvidiaBinPath =
-    lib.optionalString (nvidiaPackage != null && lib.elem "nvidia" videoDrivers)
+    lib.optionalString hasNvidia
       ":${lib.makeBinPath [ nvidiaPackage ]}";
+  # libnvidia-ml.so.1 is loaded via dlopen() at runtime; NixOS exposes it under
+  # /run/opengl-driver/lib which is always set up when nvidia drivers are enabled.
+  nvidiaLibPath =
+    lib.optionalString hasNvidia
+      "/run/opengl-driver/lib";
   uccdToolsPath = lib.makeBinPath [
     pkgs.coreutils
     pkgs.gawk
@@ -86,6 +92,8 @@ in
           + lib.optionalString (cfg.extraArgs != [ ]) " ${extraArgsString}";
         Environment = [
           "PATH=/run/wrappers/bin:/run/current-system/sw/bin:${uccdToolsPath}${nvidiaBinPath}"
+        ] ++ lib.optionals hasNvidia [
+          "LD_LIBRARY_PATH=${nvidiaLibPath}"
         ];
         Restart = "on-failure";
         RestartSec = "5s";
