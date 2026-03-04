@@ -49,9 +49,9 @@ protected:
     ( void )event;
     QPainter p( this );
     p.setRenderHint( QPainter::Antialiasing );
-    p.translate( width() / 2, height() / 2 );
+    p.translate( width() / 2.0, height() / 2.0 );
     p.rotate( -90 );
-    p.translate( -height() / 2, -width() / 2 );
+    p.translate( -height() / 2.0, -width() / 2.0 );
     QRect r( 0, 0, height(), width() );
     p.setPen( QColor( "#bdbdbd" ) );
     QFont f = font();
@@ -202,6 +202,9 @@ void MainWindow::setupUI()
   // Place the Fan Control tab directly after Profiles and rename it
   setupFanControlTab();
 
+  // Place the GPU OC tab after Fan Control
+  setupGpuProfileTab();
+
   // Add Monitoring graph tab
   m_monitorTab = new MonitorTab( m_UccdClient.get(), this );
   m_tabs->addTab( m_monitorTab, "Monitor" );
@@ -269,6 +272,72 @@ void MainWindow::connectFanControlTab()
   } );
 }
 
+void MainWindow::setupGpuProfileTab()
+{
+  m_gpuProfileTab = new GpuProfileTab( m_UccdClient.get(), m_profileManager.get(), this );
+  connectGpuProfileTab();
+  m_tabs->addTab( m_gpuProfileTab, "GPU Overclocking" );
+}
+
+void MainWindow::connectGpuProfileTab()
+{
+  connect( m_gpuProfileTab, &GpuProfileTab::applyRequested,
+           this, &MainWindow::onApplyGpuProfileClicked );
+  connect( m_gpuProfileTab, &GpuProfileTab::saveRequested,
+           this, &MainWindow::onSaveGpuProfileClicked );
+  connect( m_gpuProfileTab, &GpuProfileTab::copyRequested,
+           this, &MainWindow::onCopyGpuProfileClicked );
+  connect( m_gpuProfileTab, &GpuProfileTab::removeRequested,
+           this, &MainWindow::onRemoveGpuProfileClicked );
+  connect( m_gpuProfileTab, &GpuProfileTab::gpuProfileChanged,
+           this, &MainWindow::onGpuProfileChanged );
+
+  // Sync GPU profile rename to the profile-page GPU combo
+  connect( m_gpuProfileTab, &GpuProfileTab::gpuProfileRenamed,
+           this, [this]( const QString &oldName, const QString &newName ) {
+    if ( m_profileGpuProfileCombo ) {
+      if ( int idx = m_profileGpuProfileCombo->findText( oldName ); idx != -1 )
+        m_profileGpuProfileCombo->setItemText( idx, newName );
+    }
+  } );
+
+  // When custom GPU profiles change in ProfileManager, refresh the combos
+  connect( m_profileManager.get(), &ProfileManager::customGpuProfilesChanged,
+           this, [this]() {
+    if ( m_gpuProfileTab )
+      m_gpuProfileTab->reloadGpuProfiles();
+
+    // Also update the profile page combo
+    if ( m_profileGpuProfileCombo )
+    {
+      QString prevId = m_profileGpuProfileCombo->currentData().toString();
+      m_profileGpuProfileCombo->blockSignals( true );
+      m_profileGpuProfileCombo->clear();
+      m_profileGpuProfileCombo->addItem( "(None)", QString() );
+      for ( const auto &v : m_profileManager->builtinGpuProfilesData() )
+      {
+        if ( v.isObject() )
+        {
+          QJsonObject o = v.toObject();
+          m_profileGpuProfileCombo->addItem( o["name"].toString(), o["id"].toString() );
+        }
+      }
+      for ( const auto &v : m_profileManager->customGpuProfilesData() )
+      {
+        QJsonObject o = v.toObject();
+        m_profileGpuProfileCombo->addItem( o["name"].toString(), o["id"].toString() );
+      }
+      // Restore selection
+      for ( int i = 0; i < m_profileGpuProfileCombo->count(); ++i )
+      {
+        if ( m_profileGpuProfileCombo->itemData( i ).toString() == prevId )
+        { m_profileGpuProfileCombo->setCurrentIndex( i ); break; }
+      }
+      m_profileGpuProfileCombo->blockSignals( false );
+    }
+  } );
+}
+
 
 
 void MainWindow::setupProfilesPage()
@@ -289,8 +358,6 @@ void MainWindow::setupProfilesPage()
 
   // Profile Selection ComboBox (in top layout)
   QHBoxLayout *selectLayout = new QHBoxLayout();
-  QLabel *selectLabel = new QLabel( "Active Profile:" );
-  selectLabel->setStyleSheet( "font-weight: bold;" );
 
   m_profileCombo = new QComboBox();
   m_profileCombo->setEditable( true );
@@ -311,7 +378,6 @@ void MainWindow::setupProfilesPage()
   m_removeProfileButton = new QPushButton( "Remove" );
   m_removeProfileButton->setMaximumWidth( 70 );
 
-  selectLayout->addWidget( selectLabel );
   selectLayout->addWidget( m_profileCombo, 1 );
   selectLayout->addWidget( m_applyButton );
   selectLayout->addWidget( m_saveButton );
@@ -593,6 +659,39 @@ void MainWindow::setupProfilesPage()
   detailsLayout->addItem( new QSpacerItem( 0, 10 ), row, 0, 1, 2 );
   row++;
 
+  // === GPU OC PROFILE SECTION ===
+  QLabel *gpuProfileHeader = new QLabel( "GPU Overclocking" );
+  gpuProfileHeader->setStyleSheet( "font-weight: bold; font-size: 14px;" );
+  detailsLayout->addWidget( gpuProfileHeader, row, 0, 1, 2 );
+  row++;
+
+  QLabel *gpuProfileLabel = new QLabel( "GPU OC profile" );
+  m_profileGpuProfileCombo = new QComboBox();
+  m_profileGpuProfileCombo->addItem( "(None)", QString() );
+  for ( const auto &v : m_profileManager->builtinGpuProfilesData() )
+  {
+    if ( v.isObject() )
+    {
+      QJsonObject o = v.toObject();
+      m_profileGpuProfileCombo->addItem( o["name"].toString(), o["id"].toString() );
+    }
+  }
+  for ( const auto &v : m_profileManager->customGpuProfilesData() )
+  {
+    if ( v.isObject() )
+    {
+      QJsonObject o = v.toObject();
+      m_profileGpuProfileCombo->addItem( o["name"].toString(), o["id"].toString() );
+    }
+  }
+  detailsLayout->addWidget( gpuProfileLabel, row, 0 );
+  detailsLayout->addWidget( m_profileGpuProfileCombo, row, 1 );
+  row++;
+
+  // Add spacer
+  detailsLayout->addItem( new QSpacerItem( 0, 10 ), row, 0, 1, 2 );
+  row++;
+
   // === SYSTEM PERFORMANCE SECTION ===
   QLabel *sysHeader = new QLabel( "System performance" );
   sysHeader->setStyleSheet( "font-weight: bold; font-size: 14px;" );
@@ -740,36 +839,6 @@ void MainWindow::setupProfilesPage()
   detailsLayout->addItem( new QSpacerItem( 0, 10 ), row, 0, 1, 2 );
   row++;
 
-  // === NVIDIA POWER CONTROL ===
-  QLabel *nvidiaHeader = new QLabel( "NVIDIA power control" );
-  nvidiaHeader->setStyleSheet( "font-weight: bold; font-size: 14px;" );
-  detailsLayout->addWidget( nvidiaHeader, row, 0, 1, 2 );
-  row++;
-
-  QLabel *gpuPowerLabel = new QLabel( "Configurable graphics power (TGP)" );
-  QHBoxLayout *gpuLayout = new QHBoxLayout();
-  m_gpuPowerSlider = new QSlider( Qt::Horizontal );
-  m_gpuPowerSlider->setMinimum( m_gpuDefaultPowerLimit > 0 ? m_gpuDefaultPowerLimit : 40 );
-  m_gpuPowerSlider->setMaximum( 175 );
-  int gpuInitialValue = m_gpuDefaultPowerLimit > 0 ? m_gpuDefaultPowerLimit : 175;
-  m_gpuPowerSlider->setValue( gpuInitialValue );
-  m_gpuPowerValue = new QLabel( QString::number( gpuInitialValue ) + " W" );
-  m_gpuPowerValue->setMinimumWidth( 50 );
-  gpuLayout->addWidget( m_gpuPowerSlider, 1 );
-  gpuLayout->addWidget( m_gpuPowerValue );
-  detailsLayout->addWidget( gpuPowerLabel, row, 0 );
-  detailsLayout->addLayout( gpuLayout, row, 1 );
-  row++;
-
-  // Hide cTGP section if device does not support it
-  if ( !m_cTGPAdjustmentSupported )
-  {
-    nvidiaHeader->setVisible( false );
-    gpuPowerLabel->setVisible( false );
-    m_gpuPowerSlider->setVisible( false );
-    m_gpuPowerValue->setVisible( false );
-  }
-
   detailsLayout->addItem( new QSpacerItem( 0, 20, QSizePolicy::Minimum, QSizePolicy::Expanding ), row, 0, 1, 2 );
 
   scrollLayout->addLayout( detailsLayout );
@@ -812,6 +881,29 @@ void MainWindow::connectSignals()
            this, [this]( const QString &fpId ) {
     if ( m_initializing ) return;
     updateFanEditorFromProfile( fpId );
+  } );
+  connect( m_profileManager.get(), &ProfileManager::activeGpuProfileChanged,
+           this, [this]( const QString &gpId ) {
+    if ( m_initializing || gpId.isEmpty() )
+      return;
+
+    if ( m_gpuProfileTab && m_gpuProfileTab->gpuProfileCombo() )
+    {
+      auto *combo = m_gpuProfileTab->gpuProfileCombo();
+      if ( int idx = combo->findData( gpId ); idx >= 0 && combo->currentIndex() != idx )
+        combo->setCurrentIndex( idx );
+    }
+
+    if ( m_profileGpuProfileCombo )
+    {
+      if ( int idx = m_profileGpuProfileCombo->findData( gpId ); idx >= 0
+           && m_profileGpuProfileCombo->currentIndex() != idx )
+      {
+        m_profileGpuProfileCombo->setCurrentIndex( idx );
+      }
+    }
+
+    onGpuProfileChanged( gpId );
   } );
 
   connect( m_profileCombo, QOverload< int >::of( &QComboBox::currentIndexChanged ),
@@ -880,11 +972,6 @@ void MainWindow::connectSignals()
     if ( value < m_odmPowerLimit2Slider->value() )
       m_odmPowerLimit2Slider->setValue( value );
   } );
-
-  // GPU power control
-
-  connect( m_gpuPowerSlider, &QSlider::valueChanged,
-           this, &MainWindow::onGpuPowerChanged );
 
   // Apply and Save buttons
 
@@ -956,9 +1043,6 @@ void MainWindow::connectSignals()
            this, [this]() { markChanged(); } );
 
   connect( m_odmPowerLimit3Slider, &QSlider::valueChanged,
-           this, [this]() { markChanged(); } );
-
-  connect( m_gpuPowerSlider, &QSlider::valueChanged,
            this, [this]() { markChanged(); } );
 
   connect( m_profileKeyboardProfileCombo, QOverload< int >::of( &QComboBox::currentIndexChanged ),
@@ -1225,16 +1309,8 @@ void MainWindow::onTabChanged( int index )
           QJsonObject obj = doc.object();
           QString keyboardProfileId;
 
-          // Check for embedded keyboard profile name
           if ( obj.contains( "selectedKeyboardProfile" ) )
-          {
             keyboardProfileId = obj["selectedKeyboardProfile"].toString();
-          }
-          // Fallback: check for old format keyboard.profile field
-          else if ( obj.contains( "keyboard" ) && obj["keyboard"].isObject() )
-          {
-            keyboardProfileId = obj["keyboard"].toObject()["profile"].toString();
-          }
 
           if ( !keyboardProfileId.isEmpty() )
           {
@@ -1245,9 +1321,6 @@ void MainWindow::onTabChanged( int index )
               if ( m_keyboardProfileCombo->itemData( i ).toString() == keyboardProfileId )
               { kbIdx = i; break; }
             }
-            // Fallback: try matching by name (legacy data)
-            if ( kbIdx < 0 )
-              kbIdx = m_keyboardProfileCombo->findText( keyboardProfileId );
             if ( kbIdx >= 0 )
             {
               m_keyboardProfileCombo->blockSignals( true );
@@ -1535,11 +1608,6 @@ void MainWindow::onODMPowerLimit3Changed( int value )
   m_odmPowerLimit3Value->setText( QString::number( value ) + " W" );
 }
 
-void MainWindow::onGpuPowerChanged( int value )
-{
-  m_gpuPowerValue->setText( QString::number( value ) + " W" );
-}
-
 void MainWindow::loadProfileDetails( const QString &profileId )
 {
   // Reset change flag when loading a new profile
@@ -1583,7 +1651,6 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   m_odmPowerLimit1Slider->blockSignals( true );
   m_odmPowerLimit2Slider->blockSignals( true );
   m_odmPowerLimit3Slider->blockSignals( true );
-  m_gpuPowerSlider->blockSignals( true );
   m_profileKeyboardProfileCombo->blockSignals( true );
   m_keyboardProfileCombo->blockSignals( true );
   if ( m_profileChargingProfileCombo ) m_profileChargingProfileCombo->blockSignals( true );
@@ -1632,7 +1699,6 @@ void MainWindow::loadProfileDetails( const QString &profileId )
     if ( fanObj.contains( "fanProfile" ) )
     {
       QString fanProfileRef = fanObj["fanProfile"].toString( "fan-balanced" );
-      // Try finding by ID userData first (new format), then by text (legacy/name)
       int idx = -1;
       for ( int i = 0; i < m_profileFanProfileCombo->count(); ++i )
       {
@@ -1642,8 +1708,6 @@ void MainWindow::loadProfileDetails( const QString &profileId )
           break;
         }
       }
-      if ( idx < 0 )
-        idx = m_profileFanProfileCombo->findText( fanProfileRef );
 
       if ( idx >= 0 )
       {
@@ -1781,12 +1845,6 @@ void MainWindow::loadProfileDetails( const QString &profileId )
     m_odmPowerLimit3Slider->setMaximum( hardwareLimits[2] );
   }
 
-  // Set GPU power max from hardware
-  if ( auto gpuMax = m_profileManager->getClient()->getNVIDIAPowerCTRLMaxPowerLimit() )
-  {
-    m_gpuPowerSlider->setMaximum( *gpuMax );
-  }
-
   // Then, set slider values from profile
 
   if ( obj.contains( "odmPowerLimits" ) && obj["odmPowerLimits"].isObject() )
@@ -1821,19 +1879,48 @@ void MainWindow::loadProfileDetails( const QString &profileId )
       }
     }
   }
-  // Load NVIDIA Power Control settings (nested in nvidiaPowerCTRLProfile object)
-
-  if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj["nvidiaPowerCTRLProfile"].isObject() )
+  // Load GPU OC profile reference
+  if ( m_profileGpuProfileCombo )
   {
-    QJsonObject gpuObj = obj["nvidiaPowerCTRLProfile"].toObject();
+    m_profileGpuProfileCombo->blockSignals( true );
+    QString gpuProfileId;
+    int idx = -1;
+    if ( obj.contains( "gpuProfileId" ) )
+    {
+      gpuProfileId = obj["gpuProfileId"].toString();
+      for ( int i = 0; i < m_profileGpuProfileCombo->count(); ++i )
+      {
+        if ( m_profileGpuProfileCombo->itemData( i ).toString() == gpuProfileId )
+        { idx = i; break; }
+      }
+      if ( idx >= 0 )
+        m_profileGpuProfileCombo->setCurrentIndex( idx );
+      else
+        m_profileGpuProfileCombo->setCurrentIndex( 0 ); // (None)
+    }
+    else
+    {
+      m_profileGpuProfileCombo->setCurrentIndex( 0 ); // (None)
+    }
+    m_profileGpuProfileCombo->blockSignals( false );
 
-    int offset = gpuObj["cTGPOffset"].toInt( 0 );
-    m_gpuPowerSlider->setValue( offset + m_gpuDefaultPowerLimit );
-  }
-  else
-  {
-    // Profile has no NVIDIA settings — default to no boost (offset 0)
-    m_gpuPowerSlider->setValue( m_gpuDefaultPowerLimit );
+    if ( m_gpuProfileTab && m_gpuProfileTab->gpuProfileCombo() )
+    {
+      auto *gpuCombo = m_gpuProfileTab->gpuProfileCombo();
+      gpuCombo->blockSignals( true );
+
+      if ( !gpuProfileId.isEmpty() )
+      {
+        int gpuTabIdx = gpuCombo->findData( gpuProfileId );
+        if ( gpuTabIdx >= 0 )
+          gpuCombo->setCurrentIndex( gpuTabIdx );
+      }
+
+      gpuCombo->blockSignals( false );
+
+      if ( !gpuProfileId.isEmpty() )
+        onGpuProfileChanged( gpuProfileId );
+    }
   }
 
   // Load Charging profile setting
@@ -1891,9 +1978,6 @@ void MainWindow::loadProfileDetails( const QString &profileId )
       if ( m_profileKeyboardProfileCombo->itemData( i ).toString() == keyboardProfileId )
       { idx = i; break; }
     }
-    // Fallback: try matching by name (legacy data)
-    if ( idx < 0 )
-      idx = m_profileKeyboardProfileCombo->findText( keyboardProfileId );
     if ( idx >= 0 )
     {
       m_profileKeyboardProfileCombo->setCurrentIndex( idx );
@@ -1907,39 +1991,9 @@ void MainWindow::loadProfileDetails( const QString &profileId )
       missingKeyboardProfile = keyboardProfileId;
     }
   }
-  // Fallback: check for old format keyboard.profile field
-  else if ( obj.contains( "keyboard" ) && obj["keyboard"].isObject() )
-  {
-    QJsonObject keyboardObj = obj["keyboard"].toObject();
-    if ( keyboardObj.contains( "profile" ) )
-    {
-      QString keyboardProfileId = keyboardObj["profile"].toString();
-      int idx = -1;
-      for ( int i = 0; i < m_profileKeyboardProfileCombo->count(); ++i )
-      {
-        if ( m_profileKeyboardProfileCombo->itemData( i ).toString() == keyboardProfileId )
-        { idx = i; break; }
-      }
-      if ( idx < 0 )
-        idx = m_profileKeyboardProfileCombo->findText( keyboardProfileId );
-      if ( idx >= 0 )
-      {
-        m_profileKeyboardProfileCombo->setCurrentIndex( idx );
-        m_keyboardProfileCombo->setCurrentIndex( idx );
-        loadedKeyboardProfile = m_profileKeyboardProfileCombo->itemData( idx ).toString();
-      }
-      else
-      {
-        // Referenced keyboard profile was not found
-        keyboardProfileNotFound = true;
-        missingKeyboardProfile = keyboardProfileId;
-      }
-    }
-  }
-
   // Keyboard brightness and colors are managed by the keyboard profile system
   // (via selectedKeyboardProfile), not directly from system profile data.
-  // Legacy "keyboard" object in profiles is ignored to avoid overriding
+  // "keyboard" object in profiles is ignored to avoid overriding
   // the hardware brightness with stale saved values.
 
   // Load power state activation settings
@@ -1985,7 +2039,6 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   m_odmPowerLimit1Slider->blockSignals( false );
   m_odmPowerLimit2Slider->blockSignals( false );
   m_odmPowerLimit3Slider->blockSignals( false );
-  m_gpuPowerSlider->blockSignals( false );
   m_profileKeyboardProfileCombo->blockSignals( false );
   m_keyboardProfileCombo->blockSignals( false );
   if ( m_profileChargingProfileCombo ) m_profileChargingProfileCombo->blockSignals( false );
@@ -2003,8 +2056,6 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   onODMPowerLimit1Changed( m_odmPowerLimit1Slider->value() );
   onODMPowerLimit2Changed( m_odmPowerLimit2Slider->value() );
   onODMPowerLimit3Changed( m_odmPowerLimit3Slider->value() );
-  onGpuPowerChanged( m_gpuPowerSlider->value() );
-
   // Trigger fan profile change if one was loaded (loads fan curve data for display only)
   if ( !loadedFanProfile.isEmpty() )
   {
@@ -2087,9 +2138,6 @@ void MainWindow::updateProfileEditingWidgets( bool isCustom )
   if ( m_odmPowerLimit2Slider ) m_odmPowerLimit2Slider->setEnabled( isCustom );
   if ( m_odmPowerLimit3Slider ) m_odmPowerLimit3Slider->setEnabled( isCustom );
 
-  // GPU controls
-  if ( m_gpuPowerSlider ) m_gpuPowerSlider->setEnabled( isCustom );
-
   // Charging profile
   if ( m_profileChargingProfileCombo ) m_profileChargingProfileCombo->setEnabled( isCustom );
   if ( m_profileChargingPriorityCombo ) m_profileChargingPriorityCombo->setEnabled( isCustom );
@@ -2171,10 +2219,27 @@ QString MainWindow::buildProfileJSON() const
   odmObj["tdpValues"] = tdpArray;
   profileObj["odmPowerLimits"] = odmObj;
 
-  // GPU (NVIDIA cTGP)
-  QJsonObject nvidiaPowerObj;
-  nvidiaPowerObj["cTGPOffset"] = m_gpuPowerSlider->value() - m_gpuDefaultPowerLimit;
-  profileObj["nvidiaPowerCTRLProfile"] = nvidiaPowerObj;
+  // GPU OC profile — embed complete GPU OC data (like keyboard data)
+  if ( m_profileGpuProfileCombo )
+  {
+    QString gpuProfileId = m_profileGpuProfileCombo->currentData().toString();
+    if ( !gpuProfileId.isEmpty() )
+    {
+      profileObj["gpuProfileId"] = gpuProfileId;
+
+      // Resolve and embed full GPU OC profile data so the daemon can apply it
+      // at startup / power-state change without needing the GUI.
+      QString gpuProfileJSON = m_profileManager->getGpuProfile( gpuProfileId );
+      if ( !gpuProfileJSON.isEmpty() && gpuProfileJSON != "{}" )
+      {
+        QJsonDocument gpuDoc = QJsonDocument::fromJson( gpuProfileJSON.toUtf8() );
+        if ( gpuDoc.isObject() )
+        {
+          profileObj["gpuOCProfileData"] = gpuDoc.object();
+        }
+      }
+    }
+  }
 
   // Keyboard — embed complete keyboard profile data
   QJsonObject keyboardObj;
@@ -3036,6 +3101,166 @@ void MainWindow::saveFanPoints()
 
   // Save into selected custom profile (by ID)
   m_profileManager->setFanProfile( currentId, currentName, json );
+}
+
+// ---------------------------------------------------------------------------
+// GPU OC profile handlers
+// ---------------------------------------------------------------------------
+
+void MainWindow::onGpuProfileChanged( const QString &gpuProfileId )
+{
+  if ( gpuProfileId.isEmpty() || !m_gpuProfileTab )
+    return;
+
+  QString json = m_profileManager->getGpuProfile( gpuProfileId );
+  m_gpuProfileTab->loadProfile( json );
+  m_gpuProfileTab->updateButtonStates( m_UccdClient && m_UccdClient->isConnected() );
+}
+
+void MainWindow::onApplyGpuProfileClicked()
+{
+  if ( !m_gpuProfileTab || !m_UccdClient || !m_UccdClient->isConnected() )
+  {
+    QMessageBox::warning( this, "Not connected", "Not connected to system service; cannot apply GPU OC profile." );
+    return;
+  }
+
+  QString profileJson = m_gpuProfileTab->buildProfileJSON();
+
+  QString selectedGpuProfileId;
+  QString selectedGpuProfileName;
+  if ( m_gpuProfileTab->gpuProfileCombo() )
+  {
+    selectedGpuProfileId = m_gpuProfileTab->gpuProfileCombo()->currentData().toString();
+    selectedGpuProfileName = m_gpuProfileTab->gpuProfileCombo()->currentText();
+  }
+
+  qDebug() << "[GPU-CTGP] Apply clicked"
+           << "selectedGpuProfileId=" << selectedGpuProfileId
+           << "selectedGpuProfileName=" << selectedGpuProfileName
+           << "payload=" << profileJson;
+
+  if ( m_UccdClient->applyNvidiaGpuOCProfile( profileJson.toStdString() ) )
+  {
+    statusBar()->showMessage( "GPU OC settings applied (temporary; use Save to persist)" );
+
+    const auto offsetAfterApply = m_UccdClient->getNVIDIAPowerOffset();
+    const auto ocStateAfterApply = m_UccdClient->getNvidiaOCState( 0 );
+    qDebug() << "[GPU-CTGP] Apply success"
+             << "offsetAfterApply=" << ( offsetAfterApply ? QString::number( *offsetAfterApply ) : QString( "<none>" ) )
+             << "ocStateAfterApply=" << ( ocStateAfterApply ? QString::fromStdString( *ocStateAfterApply ) : QString( "<none>" ) );
+
+    m_gpuProfileTab->refreshOCState();
+  }
+  else
+  {
+    QMessageBox::warning( this, "Apply Failed", "Failed to apply GPU OC profile. Check service logs." );
+  }
+}
+
+void MainWindow::onSaveGpuProfileClicked()
+{
+  if ( !m_gpuProfileTab || !m_gpuProfileTab->gpuProfileCombo() )
+    return;
+
+  QString currentId = m_gpuProfileTab->gpuProfileCombo()->currentData().toString();
+  QString currentName = m_gpuProfileTab->gpuProfileCombo()->currentText();
+
+  if ( currentId.isEmpty() )
+  {
+    QMessageBox::warning( this, "Save Failed", "No GPU OC profile selected." );
+    return;
+  }
+
+  for ( const auto &v : m_profileManager->builtinGpuProfilesData() )
+  {
+    if ( v.isObject() && v.toObject().value( "id" ).toString() == currentId )
+    {
+      QMessageBox::information( this, "Built-in Profile",
+                                "Built-in GPU OC profiles cannot be modified. Copy it to a custom profile first." );
+      return;
+    }
+  }
+
+  QString json = m_gpuProfileTab->buildProfileJSON();
+  m_profileManager->setGpuProfile( currentId, currentName, json );
+  statusBar()->showMessage( QString( "GPU OC profile '%1' saved" ).arg( currentName ) );
+}
+
+void MainWindow::onCopyGpuProfileClicked()
+{
+  if ( !m_gpuProfileTab || !m_gpuProfileTab->gpuProfileCombo() )
+    return;
+
+  // Get current profile data (either from combo selection or from current widget state)
+  QString json = m_gpuProfileTab->buildProfileJSON();
+
+  // Determine a base name for the copy
+  QString currentName = m_gpuProfileTab->gpuProfileCombo()->currentText();
+  if ( currentName.isEmpty() )
+    currentName = "GPU Profile";
+
+  QString baseName = QString( "New %1" ).arg( currentName );
+  QString profileName = baseName;
+  int counter = 1;
+  while ( m_gpuProfileTab->gpuProfileCombo()->findText( profileName ) != -1 )
+  {
+    profileName = QString( "%1 %2" ).arg( baseName ).arg( counter );
+    counter++;
+  }
+
+  QString newId = QUuid::createUuid().toString( QUuid::WithoutBraces );
+  if ( m_profileManager->setGpuProfile( newId, profileName, json ) )
+  {
+    m_gpuProfileTab->reloadGpuProfiles();
+    // Select the newly created profile
+    for ( int i = 0; i < m_gpuProfileTab->gpuProfileCombo()->count(); ++i )
+    {
+      if ( m_gpuProfileTab->gpuProfileCombo()->itemData( i ).toString() == newId )
+      {
+        m_gpuProfileTab->gpuProfileCombo()->setCurrentIndex( i );
+        break;
+      }
+    }
+    statusBar()->showMessage( QString( "Copied GPU OC profile to '%1'" ).arg( profileName ) );
+  }
+  else
+  {
+    QMessageBox::warning( this, "Error", "Failed to copy GPU OC profile." );
+  }
+}
+
+void MainWindow::onRemoveGpuProfileClicked()
+{
+  if ( !m_gpuProfileTab || !m_gpuProfileTab->gpuProfileCombo() )
+    return;
+
+  QString currentId = m_gpuProfileTab->gpuProfileCombo()->currentData().toString();
+  QString currentName = m_gpuProfileTab->gpuProfileCombo()->currentText();
+
+  if ( currentId.isEmpty() )
+    return;
+
+  for ( const auto &v : m_profileManager->builtinGpuProfilesData() )
+  {
+    if ( v.isObject() && v.toObject().value( "id" ).toString() == currentId )
+    {
+      QMessageBox::information( this, "Built-in Profile",
+                                "Built-in GPU OC profiles cannot be removed." );
+      return;
+    }
+  }
+
+  QMessageBox::StandardButton reply = QMessageBox::question(
+    this, "Remove GPU OC Profile",
+    QString( "Are you sure you want to delete the GPU OC profile '%1'?" ).arg( currentName ),
+    QMessageBox::Yes | QMessageBox::No );
+
+  if ( reply == QMessageBox::Yes )
+  {
+    m_profileManager->deleteGpuProfile( currentId );
+    statusBar()->showMessage( QString( "GPU OC profile '%1' removed" ).arg( currentName ) );
+  }
 }
 
 } // namespace ucc

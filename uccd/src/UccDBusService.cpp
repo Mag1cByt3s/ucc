@@ -15,32 +15,37 @@
 
 #include "UccDBusService.hpp"
 #include "CommonTypes.hpp"
+#include "NvmlWrapper.hpp"
 #include "profiles/DefaultProfiles.hpp"
 #include "profiles/FanProfile.hpp"
+#include "PolkitAuthority.hpp"
 #include "StateUtils.hpp"
 #include "Utils.hpp"
 #include "SysfsNode.hpp"
-#include <set>
 #include <sstream>
 #include <iomanip>
 #include <map>
 #include <thread>
 #include <cmath>
+#include <climits>
 #include <fstream>
 #include <filesystem>
 #include <syslog.h>
 #include <libudev.h>
-#include <functional>
 #include <algorithm>
-#include <ranges>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QCoreApplication>
 #include <QEventLoop>
 
 namespace
 {
+constexpr const char *BUILTIN_GPU_PROFILE_ID = "gpu-default-builtin";
+constexpr const char *BUILTIN_GPU_PROFILE_NAME = "Default [Built-in]";
 }
+
+static std::string jsonEscape( const std::string &value );
 
 // helper function to convert GPU info to JSON
 std::string dgpuInfoToJSON( const DGpuInfo &info )
@@ -50,10 +55,22 @@ std::string dgpuInfoToJSON( const DGpuInfo &info )
   oss << "{"
   << "\"temp\":" << info.m_temp << ","
       << "\"coreFrequency\":" << info.m_coreFrequency << ","
+      << "\"vramFrequency\":" << info.m_vramFrequency << ","
       << "\"maxCoreFrequency\":" << info.m_maxCoreFrequency << ","
       << "\"powerDraw\":" << info.m_powerDraw << ","
       << "\"maxPowerLimit\":" << info.m_maxPowerLimit << ","
       << "\"enforcedPowerLimit\":" << info.m_enforcedPowerLimit << ","
+      << "\"computeUtilPct\":" << info.m_computeUtilPct << ","
+      << "\"memoryUtilPct\":" << info.m_memoryUtilPct << ","
+      << "\"vramUsedMiB\":" << info.m_vramUsedMiB << ","
+      << "\"vramTotalMiB\":" << info.m_vramTotalMiB << ","
+      << "\"perfLimitReason\":\"" << jsonEscape( info.m_perfLimitReason ) << "\","
+      << "\"encoderUtilPct\":" << info.m_encoderUtilPct << ","
+      << "\"decoderUtilPct\":" << info.m_decoderUtilPct << ","
+      << "\"currentPstate\":" << info.m_currentPstate << ","
+      << "\"grClockOffsetMHz\":" << ( info.m_grClockOffsetMHz == INT_MIN ? -999 : info.m_grClockOffsetMHz ) << ","
+      << "\"memClockOffsetMHz\":" << ( info.m_memClockOffsetMHz == INT_MIN ? -999 : info.m_memClockOffsetMHz ) << ","
+      << "\"coreVoltageMv\":" << info.m_coreVoltageMv << ","
       << "\"d0MetricsUsage\":" << ( info.m_d0MetricsUsage ? "true" : "false" )
       << "}";
   return oss.str();
@@ -194,15 +211,14 @@ static std::string profileToJSON( const UccProfile &profile,
 
   oss << "]}";
 
-  if ( profile.nvidiaPowerCTRLProfile.has_value() )
+  // GPU OC profile reference and embedded data
+  if ( !profile.gpuProfileId.empty() )
   {
-    oss << ",\"nvidiaPowerCTRLProfile\":{"
-        << "\"cTGPOffset\":" << profile.nvidiaPowerCTRLProfile->cTGPOffset
-        << "}";
+    oss << ",\"gpuProfileId\":\"" << jsonEscape( profile.gpuProfileId ) << "\"";
   }
-  else
+  if ( !profile.gpuOCProfileData.empty() && profile.gpuOCProfileData != "{}" )
   {
-    oss << ",\"nvidiaPowerCTRLProfile\":null";
+    oss << ",\"gpuOCProfileData\":" << profile.gpuOCProfileData;
   }
 
   // Keyboard section
@@ -732,15 +748,6 @@ bool UccDBusInterfaceAdaptor::SetTempProfile( const QString &profileName )
   return true;
 }
 
-bool UccDBusInterfaceAdaptor::SetTempProfileById( const QString &id )
-{
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  std::lock_guard< std::mutex > lock( m_data.dataMutex );
-  m_data.tempProfileId = id.toStdString();
-  // trigger state check would be called here
-  return true;
-}
-
 bool UccDBusInterfaceAdaptor::SetActiveProfile( const QString &id )
 {
   if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
@@ -1149,6 +1156,41 @@ QString UccDBusInterfaceAdaptor::GetFanProfileNames()
   }
   json += "]";
   return QString::fromStdString( json );
+}
+
+QString UccDBusInterfaceAdaptor::GetGpuProfile( const QString &id )
+{
+  if ( !m_service )
+    return QStringLiteral( "{}" );
+
+  const std::string requestedId = id.toStdString();
+  auto it = std::find_if( m_service->m_builtinGpuProfiles.begin(),
+                          m_service->m_builtinGpuProfiles.end(),
+                          [&requestedId]( const UccDBusService::BuiltinGpuProfile &profile ) {
+                            return profile.id == requestedId;
+                          } );
+
+  if ( it == m_service->m_builtinGpuProfiles.end() )
+    return QStringLiteral( "{}" );
+
+  return QString::fromStdString( it->json );
+}
+
+QString UccDBusInterfaceAdaptor::GetGpuProfileNames()
+{
+  if ( !m_service )
+    return QStringLiteral( "[]" );
+
+  QJsonArray arr;
+  for ( const auto &profile : m_service->m_builtinGpuProfiles )
+  {
+    QJsonObject obj;
+    obj[ "id" ] = QString::fromStdString( profile.id );
+    obj[ "name" ] = QString::fromStdString( profile.name );
+    arr.append( obj );
+  }
+
+  return QString::fromUtf8( QJsonDocument( arr ).toJson( QJsonDocument::Compact ) );
 }
 
 bool UccDBusInterfaceAdaptor::SetFanProfile( const QString &name, const QString &json )
@@ -1591,6 +1633,15 @@ bool UccDBusInterfaceAdaptor::GetNVIDIAPowerCTRLAvailable()
   return m_data.nvidiaPowerCTRLAvailable;
 }
 
+bool UccDBusInterfaceAdaptor::SetNVIDIAPowerOffset( int offset )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !m_service || !m_service->m_profileSettingsWorker ) return false;
+  if ( !m_data.nvidiaPowerCTRLAvailable ) return false;
+
+  return m_service->m_profileSettingsWorker->applyNVIDIAPowerOffset( offset );
+}
+
 QString UccDBusInterfaceAdaptor::GetAvailableGovernors()
 {
   if ( m_service && m_service->getCpuWorker() )
@@ -1805,6 +1856,154 @@ int UccDBusInterfaceAdaptor::GetCpuFrequencyMHz()
   return m_data.cpuFrequencyMHz.load();
 }
 
+// ---------------------------------------------------------------------------
+// NVIDIA GPU OC methods
+// ---------------------------------------------------------------------------
+
+bool UccDBusInterfaceAdaptor::GetNvidiaOCAvailable()
+{
+  return m_service && m_service->m_nvidiaOCWorker && m_service->m_nvidiaOCWorker->isAvailable();
+}
+
+QString UccDBusInterfaceAdaptor::GetNvidiaOCState( int deviceIndex )
+{
+  if ( !m_service || !m_service->m_nvidiaOCWorker )
+    return QStringLiteral( "{}" );
+  return QString::fromStdString(
+      m_service->m_nvidiaOCWorker->getOCStateJSON( static_cast< unsigned int >( deviceIndex ) ) );
+}
+
+bool UccDBusInterfaceAdaptor::SetNvidiaClockOffset( int deviceIndex, int clockType, int pstate, int offsetMHz )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
+  return m_service->m_nvidiaOCWorker->setClockOffset(
+      static_cast< unsigned int >( deviceIndex ),
+      static_cast< unsigned int >( clockType ),
+      static_cast< unsigned int >( pstate ),
+      offsetMHz );
+}
+
+bool UccDBusInterfaceAdaptor::SetNvidiaGpuLockedClocks( int deviceIndex, int minMHz, int maxMHz )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
+  return m_service->m_nvidiaOCWorker->setGpuLockedClocks(
+      static_cast< unsigned int >( deviceIndex ),
+      static_cast< unsigned int >( minMHz ),
+      static_cast< unsigned int >( maxMHz ) );
+}
+
+bool UccDBusInterfaceAdaptor::SetNvidiaVramLockedClocks( int deviceIndex, int minMHz, int maxMHz )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
+  return m_service->m_nvidiaOCWorker->setVramLockedClocks(
+      static_cast< unsigned int >( deviceIndex ),
+      static_cast< unsigned int >( minMHz ),
+      static_cast< unsigned int >( maxMHz ) );
+}
+
+bool UccDBusInterfaceAdaptor::ResetNvidiaGpuLockedClocks( int deviceIndex )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
+  return m_service->m_nvidiaOCWorker->resetGpuLockedClocks( static_cast< unsigned int >( deviceIndex ) );
+}
+
+bool UccDBusInterfaceAdaptor::ResetNvidiaVramLockedClocks( int deviceIndex )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
+  return m_service->m_nvidiaOCWorker->resetVramLockedClocks( static_cast< unsigned int >( deviceIndex ) );
+}
+
+bool UccDBusInterfaceAdaptor::ResetNvidiaAllClockOffsets( int deviceIndex )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
+  return m_service->m_nvidiaOCWorker->resetAllClockOffsets( static_cast< unsigned int >( deviceIndex ) );
+}
+
+bool UccDBusInterfaceAdaptor::SetNvidiaGpuPowerLimit( int deviceIndex, double watts )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
+  return m_service->m_nvidiaOCWorker->setPowerLimit( static_cast< unsigned int >( deviceIndex ), watts );
+}
+
+bool UccDBusInterfaceAdaptor::ResetNvidiaGpuPowerLimit( int deviceIndex )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
+  return m_service->m_nvidiaOCWorker->resetPowerLimit( static_cast< unsigned int >( deviceIndex ) );
+}
+
+bool UccDBusInterfaceAdaptor::ApplyNvidiaGpuOCProfile( const QString &profileJSON, int deviceIndex )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
+
+  const std::string profileJsonStd = profileJSON.toStdString();
+  const bool result = m_service->m_nvidiaOCWorker->applyGpuOCProfile(
+      profileJsonStd, static_cast< unsigned int >( deviceIndex ) );
+
+  if ( !result )
+    return false;
+
+  // Apply cTGP offset from GPU profile payload (GPU-profile path only)
+  if ( m_service->m_profileSettingsWorker && m_service->m_dbusData.nvidiaPowerCTRLAvailable.load() )
+  {
+    QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( profileJsonStd ) );
+    if ( doc.isObject() )
+    {
+      QJsonObject obj = doc.object();
+      if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj[ "nvidiaPowerCTRLProfile" ].isObject() )
+      {
+        QJsonObject nvidiaObj = obj[ "nvidiaPowerCTRLProfile" ].toObject();
+        int ctgpOffset = nvidiaObj.value( "cTGPOffset" ).toInt( 0 );
+        m_service->m_profileSettingsWorker->applyNVIDIAPowerOffset( ctgpOffset );
+      }
+
+      // Update active profile's embedded GPU OC data for readback
+      m_service->m_activeProfile.gpuOCProfileData = profileJsonStd;
+      m_service->updateDBusActiveProfileData();
+    }
+  }
+
+  auto extractStr = []( const std::string &json, const std::string &key ) -> std::string {
+    std::string search = "\"" + key + "\":\"";
+    size_t pos = json.find( search );
+    if ( pos == std::string::npos ) return {};
+    pos += search.length();
+    size_t end = json.find( '"', pos );
+    if ( end == std::string::npos ) return {};
+    return json.substr( pos, end - pos );
+  };
+
+  const std::string gpuProfileId = extractStr( profileJsonStd, "gpuProfileId" );
+  if ( !gpuProfileId.empty() )
+  {
+    m_service->m_activeProfile.gpuProfileId = gpuProfileId;
+    m_service->updateDBusActiveProfileData();
+
+    if ( m_service->m_adaptor )
+      emitProfileChanged( m_service->m_activeProfile.id,
+                          m_service->m_activeProfile.keyboard.keyboardProfileId,
+                          m_service->m_activeProfile.fan.fanProfile,
+                          gpuProfileId );
+  }
+
+  return true;
+}
+
+bool UccDBusInterfaceAdaptor::ResetNvidiaGpuOCAll( int deviceIndex )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
+  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
+  return m_service->m_nvidiaOCWorker->resetAll( static_cast< unsigned int >( deviceIndex ) );
+}
+
 // signal emitters
 // These may be called from the DaemonWorker thread, but the adaptor lives in
 // the main thread.  Use QMetaObject::invokeMethod with a queued connection so
@@ -1818,14 +2017,21 @@ void UccDBusInterfaceAdaptor::emitModeReapplyPendingChanged( bool pending )
 }
 
 void UccDBusInterfaceAdaptor::emitProfileChanged( const std::string &profileId,
-                                                   const std::string &keyboardProfileId,
-                                                   const std::string &fanProfileId )
+                                                  const std::string &keyboardProfileId,
+                                                  const std::string &fanProfileId,
+                                                  const std::string &gpuProfileId )
 {
-  QString id   = QString::fromStdString( profileId );
+  QString id = QString::fromStdString( profileId );
   QString kbId = QString::fromStdString( keyboardProfileId );
   QString fpId = QString::fromStdString( fanProfileId );
-  QMetaObject::invokeMethod( this, [this, id, kbId, fpId]() {
-    emit ProfileChanged( id, kbId, fpId );
+
+  std::string effectiveGpu = gpuProfileId;
+  if ( effectiveGpu.empty() && m_service )
+    effectiveGpu = m_service->m_activeProfile.gpuProfileId;
+  QString gpId = QString::fromStdString( effectiveGpu );
+
+  QMetaObject::invokeMethod( this, [this, id, kbId, fpId, gpId]() {
+    emit ProfileChanged( id, kbId, fpId, gpId );
   }, Qt::QueuedConnection );
 }
 
@@ -1904,7 +2110,7 @@ UccDBusService::UccDBusService()
 
   // set default system JSON values (sentinels for GPU/CPU monitoring data)
   m_dbusData.primeState = "-1";
-  m_dbusData.dGpuInfoValuesJSON = "{\"temp\":-1,\"powerDraw\":-1,\"maxPowerLimit\":-1,\"enforcedPowerLimit\":-1,\"coreFrequency\":-1,\"maxCoreFrequency\":-1}";
+  m_dbusData.dGpuInfoValuesJSON = "{\"temp\":-1,\"powerDraw\":-1,\"maxPowerLimit\":-1,\"enforcedPowerLimit\":-1,\"coreFrequency\":-1,\"vramFrequency\":-1,\"maxCoreFrequency\":-1,\"computeUtilPct\":-1,\"memoryUtilPct\":-1,\"vramUsedMiB\":-1,\"vramTotalMiB\":-1,\"perfLimitReason\":\"\",\"encoderUtilPct\":-1,\"decoderUtilPct\":-1,\"currentPstate\":-1,\"grClockOffsetMHz\":-999,\"memClockOffsetMHz\":-999,\"coreVoltageMv\":-1}";
   m_dbusData.iGpuInfoValuesJSON = "{\"vendor\":\"unknown\",\"temp\":-1,\"coreFrequency\":-1,\"maxCoreFrequency\":-1,\"powerDraw\":-1}";
 
   // Keyboard backlight will be detected during worker initialization
@@ -1915,6 +2121,11 @@ UccDBusService::UccDBusService()
   // workers or profiles are created.  This populates TDP limits, NVIDIA
   // power limits, charging profiles, and YCbCr420 availability with real
   // hardware values so the D-Bus data is never populated with fake defaults.
+  //
+  // Create the single shared NvmlWrapper instance first — it is reused by
+  // readHardwareCapabilities(), HardwareMonitorWorker, NvidiaOCWorker, and
+  // ProfileSettingsWorker so that NVML is initialised exactly once.
+  m_nvml = std::make_shared< NvmlWrapper >();
   readHardwareCapabilities();
 
   // initialize profiles first (safer, doesn't start threads)
@@ -1962,6 +2173,7 @@ UccDBusService::UccDBusService()
 
   m_profileSettingsWorker = std::make_unique< ProfileSettingsWorker >(
     m_io,
+    m_nvml,
     [this]() -> UccProfile { return m_activeProfile; },
     [this]( const std::vector< std::string > &profiles ) {
       std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
@@ -1988,6 +2200,7 @@ UccDBusService::UccDBusService()
     m_deviceId.has_value() and m_deviceId.value() == UniwillDeviceID::IBM15A10;
 
   m_hardwareMonitorWorker = std::make_unique< HardwareMonitorWorker >(
+    m_nvml,
     [this]( const std::string &json, double cpuPowerWatts ) {
       {
         std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
@@ -2114,9 +2327,6 @@ UccDBusService::UccDBusService()
           const int wcFanSpeed = fp.getWaterCoolerFanSpeedForTemp( snappedTemp );
           m_waterCoolerWorker->setFanSpeed( wcFanSpeed );
 
-          // Push water cooler fan duty to history store
-          m_metricsStore.push( MetricId::WaterCoolerFanDuty, timestamp, wcFanSpeed );
-
           // Temperature LED mode: compute gradient color from fan speed
           if ( m_waterCoolerLedMode.load() == static_cast< int32_t >( ucc::RGBState::Temperature ) )
           {
@@ -2167,10 +2377,6 @@ UccDBusService::UccDBusService()
               pumpIdxToVoltage[ std::clamp( m_pumpHysSpeedIdx, 0, 4 ) ];
           m_waterCoolerWorker->setPumpVoltage( static_cast<int>( pumpSpeedValue ) );
 
-          // Push water cooler pump level to history store
-          m_metricsStore.push( MetricId::WaterCoolerPumpLevel, timestamp,
-            static_cast< double >( static_cast< int >( pumpSpeedValue ) ) );
-
           // std::cout << "[Auto WC] Temp: " << temp << "°C, Fan: " << wcFanSpeed
           //           << "%, Pump Voltage: " << static_cast<int>(pumpSpeedValue) << std::endl;
         }
@@ -2208,6 +2414,93 @@ UccDBusService::UccDBusService()
   m_displayWorker->start();
   m_cpuWorker->start();
   m_fanControlWorker->start();
+
+  // Initialize NVIDIA OC worker (non-threaded, on-demand calls via D-Bus)
+  m_nvidiaOCWorker = std::make_unique< NvidiaOCWorker >(
+    m_nvml,
+    []( const std::string &msg ) { syslog( LOG_INFO, "%s", msg.c_str() ); }
+  );
+
+  rebuildBuiltinGpuProfiles();
+}
+
+int UccDBusService::readCurrentCTGPOffset() const
+{
+  static const std::string NVIDIA_CTGP_OFFSET =
+    "/sys/devices/platform/tuxedo_nvidia_power_ctrl/ctgp_offset";
+
+  if ( !m_dbusData.cTGPAdjustmentSupported )
+    return 0;
+
+  try
+  {
+    if ( auto value = SysfsNode< int >( NVIDIA_CTGP_OFFSET ).read(); value.has_value() )
+      return value.value();
+    return 0;
+  }
+  catch ( ... )
+  {
+    return 0;
+  }
+}
+
+void UccDBusService::rebuildBuiltinGpuProfiles()
+{
+  m_builtinGpuProfiles.clear();
+
+  if ( !m_nvidiaOCWorker || !m_nvidiaOCWorker->isAvailable() )
+    return;
+
+  const std::string ocStateJson = m_nvidiaOCWorker->getOCStateJSON( 0 );
+  QJsonDocument stateDoc = QJsonDocument::fromJson( QByteArray::fromStdString( ocStateJson ) );
+  if ( !stateDoc.isObject() )
+    return;
+
+  const QJsonObject state = stateDoc.object();
+  QJsonObject profile;
+
+  QJsonArray offsets;
+  const QJsonArray pstates = state.value( "pstates" ).toArray();
+  for ( const QJsonValue &entry : pstates )
+  {
+    const QJsonObject pstate = entry.toObject();
+    QJsonObject offset;
+    offset[ "pstate" ] = pstate.value( "pstate" ).toInt();
+    offset[ "gpuOffsetMHz" ] = pstate.value( "gpu" ).toObject().value( "currentOffset" ).toInt( 0 );
+    offset[ "vramOffsetMHz" ] = pstate.value( "vram" ).toObject().value( "currentOffset" ).toInt( 0 );
+    offsets.append( offset );
+  }
+  profile[ "offsets" ] = offsets;
+
+  QJsonObject gpuLocked;
+  const QJsonObject gpuLockedState = state.value( "gpuLockedClocks" ).toObject();
+  const QJsonObject gpuRange = state.value( "gpuClockRange" ).toObject();
+  const bool gpuLockedEnabled = !gpuLockedState.isEmpty();
+  gpuLocked[ "enabled" ] = gpuLockedEnabled;
+  gpuLocked[ "min" ] = gpuLockedEnabled ? gpuLockedState.value( "min" ).toInt() : gpuRange.value( "min" ).toInt( 0 );
+  gpuLocked[ "max" ] = gpuLockedEnabled ? gpuLockedState.value( "max" ).toInt() : gpuRange.value( "max" ).toInt( 0 );
+  profile[ "gpuLockedClocks" ] = gpuLocked;
+
+  QJsonObject vramLocked;
+  const QJsonObject vramLockedState = state.value( "vramLockedClocks" ).toObject();
+  const QJsonObject vramRange = state.value( "vramClockRange" ).toObject();
+  const bool vramLockedEnabled = !vramLockedState.isEmpty();
+  vramLocked[ "enabled" ] = vramLockedEnabled;
+  vramLocked[ "min" ] = vramLockedEnabled ? vramLockedState.value( "min" ).toInt() : vramRange.value( "min" ).toInt( 0 );
+  vramLocked[ "max" ] = vramLockedEnabled ? vramLockedState.value( "max" ).toInt() : vramRange.value( "max" ).toInt( 0 );
+  profile[ "vramLockedClocks" ] = vramLocked;
+
+  profile[ "powerLimitW" ] = state.value( "powerLimitW" ).toDouble( 0.0 );
+
+  QJsonObject nvidiaPowerCtrl;
+  nvidiaPowerCtrl[ "cTGPOffset" ] = readCurrentCTGPOffset();
+  profile[ "nvidiaPowerCTRLProfile" ] = nvidiaPowerCtrl;
+
+  BuiltinGpuProfile builtin;
+  builtin.id = BUILTIN_GPU_PROFILE_ID;
+  builtin.name = BUILTIN_GPU_PROFILE_NAME;
+  builtin.json = QJsonDocument( profile ).toJson( QJsonDocument::Compact ).toStdString();
+  m_builtinGpuProfiles.push_back( builtin );
 }
 
 void UccDBusService::readHardwareCapabilities()
@@ -2267,24 +2560,20 @@ void UccDBusService::readHardwareCapabilities()
 
     if ( nvAvailable )
     {
-      // Query power limits via nvidia-smi
-      auto runNvidiaSmi = []( const std::string &queryFlag ) -> int32_t {
-        try
+      if ( !m_nvidiaPowerLimitsInitialized )
+      {
+        // Query power limits via the shared NVML instance only once per daemon startup.
+        // readHardwareCapabilities() is also called after profile apply/reapply.
+        if ( m_nvml && m_nvml->isAvailable() && m_nvml->deviceCount() > 0 )
         {
-          std::string result = ucc::executeProcess( "nvidia-smi",
-            { "--format=csv,noheader,nounits", "--query-gpu=" + queryFlag } );
-          result.erase( 0, result.find_first_not_of( " \t\n\r" ) );
-          result.erase( result.find_last_not_of( " \t\n\r" ) + 1 );
-          return std::stoi( result );
+          if ( auto v = m_nvml->getPowerDefaultLimitW( 0 ) )
+            m_dbusData.nvidiaPowerCTRLDefaultPowerLimit = static_cast< int32_t >( *v );
+          if ( auto v = m_nvml->getPowerMaxLimitW( 0 ) )
+            m_dbusData.nvidiaPowerCTRLMaxPowerLimit = static_cast< int32_t >( *v );
         }
-        catch ( ... )
-        {
-          return 0;
-        }
-      };
 
-      m_dbusData.nvidiaPowerCTRLDefaultPowerLimit = runNvidiaSmi( "power.default_limit" );
-      m_dbusData.nvidiaPowerCTRLMaxPowerLimit = runNvidiaSmi( "power.max_limit" );
+        m_nvidiaPowerLimitsInitialized = true;
+      }
 
       syslog( LOG_INFO, "[uccd] NVIDIA power limits — Default: %dW, Max: %dW",
               m_dbusData.nvidiaPowerCTRLDefaultPowerLimit.load(),
@@ -2292,6 +2581,7 @@ void UccDBusService::readHardwareCapabilities()
     }
     else
     {
+      m_nvidiaPowerLimitsInitialized = false;
       syslog( LOG_INFO, "[uccd] NVIDIA power control not available" );
     }
   }
@@ -2468,13 +2758,11 @@ void UccDBusService::setupGpuDataCallback()
         m_metricsStore.push( MetricId::GpuFrequency, now, dGpuInfo.m_coreFrequency );
       if ( dGpuInfo.m_powerDraw > -1.0 )
         m_metricsStore.push( MetricId::GpuPower, now, dGpuInfo.m_powerDraw );
-
-      if ( iGpuInfo.m_temp > -1.0 )
-        m_metricsStore.push( MetricId::IGpuTemp, now, iGpuInfo.m_temp );
-      if ( iGpuInfo.m_coreFrequency > -1.0 )
-        m_metricsStore.push( MetricId::IGpuFrequency, now, iGpuInfo.m_coreFrequency );
-      if ( iGpuInfo.m_powerDraw > -1.0 )
-        m_metricsStore.push( MetricId::IGpuPower, now, iGpuInfo.m_powerDraw );
+      if ( dGpuInfo.m_vramFrequency > -1.0 )
+        m_metricsStore.push( MetricId::GpuVramFrequency, now, dGpuInfo.m_vramFrequency );
+      if ( dGpuInfo.m_coreVoltageMv > -1 )
+        m_metricsStore.push( MetricId::GpuCoreVoltage, now,
+                             static_cast< double >( dGpuInfo.m_coreVoltageMv ) );
 
       // Expose dGPU temperature through fan data for UI compatibility
       if ( dGpuInfo.m_temp > -1.0 and m_dbusData.fans.size() > 1 )
@@ -3133,12 +3421,6 @@ bool UccDBusService::setCurrentProfileById( const std::string &id )
         }
       }
 
-      if ( m_dbusData.nvidiaPowerCTRLAvailable.load() && m_profileSettingsWorker )
-      {
-        std::cout << "[Profile] Notifying NVIDIA power control" << std::endl;
-        m_profileSettingsWorker->onNVIDIAPowerProfileChanged();
-      }
-
       if ( m_keyboardBacklightController.isAvailable()
            && m_settings.keyboardBacklightControlEnabled
            && !profile.keyboard.keyboardProfileData.empty()
@@ -3347,6 +3629,9 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
       std::cout << "[Profile] Applying keyboard backlight settings from profile" << std::endl;
       m_keyboardBacklightController.applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
     }
+
+    // Apply GPU OC and cTGP from the profile
+    applyGpuOCFromProfile( profile );
 
     // Emit ProfileChanged signal for DBus clients
     if ( m_adaptor )
@@ -3930,6 +4215,8 @@ void UccDBusService::applyStartupProfile()
        && profile.keyboard.keyboardProfileData != "{}" )
     m_keyboardBacklightController.applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
 
+  applyGpuOCFromProfile( profile );
+
   if ( m_dbusData.waterCoolerSupported )
     setWaterCoolerScanningEnabled( profile.fan.enableWaterCooler );
 }
@@ -4005,6 +4292,40 @@ void UccDBusService::applyFanAndPumpSettings( const UccProfile &profile )
   catch ( const std::exception &e )
   {
     std::cerr << "[FanPump] Failed to apply fan/pump settings: " << e.what() << std::endl;
+  }
+}
+
+void UccDBusService::applyGpuOCFromProfile( const UccProfile &profile )
+{
+  // GPU OC / cTGP data lives exclusively inside gpuOCProfileData.
+  // Profiles with no GPU profile selected have empty gpuOCProfileData and
+  // should not touch GPU state at all.
+  if ( profile.gpuOCProfileData.empty() || profile.gpuOCProfileData == "{}" )
+    return;
+
+  // Extract and apply cTGP offset from embedded GPU profile data
+  if ( m_profileSettingsWorker && m_dbusData.nvidiaPowerCTRLAvailable.load() )
+  {
+    QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( profile.gpuOCProfileData ) );
+    if ( doc.isObject() )
+    {
+      QJsonObject obj = doc.object();
+      if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj[ "nvidiaPowerCTRLProfile" ].isObject() )
+      {
+        const int ctgpOffset = obj[ "nvidiaPowerCTRLProfile" ].toObject().value( "cTGPOffset" ).toInt( 0 );
+        std::cout << "[GpuOC] Applying cTGP offset from profile: " << ctgpOffset << std::endl;
+        m_profileSettingsWorker->applyNVIDIAPowerOffset( ctgpOffset );
+      }
+    }
+  }
+
+  // Apply GPU OC settings (clock offsets, locked clocks, power limit)
+  if ( m_nvidiaOCWorker && m_nvidiaOCWorker->isAvailable() )
+  {
+    std::cout << "[GpuOc] Applying embedded GPU OC profile data from profile '"
+              << profile.name << "'" << std::endl;
+    if ( !m_nvidiaOCWorker->applyGpuOCProfile( profile.gpuOCProfileData, 0 ) )
+      std::cerr << "[GpuOC] Failed to apply GPU OC profile data" << std::endl;
   }
 }
 
@@ -4118,6 +4439,9 @@ void UccDBusService::applyProfileForCurrentState()
          && !profile.keyboard.keyboardProfileData.empty()
          && profile.keyboard.keyboardProfileData != "{}" )
       m_keyboardBacklightController.applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
+
+    // Apply GPU OC and cTGP from the profile
+    applyGpuOCFromProfile( profile );
 
     // Water cooler scanning state is preserved from the runtime flag
     // (set via EnableWaterCooler D-Bus call). Do NOT re-read enableWaterCooler

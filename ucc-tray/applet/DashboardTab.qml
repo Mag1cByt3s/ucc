@@ -105,6 +105,106 @@ PC3.ScrollView {
                 PC3.Label { text: dashTab.backend.gpuPowerW.toFixed(1) + " W"; font.bold: true }
                 PC3.Label { text: i18n("Fan"); opacity: 0.7 }
                 PC3.Label { text: dashTab.backend.gpuFanRPM + " RPM (" + dashTab.backend.gpuFanPercent + "%)"; font.bold: true }
+
+                // Extended NVIDIA metrics — shown only when data is available
+                PC3.Label {
+                    text: i18n("GPU Load")
+                    opacity: 0.7
+                    visible: dashTab.backend.gpuComputeUtilPct >= 0
+                }
+                PC3.Label {
+                    text: dashTab.backend.gpuComputeUtilPct + " %"
+                    font.bold: true
+                    visible: dashTab.backend.gpuComputeUtilPct >= 0
+                }
+                PC3.Label {
+                    text: i18n("VRAM Load")
+                    opacity: 0.7
+                    visible: dashTab.backend.gpuMemoryUtilPct >= 0
+                }
+                PC3.Label {
+                    text: dashTab.backend.gpuMemoryUtilPct + " %"
+                    font.bold: true
+                    visible: dashTab.backend.gpuMemoryUtilPct >= 0
+                }
+
+                PC3.Label {
+                    text: i18n("P-State")
+                    opacity: 0.7
+                    visible: dashTab.backend.gpuCurrentPstate >= 0
+                }
+                PC3.Label {
+                    text: "P" + dashTab.backend.gpuCurrentPstate
+                    font.bold: true
+                    visible: dashTab.backend.gpuCurrentPstate >= 0
+                }
+                PC3.Label {
+                    text: i18n("VRAM Freq")
+                    opacity: 0.7
+                    visible: dashTab.backend.gpuVramFreqMHz >= 0
+                }
+                PC3.Label {
+                    text: dashTab.backend.gpuVramFreqMHz + " MHz"
+                    font.bold: true
+                    visible: dashTab.backend.gpuVramFreqMHz >= 0
+                }
+
+                PC3.Label {
+                    text: i18n("Core Voltage")
+                    opacity: 0.7
+                    visible: dashTab.backend.gpuCoreVoltageMv >= 0
+                }
+                PC3.Label {
+                    text: dashTab.backend.gpuCoreVoltageMv + " mV"
+                    font.bold: true
+                    visible: dashTab.backend.gpuCoreVoltageMv >= 0
+                }
+                PC3.Label {
+                    text: i18n("Clock Offsets")
+                    opacity: 0.7
+                    visible: dashTab.backend.gpuGrClockOffsetMHz !== -999
+                }
+                PC3.Label {
+                    text: (dashTab.backend.gpuGrClockOffsetMHz >= 0 ? "+" : "") + dashTab.backend.gpuGrClockOffsetMHz
+                          + " / " + (dashTab.backend.gpuMemClockOffsetMHz >= 0 ? "+" : "") + dashTab.backend.gpuMemClockOffsetMHz + " MHz"
+                    font.bold: true
+                    visible: dashTab.backend.gpuGrClockOffsetMHz !== -999
+                }
+
+                PC3.Label {
+                    text: i18n("VRAM")
+                    opacity: 0.7
+                    visible: dashTab.backend.gpuVramTotalMiB > 0
+                }
+                PC3.Label {
+                    text: dashTab.backend.gpuVramUsedMiB + " / " + dashTab.backend.gpuVramTotalMiB + " MiB"
+                    font.bold: true
+                    visible: dashTab.backend.gpuVramTotalMiB > 0
+                }
+                PC3.Label {
+                    text: i18n("Perf Limit")
+                    opacity: 0.7
+                    visible: dashTab.backend.gpuPerfLimitReason.length > 0
+                }
+                PC3.Label {
+                    text: dashTab.backend.gpuPerfLimitReason
+                    font.bold: true
+                    visible: dashTab.backend.gpuPerfLimitReason.length > 0
+                }
+
+                PC3.Label {
+                    text: i18n("NVENC/DEC")
+                    opacity: 0.7
+                    visible: dashTab.backend.gpuEncoderUtilPct >= 0 || dashTab.backend.gpuDecoderUtilPct >= 0
+                }
+                PC3.Label {
+                    text: (dashTab.backend.gpuEncoderUtilPct >= 0 ? dashTab.backend.gpuEncoderUtilPct : "--")
+                          + " / "
+                          + (dashTab.backend.gpuDecoderUtilPct >= 0 ? dashTab.backend.gpuDecoderUtilPct : "--")
+                          + " %"
+                    font.bold: true
+                    visible: dashTab.backend.gpuEncoderUtilPct >= 0 || dashTab.backend.gpuDecoderUtilPct >= 0
+                }
             }
         }
     }

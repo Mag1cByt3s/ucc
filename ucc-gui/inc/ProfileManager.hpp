@@ -60,6 +60,7 @@ public:
   QString activeProfileName() const;
   QString activeKeyboardProfileId() const { return m_activeKeyboardProfileId; }
   QString activeFanProfileId() const { return m_activeFanProfileId; }
+  QString activeGpuProfileId() const { return m_activeGpuProfileId; }
   QString powerState() const { return m_powerState; }
   int activeProfileIndex() const { return m_activeProfileIndex; }
   bool isConnected() const { return m_connected; }
@@ -73,6 +74,8 @@ public:
   const QJsonArray& builtinFanProfilesData() const { return m_builtinFanProfilesData; }
   const QJsonArray& customFanProfilesData() const { return m_customFanProfilesData; }
   const QJsonArray& customKeyboardProfilesData() const { return m_customKeyboardProfilesData; }
+  const QJsonArray& customGpuProfilesData() const { return m_customGpuProfilesData; }
+  const QJsonArray& builtinGpuProfilesData() const { return m_builtinGpuProfilesData; }
 
 public slots:
   void refresh();
@@ -103,6 +106,13 @@ public slots:
   bool deleteKeyboardProfile( const QString &keyboardProfileId );
   bool renameKeyboardProfile( const QString &keyboardProfileId, const QString &newName );
 
+  // GPU OC profiles (by ID)
+  QString getGpuProfile( const QString &gpuProfileId );
+  bool setGpuProfile( const QString &gpuProfileId, const QString &name, const QString &json );
+  QStringList customGpuProfiles() const { return m_customGpuProfiles; }
+  bool deleteGpuProfile( const QString &gpuProfileId );
+  bool renameGpuProfile( const QString &gpuProfileId, const QString &newName );
+
   QString getSettingsJSON();
   bool setStateMap( const QString &state, const QString &profileId );
   bool setBatchStateMap( const std::map< QString, QString > &entries );
@@ -114,18 +124,21 @@ signals:
   void activeProfileChanged();
   void activeKeyboardProfileChanged( const QString &keyboardProfileId );
   void activeFanProfileChanged( const QString &fanProfileId );
+  void activeGpuProfileChanged( const QString &gpuProfileId );
   void powerStateChanged();
   void activeProfileIndexChanged();
   void connectedChanged();
   void customKeyboardProfilesChanged();
   void customFanProfilesChanged();
+  void customGpuProfilesChanged();
   void error( const QString &message );
 
 private:
   void updateProfiles();
   void onProfileChanged( const std::string &profileId,
                          const std::string &keyboardProfileId,
-                         const std::string &fanProfileId );
+                         const std::string &fanProfileId,
+                         const std::string &gpuProfileId );
   void onPowerStateChanged( const QString &state );
   QString resolveStateMapToProfileId( const QString &state );
   void updateAllProfiles();
@@ -137,8 +150,9 @@ private:
   void saveCustomFanProfilesToSettings();
   void loadCustomKeyboardProfilesFromSettings();
   void saveCustomKeyboardProfilesToSettings();
-  void migrateFanProfileIds( QJsonArray &arr );
-  void migrateKeyboardProfileIds( QJsonArray &arr );
+  void loadCustomGpuProfilesFromSettings();
+  void loadBuiltinGpuProfiles();
+  void saveCustomGpuProfilesToSettings();
 
   std::unique_ptr< UccdClient > m_client;
   std::unique_ptr< QSettings > m_settings;
@@ -153,10 +167,12 @@ private:
   QStringList m_builtinFanProfiles;
   QStringList m_customFanProfiles;
   QStringList m_customKeyboardProfiles;
+  QStringList m_customGpuProfiles;
 
   QString m_activeProfileId;
   QString m_activeKeyboardProfileId;
   QString m_activeFanProfileId;
+  QString m_activeGpuProfileId;
   QString m_powerState;
   int m_activeProfileIndex = -1;
   bool m_connected = false;
@@ -167,6 +183,8 @@ private:
   QJsonArray m_builtinFanProfilesData;   ///< [{id, name}, ...] from daemon
   QJsonArray m_customFanProfilesData;    ///< [{id, name, json}, ...] local
   QJsonArray m_customKeyboardProfilesData;
+  QJsonArray m_builtinGpuProfilesData;
+  QJsonArray m_customGpuProfilesData;
   QJsonObject m_stateMap;
 };
 

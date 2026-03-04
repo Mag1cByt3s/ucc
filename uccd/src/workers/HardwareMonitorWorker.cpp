@@ -20,10 +20,7 @@
 #include <fstream>
 #include <sstream>
 #include <regex>
-#include <set>
 #include <filesystem>
-#include <cstdio>
-#include <cmath>
 #include <thread>
 #include <chrono>
 #include <syslog.h>
@@ -290,6 +287,7 @@ private:
 // ============================================================================
 
 HardwareMonitorWorker::HardwareMonitorWorker(
+  std::shared_ptr< NvmlWrapper > nvml,
   CpuPowerCallback cpuPowerUpdateCallback,
   std::function< bool() > getSensorDataCollectionStatus,
   std::function< void( const std::string & ) > setPrimeStateCallback,
@@ -297,7 +295,7 @@ HardwareMonitorWorker::HardwareMonitorWorker(
   : DaemonWorker( std::chrono::milliseconds( 800 ), false )
   , m_gpuDetector()
   , m_deviceCounts( m_gpuDetector.detectGpuDevices() )
-  , m_isNvidiaSmiInstalled( m_deviceCounts.nvidiaCount > 0 and checkNvidiaSmiInstalledImpl() )
+  , m_nvml( std::move( nvml ) )
   , m_gpuDataCallback( nullptr )
   , m_hwmonIGpuRetryCount( 3 )
   , m_hwmonDGpuRetryCount( 3 )
@@ -531,19 +529,6 @@ std::string HardwareMonitorWorker::getAmdDGpuHwmonPathImpl() const noexcept
   return "";
 }
 
-bool HardwareMonitorWorker::checkNvidiaSmiInstalledImpl() const noexcept
-{
-  try
-  {
-    std::string output = ucc::executeProcess( "which", { "nvidia-smi" } );
-    while ( not output.empty() and ( output.back() == '\n' or output.back() == '\r' or
-                                     output.back() == ' ' or output.back() == '\t' ) )
-      output.pop_back();
-    return not output.empty();
-  }
-  catch ( ... ) { return false; }
-}
-
 IGpuInfo HardwareMonitorWorker::getIGpuValues() noexcept
 {
   IGpuInfo values{};
@@ -611,7 +596,7 @@ DGpuInfo HardwareMonitorWorker::getDGpuValues() noexcept
   DGpuInfo values{};
   bool metricsUsage = true;
 
-  if ( m_deviceCounts.nvidiaCount == 1 and m_isNvidiaSmiInstalled and metricsUsage )
+  if ( m_deviceCounts.nvidiaCount == 1 and m_nvml->isAvailable() and metricsUsage )
   {
     values = getNvidiaDGpuValues();
   }
@@ -627,17 +612,66 @@ DGpuInfo HardwareMonitorWorker::getDGpuValues() noexcept
 
 DGpuInfo HardwareMonitorWorker::getNvidiaDGpuValues() const noexcept
 {
-  if ( m_isNvidiaSmiInstalled )
-  {
-    std::string output = ucc::executeProcess(
-        "nvidia-smi",
-        { "--query-gpu=temperature.gpu,power.draw,power.max_limit,"
-          "enforced.power.limit,clocks.gr,clocks.max.gr",
-          "--format=csv,noheader" } );
-    if ( not output.empty() )
-      return parseNvidiaOutput( output );
-  }
-  return DGpuInfo{};
+  if ( !m_nvml->isAvailable() )
+    return DGpuInfo{};
+
+  DGpuInfo values{};
+
+  if ( auto v = m_nvml->getTemperatureDegC( 0 ) )
+    values.m_temp = static_cast< double >( *v );
+
+  if ( auto v = m_nvml->getPowerDrawW( 0 ) )
+    values.m_powerDraw = *v;
+
+  if ( auto v = m_nvml->getPowerMaxLimitW( 0 ) )
+    values.m_maxPowerLimit = *v;
+
+  if ( auto v = m_nvml->getEnforcedPowerLimitW( 0 ) )
+    values.m_enforcedPowerLimit = *v;
+
+  if ( auto v = m_nvml->getGpuClockMHz( 0 ) )
+    values.m_coreFrequency = static_cast< double >( *v );
+
+  if ( auto v = m_nvml->getMemClockMHz( 0 ) )
+    values.m_vramFrequency = static_cast< double >( *v );
+
+  if ( auto v = m_nvml->getMaxGpuClockMHz( 0 ) )
+    values.m_maxCoreFrequency = static_cast< double >( *v );
+
+  if ( auto v = m_nvml->getComputeUtilPct( 0 ) )
+    values.m_computeUtilPct = static_cast< int >( *v );
+
+  if ( auto v = m_nvml->getMemoryUtilPct( 0 ) )
+    values.m_memoryUtilPct = static_cast< int >( *v );
+
+  if ( auto v = m_nvml->getVramUsedMiB( 0 ) )
+    values.m_vramUsedMiB = static_cast< int >( *v );
+
+  if ( auto v = m_nvml->getVramTotalMiB( 0 ) )
+    values.m_vramTotalMiB = static_cast< int >( *v );
+
+  if ( auto v = m_nvml->getPerfLimitReason( 0 ) )
+    values.m_perfLimitReason = *v;
+
+  if ( auto v = m_nvml->getEncoderUtilPct( 0 ) )
+    values.m_encoderUtilPct = static_cast< int >( *v );
+
+  if ( auto v = m_nvml->getDecoderUtilPct( 0 ) )
+    values.m_decoderUtilPct = static_cast< int >( *v );
+
+  if ( auto v = m_nvml->getCurrentPstate( 0 ) )
+    values.m_currentPstate = static_cast< int >( *v );
+
+  if ( auto v = m_nvml->getGrClockOffsetMHz( 0 ) )
+    values.m_grClockOffsetMHz = *v;
+
+  if ( auto v = m_nvml->getMemClockOffsetMHz( 0 ) )
+    values.m_memClockOffsetMHz = *v;
+
+  if ( auto v = m_nvml->getCoreVoltageMv( 0 ) )
+    values.m_coreVoltageMv = static_cast< int >( *v );
+
+  return values;
 }
 
 DGpuInfo HardwareMonitorWorker::getAmdDGpuValues( const DGpuInfo &base ) const noexcept
@@ -666,48 +700,6 @@ DGpuInfo HardwareMonitorWorker::getAmdDGpuValues( const DGpuInfo &base ) const n
   catch ( ... ) { }
 
   return values;
-}
-
-DGpuInfo HardwareMonitorWorker::parseNvidiaOutput( const std::string &output ) const noexcept
-{
-  DGpuInfo values{};
-
-  std::vector< std::string > fields;
-  std::stringstream ss( output );
-  std::string field;
-
-  while ( std::getline( ss, field, ',' ) )
-  {
-    size_t start = field.find_first_not_of( " \t\n\r" );
-    size_t end = field.find_last_not_of( " \t\n\r" );
-    if ( start != std::string::npos )
-      fields.push_back( field.substr( start, end - start + 1 ) );
-  }
-
-  if ( fields.size() >= 6 )
-  {
-    values.m_temp = parseNumberWithMetric( fields[0] );
-    values.m_powerDraw = parseNumberWithMetric( fields[1] );
-    values.m_maxPowerLimit = parseNumberWithMetric( fields[2] );
-    values.m_enforcedPowerLimit = parseNumberWithMetric( fields[3] );
-    values.m_coreFrequency = parseNumberWithMetric( fields[4] );
-    values.m_maxCoreFrequency = parseNumberWithMetric( fields[5] );
-  }
-
-  return values;
-}
-
-double HardwareMonitorWorker::parseNumberWithMetric( const std::string &value ) const noexcept
-{
-  std::regex numberRegex( R"(\d+(\.\d+)?)" );
-  std::smatch match;
-
-  if ( std::regex_search( value, match, numberRegex ) )
-  {
-    try { return std::stod( match.str() ); }
-    catch ( ... ) { return -1.0; }
-  }
-  return -1.0;
 }
 
 double HardwareMonitorWorker::parseMaxAmdFreq( const std::string &frequencyString ) const noexcept

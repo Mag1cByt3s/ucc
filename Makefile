@@ -8,9 +8,9 @@ ifeq ($(VERSION),)
   VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
 endif
 
-# If VERSION is still empty, use 0.1.2 as fallback
+# If VERSION is still empty, use 0.2.0 as fallback
 ifeq ($(VERSION),)
-  VERSION := 0.1.2
+  VERSION := 0.2.0
 endif
 
 # Get git hash for archive naming
@@ -27,7 +27,7 @@ ARCHIVE := $(DISTNAME).tar.gz
 TMPDIR := dist/$(DISTNAME)-tmp
 
 # Exclude patterns for tar (paths are relative to repo root)
-EXCLUDES := --exclude=build --exclude=dist --exclude=.git --exclude='$(TMPDIR)' --exclude='*.o' --exclude='*.a' --exclude='*.so*'
+EXCLUDES := --exclude='build*' --exclude=dist --exclude=.git --exclude='$(TMPDIR)' --exclude='*.o' --exclude='*.a' --exclude='*.so*'
 
 help:
 	@echo "Uniwill Control Center - Build and Package Targets"
@@ -67,7 +67,7 @@ distclean: clean
 	@rm -rf dist
 	@echo "Distclean complete"
 
-dist: distclean
+dist:
 	@echo "Creating source archive: $(ARCHIVE)"
 	@mkdir -p dist
 	@rm -rf $(TMPDIR); mkdir -p $(TMPDIR)
@@ -123,7 +123,7 @@ deb: dist
 	@cd dist && tar xzf $(ARCHIVE)
 	@cp -r debian dist/ucc-$(VERSION)/
 	@# Update changelog with timestamp
-	@sed -i '1s/(.*)/(0.1.2+$(RELEASE_TS))/' dist/ucc-$(VERSION)/debian/changelog
+	@sed -i '1s/(.*)/(0.2.0+$(RELEASE_TS))/' dist/ucc-$(VERSION)/debian/changelog
 	@cd dist/ucc-$(VERSION) && debuild -uc -us
 	@echo "Debian packages created in dist/"
 

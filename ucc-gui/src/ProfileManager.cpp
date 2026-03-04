@@ -44,11 +44,20 @@ ProfileManager::ProfileManager( QObject *parent )
   // Load local custom keyboard profiles
   loadCustomKeyboardProfilesFromSettings();
 
+  // Load local custom GPU OC profiles
+  loadCustomGpuProfilesFromSettings();
+
   // Always wire daemon signals — they won't fire while disconnected but will
   // start arriving as soon as uccd appears (see connectionStatusChanged below).
   connect( m_client.get(), &UccdClient::profileChanged,
-           this, [this]( const QString &profileId, const QString &keyboardProfileId, const QString &fanProfileId ) {
-    onProfileChanged( profileId.toStdString(), keyboardProfileId.toStdString(), fanProfileId.toStdString() );
+           this, [this]( const QString &profileId,
+                         const QString &keyboardProfileId,
+                         const QString &fanProfileId,
+                         const QString &gpuProfileId ) {
+    onProfileChanged( profileId.toStdString(),
+                      keyboardProfileId.toStdString(),
+                      fanProfileId.toStdString(),
+                      gpuProfileId.toStdString() );
   } );
   connect( m_client.get(), &UccdClient::powerStateChanged,
            this, [this]( const QString &state ) {
@@ -65,6 +74,7 @@ ProfileManager::ProfileManager( QObject *parent )
       qInfo() << "[ProfileManager] uccd reconnected — reloading data";
       m_hardwarePowerLimits = m_client->getODMPowerLimits().value_or( std::vector< int >() );
       loadBuiltinFanProfiles();
+      loadBuiltinGpuProfiles();
       loadCustomProfilesFromSettings();
     }
     emit connectedChanged();
@@ -77,6 +87,7 @@ ProfileManager::ProfileManager( QObject *parent )
 
     // Fetch built-in fan profiles from daemon (id + name)
     loadBuiltinFanProfiles();
+    loadBuiltinGpuProfiles();
 
     // Load custom profiles from local storage
     loadCustomProfilesFromSettings();
@@ -204,6 +215,11 @@ void ProfileManager::updateProfiles()
         QString fpId = fanObj[ "fanProfile" ].toString();
         if ( !fpId.isEmpty() )
           m_activeFanProfileId = fpId;
+
+        // GPU profile ID
+        QString gpId = obj[ "gpuProfileId" ].toString();
+        if ( !gpId.isEmpty() )
+          m_activeGpuProfileId = gpId;
       }
     }
   }
@@ -457,7 +473,8 @@ QString ProfileManager::getProfileDetails( const QString &profileId )
 
 void ProfileManager::onProfileChanged( const std::string &profileId,
                                        const std::string &keyboardProfileId,
-                                       const std::string &fanProfileId )
+                                       const std::string &fanProfileId,
+                                       const std::string &gpuProfileId )
 {
   const QString qId = QString::fromStdString( profileId );
 
@@ -485,6 +502,14 @@ void ProfileManager::onProfileChanged( const std::string &profileId,
     m_activeFanProfileId = fpId;
     emit activeFanProfileChanged( fpId );
     qDebug() << "Active fan profile updated from signal:" << fpId;
+  }
+
+  if ( const QString gpId = QString::fromStdString( gpuProfileId );
+       !gpId.isEmpty() && gpId != m_activeGpuProfileId )
+  {
+    m_activeGpuProfileId = gpId;
+    emit activeGpuProfileChanged( gpId );
+    qDebug() << "Active GPU profile updated from signal:" << gpId;
   }
 
   updateProfiles();
@@ -630,11 +655,13 @@ void ProfileManager::loadCustomProfilesFromSettings()
   if ( doc.isArray() )
   {
     m_customProfilesData = doc.array();
-    for ( const QJsonValue &value : m_customProfilesData )
+    for ( int i = 0; i < m_customProfilesData.size(); ++i )
     {
+      const QJsonValue &value = m_customProfilesData[i];
       if ( value.isObject() )
       {
-        QString name = value.toObject().value( "name" ).toString();
+        QJsonObject obj = value.toObject();
+        QString name = obj.value( "name" ).toString();
         if ( !name.isEmpty() )
           m_customProfiles.append( name );
       }
@@ -698,23 +725,6 @@ void ProfileManager::loadBuiltinFanProfiles()
 // Custom fan profiles (local storage, by ID)
 // ---------------------------------------------------------------------------
 
-void ProfileManager::migrateFanProfileIds( QJsonArray &arr )
-{
-  // Ensure every entry has an "id" field; generate UUIDs for legacy entries
-  for ( int i = 0; i < arr.size(); ++i )
-  {
-    if ( arr[i].isObject() )
-    {
-      QJsonObject o = arr[i].toObject();
-      if ( o.value( "id" ).toString().isEmpty() )
-      {
-        o["id"] = QUuid::createUuid().toString( QUuid::WithoutBraces );
-        arr[i] = o;
-      }
-    }
-  }
-}
-
 void ProfileManager::loadCustomFanProfilesFromSettings()
 {
   m_customFanProfilesData = QJsonArray();
@@ -726,7 +736,6 @@ void ProfileManager::loadCustomFanProfilesFromSettings()
   if ( doc.isArray() )
   {
     m_customFanProfilesData = doc.array();
-    migrateFanProfileIds( m_customFanProfilesData );
     for ( const auto &val : m_customFanProfilesData )
     {
       if ( val.isObject() )
@@ -736,8 +745,6 @@ void ProfileManager::loadCustomFanProfilesFromSettings()
           m_customFanProfiles.append( name );
       }
     }
-    // Persist any migration changes (new IDs)
-    saveCustomFanProfilesToSettings();
   }
 }
 
@@ -869,22 +876,6 @@ bool ProfileManager::renameFanProfile( const QString &fanProfileId, const QStrin
 // Custom keyboard profiles (local storage, by ID)
 // ---------------------------------------------------------------------------
 
-void ProfileManager::migrateKeyboardProfileIds( QJsonArray &arr )
-{
-  for ( int i = 0; i < arr.size(); ++i )
-  {
-    if ( arr[i].isObject() )
-    {
-      QJsonObject o = arr[i].toObject();
-      if ( o.value( "id" ).toString().isEmpty() )
-      {
-        o["id"] = QUuid::createUuid().toString( QUuid::WithoutBraces );
-        arr[i] = o;
-      }
-    }
-  }
-}
-
 void ProfileManager::loadCustomKeyboardProfilesFromSettings()
 {
   m_customKeyboardProfilesData = QJsonArray();
@@ -896,7 +887,6 @@ void ProfileManager::loadCustomKeyboardProfilesFromSettings()
   if ( doc.isArray() )
   {
     m_customKeyboardProfilesData = doc.array();
-    migrateKeyboardProfileIds( m_customKeyboardProfilesData );
     for ( const auto &val : m_customKeyboardProfilesData )
     {
       if ( val.isObject() )
@@ -906,8 +896,6 @@ void ProfileManager::loadCustomKeyboardProfilesFromSettings()
           m_customKeyboardProfiles.append( name );
       }
     }
-    // Persist any migration changes (new IDs)
-    saveCustomKeyboardProfilesToSettings();
   }
 }
 
@@ -1021,6 +1009,202 @@ bool ProfileManager::renameKeyboardProfile( const QString &keyboardProfileId, co
 
         saveCustomKeyboardProfilesToSettings();
         emit customKeyboardProfilesChanged();
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Custom GPU OC profiles (local storage, by ID)
+// ---------------------------------------------------------------------------
+
+void ProfileManager::loadBuiltinGpuProfiles()
+{
+  m_builtinGpuProfilesData = QJsonArray();
+
+  if ( !m_client || !m_client->isConnected() )
+  {
+    emit customGpuProfilesChanged();
+    return;
+  }
+
+  if ( auto json = m_client->getGpuProfilesJSON() )
+  {
+    QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) );
+    if ( doc.isArray() )
+      m_builtinGpuProfilesData = doc.array();
+  }
+
+  emit customGpuProfilesChanged();
+}
+
+void ProfileManager::loadCustomGpuProfilesFromSettings()
+{
+  m_customGpuProfilesData = QJsonArray();
+  m_customGpuProfiles.clear();
+
+  QString gpuJson = m_settings->value( "customGpuProfiles", "[]" ).toString();
+  QJsonDocument doc = QJsonDocument::fromJson( gpuJson.toUtf8() );
+
+  if ( doc.isArray() )
+  {
+    m_customGpuProfilesData = doc.array();
+    for ( const auto &val : m_customGpuProfilesData )
+    {
+      if ( val.isObject() )
+      {
+        QString name = val.toObject().value( "name" ).toString();
+        if ( !name.isEmpty() )
+          m_customGpuProfiles.append( name );
+      }
+    }
+  }
+}
+
+void ProfileManager::saveCustomGpuProfilesToSettings()
+{
+  QJsonDocument doc( m_customGpuProfilesData );
+  m_settings->setValue( "customGpuProfiles", doc.toJson( QJsonDocument::Compact ) );
+  m_settings->sync();
+}
+
+QString ProfileManager::getGpuProfile( const QString &gpuProfileId )
+{
+  for ( const auto &v : m_builtinGpuProfilesData )
+  {
+    if ( !v.isObject() )
+      continue;
+
+    QJsonObject o = v.toObject();
+    if ( o.value( "id" ).toString() == gpuProfileId )
+    {
+      if ( auto json = m_client->getGpuProfile( gpuProfileId.toStdString() ) )
+        return QString::fromStdString( *json );
+      return "{}";
+    }
+  }
+
+  for ( const auto &v : m_customGpuProfilesData )
+  {
+    if ( v.isObject() )
+    {
+      QJsonObject o = v.toObject();
+      if ( o.value( "id" ).toString() == gpuProfileId )
+      {
+        QString jsonStr = o.value( "json" ).toString();
+        if ( !jsonStr.trimmed().isEmpty() )
+          return jsonStr;
+
+        qWarning() << "[ProfileManager] GPU profile" << gpuProfileId << "has empty JSON";
+      }
+    }
+  }
+  return "{}";
+}
+
+bool ProfileManager::setGpuProfile( const QString &gpuProfileId, const QString &name, const QString &json )
+{
+  for ( const auto &v : m_builtinGpuProfilesData )
+  {
+    if ( v.isObject() && v.toObject().value( "id" ).toString() == gpuProfileId )
+      return false;
+  }
+
+  bool found = false;
+  for ( int i = 0; i < m_customGpuProfilesData.size(); ++i )
+  {
+    if ( m_customGpuProfilesData[i].isObject() )
+    {
+      QJsonObject o = m_customGpuProfilesData[i].toObject();
+      if ( o.value( "id" ).toString() == gpuProfileId )
+      {
+        o["name"] = name;
+        o["json"] = json;
+        m_customGpuProfilesData[i] = o;
+        found = true;
+        break;
+      }
+    }
+  }
+
+  if ( !found )
+  {
+    QJsonObject o;
+    o["id"] = gpuProfileId;
+    o["name"] = name;
+    o["json"] = json;
+    m_customGpuProfilesData.append( o );
+    m_customGpuProfiles.append( name );
+  }
+
+  saveCustomGpuProfilesToSettings();
+  emit customGpuProfilesChanged();
+  return true;
+}
+
+bool ProfileManager::deleteGpuProfile( const QString &gpuProfileId )
+{
+  for ( const auto &v : m_builtinGpuProfilesData )
+  {
+    if ( v.isObject() && v.toObject().value( "id" ).toString() == gpuProfileId )
+      return false;
+  }
+
+  bool removed = false;
+  QJsonArray newArr;
+  for ( const auto &v : m_customGpuProfilesData )
+  {
+    if ( v.isObject() )
+    {
+      QJsonObject o = v.toObject();
+      if ( o.value( "id" ).toString() == gpuProfileId )
+      {
+        m_customGpuProfiles.removeAll( o.value( "name" ).toString() );
+        removed = true;
+        continue;
+      }
+    }
+    newArr.append( v );
+  }
+
+  if ( removed )
+  {
+    m_customGpuProfilesData = newArr;
+    saveCustomGpuProfilesToSettings();
+    emit customGpuProfilesChanged();
+  }
+  return removed;
+}
+
+bool ProfileManager::renameGpuProfile( const QString &gpuProfileId, const QString &newName )
+{
+  if ( newName.isEmpty() ) return false;
+
+  for ( const auto &v : m_builtinGpuProfilesData )
+  {
+    if ( v.isObject() && v.toObject().value( "id" ).toString() == gpuProfileId )
+      return false;
+  }
+
+  for ( int i = 0; i < m_customGpuProfilesData.size(); ++i )
+  {
+    if ( m_customGpuProfilesData[i].isObject() )
+    {
+      QJsonObject o = m_customGpuProfilesData[i].toObject();
+      if ( o.value( "id" ).toString() == gpuProfileId )
+      {
+        QString oldName = o.value( "name" ).toString();
+        o["name"] = newName;
+        m_customGpuProfilesData[i] = o;
+
+        int nameIdx = m_customGpuProfiles.indexOf( oldName );
+        if ( nameIdx != -1 )
+          m_customGpuProfiles.replace( nameIdx, newName );
+
+        saveCustomGpuProfilesToSettings();
+        emit customGpuProfilesChanged();
         return true;
       }
     }

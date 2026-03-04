@@ -16,15 +16,15 @@
 #pragma once
 
 #include "DaemonWorker.hpp"
-#include "Utils.hpp"
+#include "../NvmlWrapper.hpp"
+#include <climits>
 #include <string>
 #include <optional>
 #include <memory>
 #include <functional>
-#include <vector>
 #include <set>
-#include <sstream>
 #include <fstream>
+#include <filesystem>
 #include <regex>
 
 /**
@@ -45,11 +45,25 @@ struct DGpuInfo
 {
   double m_temp = -1.0;
   double m_coreFrequency = -1.0;
+  double m_vramFrequency = -1.0;
   double m_maxCoreFrequency = -1.0;
   double m_powerDraw = -1.0;
   double m_maxPowerLimit = -1.0;
   double m_enforcedPowerLimit = -1.0;
   bool m_d0MetricsUsage = false;
+
+  // Extended metrics (NVIDIA only, -1 / INT_MIN when unavailable)
+  int m_computeUtilPct = -1;     ///< GPU compute utilization in % (0–100), or -1
+  int m_memoryUtilPct  = -1;     ///< GPU memory-controller utilization in % (0–100), or -1
+  int m_vramUsedMiB    = -1;     ///< Used VRAM in MiB, or -1
+  int m_vramTotalMiB   = -1;     ///< Total VRAM in MiB, or -1
+  std::string m_perfLimitReason; ///< Current perf-cap/throttle reason, empty when unavailable
+  int m_encoderUtilPct = -1;     ///< NVENC utilization in %, or -1
+  int m_decoderUtilPct = -1;     ///< NVDEC utilization in %, or -1
+  int m_currentPstate  = -1;     ///< Current P-state index (0–15), or -1 if unknown
+  int m_grClockOffsetMHz  = INT_MIN; ///< Graphics-clock offset at current P-state, INT_MIN = unavailable
+  int m_memClockOffsetMHz = INT_MIN; ///< Memory-clock offset at current P-state, INT_MIN = unavailable
+  int m_coreVoltageMv = -1;      ///< Core voltage in mV, or -1
 
   void print() const noexcept;
 };
@@ -265,6 +279,7 @@ public:
    * @param setPrimeStateCallback Called with prime state string when updated
    */
   explicit HardwareMonitorWorker(
+    std::shared_ptr< NvmlWrapper > nvml,
     CpuPowerCallback cpuPowerUpdateCallback,
     std::function< bool() > getSensorDataCollectionStatus,
     std::function< void( const std::string & ) > setPrimeStateCallback,
@@ -332,7 +347,7 @@ private:
   // --- GPU state ---
   GpuDeviceDetector m_gpuDetector;
   GpuDeviceCounts m_deviceCounts;
-  bool m_isNvidiaSmiInstalled;
+  std::shared_ptr< NvmlWrapper > m_nvml; ///< NVML API wrapper (shared, no-op if libnvidia-ml not present)
   GpuDataCallback m_gpuDataCallback;
   std::optional< std::string > m_amdIGpuHwmonPath;
   std::optional< std::string > m_amdDGpuHwmonPath;
@@ -376,15 +391,12 @@ private:
   [[nodiscard]] std::string getAmdIGpuHwmonPathImpl() const noexcept;
   [[nodiscard]] std::string getAmdDGpuHwmonPathImpl() const noexcept;
   [[nodiscard]] std::string getIntelIGpuDrmPathImpl() const noexcept;
-  [[nodiscard]] bool checkNvidiaSmiInstalledImpl() const noexcept;
   [[nodiscard]] IGpuInfo getIGpuValues() noexcept;
   [[nodiscard]] IGpuInfo getIntelIGpuValues( const IGpuInfo &base ) const noexcept;
   [[nodiscard]] IGpuInfo getAmdIGpuValues( const IGpuInfo &base ) const noexcept;
   [[nodiscard]] DGpuInfo getDGpuValues() noexcept;
   [[nodiscard]] DGpuInfo getNvidiaDGpuValues() const noexcept;
   [[nodiscard]] DGpuInfo getAmdDGpuValues( const DGpuInfo &base ) const noexcept;
-  [[nodiscard]] DGpuInfo parseNvidiaOutput( const std::string &output ) const noexcept;
-  [[nodiscard]] double parseNumberWithMetric( const std::string &value ) const noexcept;
   [[nodiscard]] double parseMaxAmdFreq( const std::string &frequencyString ) const noexcept;
 
   // CPU power methods

@@ -14,7 +14,7 @@
  */
 
 #include "workers/ProfileSettingsWorker.hpp"
-#include "Utils.hpp"
+#include "PowerSupplyController.hpp"
 #include <tuxedo_io_lib/tuxedo_io_api.hh>
 
 // =====================================================================
@@ -205,13 +205,13 @@ void ProfileSettingsWorker::validateNVIDIACTGPOffset()
     file >> currentValue;
     file.close();
 
-    int32_t expectedOffset = getNVIDIAProfileOffset();
+    int32_t expectedOffset = m_lastAppliedNVIDIAOffset;
 
     if ( currentValue != expectedOffset )
     {
       std::cout << "[NVIDIAPowerCTRL] External change detected (current: " << currentValue
                 << ", expected: " << expectedOffset << "), re-applying profile" << std::endl;
-      applyNVIDIACTGPOffset();
+      applyNVIDIACTGPOffset( expectedOffset );
     }
   }
 }
@@ -617,35 +617,24 @@ void ProfileSettingsWorker::initNVIDIAPowerCTRL()
   {
     // Always query hardware power limits so the GUI has real values
     queryNVIDIAPowerLimits();
-
-    // Only apply cTGP offset if a profile is active
-    const UccProfile profile = m_getActiveProfile();
-    if ( !profile.id.empty() )
-      applyNVIDIACTGPOffset();
   }
 }
 
-int32_t ProfileSettingsWorker::getNVIDIAProfileOffset() const
+bool ProfileSettingsWorker::applyNVIDIAPowerOffset( int32_t offset )
 {
-  UccProfile profile = m_getActiveProfile();
+  if ( !m_nvidiaPowerCTRLAvailable )
+    return false;
 
-  if ( profile.nvidiaPowerCTRLProfile.has_value() )
-  {
-    return profile.nvidiaPowerCTRLProfile->cTGPOffset;
-  }
-
-  return 0; // Default offset
+  return applyNVIDIACTGPOffset( offset );
 }
 
-void ProfileSettingsWorker::applyNVIDIACTGPOffset()
+bool ProfileSettingsWorker::applyNVIDIACTGPOffset( int32_t ctgpOffset )
 {
   if ( !m_cTGPAdjustmentSupported )
   {
     std::cout << "[NVIDIAPowerCTRL] cTGP adjustment not supported for this device, skipping" << std::endl;
-    return;
+    return false;
   }
-
-  int32_t ctgpOffset = getNVIDIAProfileOffset();
 
   // Clamp cTGP offset to valid range: [-(max-default), (max-default)]
   const int32_t maxAdjustment = m_nvidiaPowerCTRLMaxPowerLimit - m_nvidiaPowerCTRLDefaultPowerLimit;
@@ -656,7 +645,7 @@ void ProfileSettingsWorker::applyNVIDIACTGPOffset()
   {
     std::cerr << "[NVIDIAPowerCTRL] Failed to open " << NVIDIA_CTGP_OFFSET << " for writing"
               << std::endl;
-    return;
+    return false;
   }
 
   file << ctgpOffset;
@@ -666,7 +655,7 @@ void ProfileSettingsWorker::applyNVIDIACTGPOffset()
   {
     std::cerr << "[NVIDIAPowerCTRL] Failed to write cTGP offset to " << NVIDIA_CTGP_OFFSET
               << " (stream error)" << std::endl;
-    return;
+    return false;
   }
 
   file.close();
@@ -679,67 +668,38 @@ void ProfileSettingsWorker::applyNVIDIACTGPOffset()
     verifyFile >> verifiedValue;
     verifyFile.close();
 
+    // The kernel module may clamp or round the offset to hardware-supported
+    // steps, so the readback can legitimately differ from what we wrote.
+    // Always track the value the hardware actually accepted so that the
+    // periodic validator does not fight the hardware.
+    m_lastAppliedNVIDIAOffset = verifiedValue;
+
     if ( verifiedValue == ctgpOffset )
     {
-      m_lastAppliedNVIDIAOffset = ctgpOffset;
       std::cout << "[NVIDIAPowerCTRL] Applied cTGP offset: " << ctgpOffset << std::endl;
     }
     else
     {
-      std::cerr << "[NVIDIAPowerCTRL] Write verification failed - wrote " << ctgpOffset
-                << " but read back " << verifiedValue << std::endl;
+      std::cout << "[NVIDIAPowerCTRL] Applied cTGP offset (rounded by hardware): wrote "
+                << ctgpOffset << ", hardware accepted " << verifiedValue << std::endl;
     }
+    return true;
   }
+
+  return false;
 }
 
 void ProfileSettingsWorker::queryNVIDIAPowerLimits()
 {
-  m_nvidiaPowerCTRLDefaultPowerLimit =
-    executeNvidiaSmi( "nvidia-smi --format=csv,noheader,nounits --query-gpu=power.default_limit" );
-
-  m_nvidiaPowerCTRLMaxPowerLimit =
-    executeNvidiaSmi( "nvidia-smi --format=csv,noheader,nounits --query-gpu=power.max_limit" );
+  if ( m_nvml && m_nvml->isAvailable() && m_nvml->deviceCount() > 0 )
+  {
+    if ( auto v = m_nvml->getPowerDefaultLimitW( 0 ) )
+      m_nvidiaPowerCTRLDefaultPowerLimit = static_cast< int32_t >( *v );
+    if ( auto v = m_nvml->getPowerMaxLimitW( 0 ) )
+      m_nvidiaPowerCTRLMaxPowerLimit = static_cast< int32_t >( *v );
+  }
 
   std::cout << "[NVIDIAPowerCTRL] NVIDIA GPU power limits - Default: "
             << m_nvidiaPowerCTRLDefaultPowerLimit << "W, Max: " << m_nvidiaPowerCTRLMaxPowerLimit
             << "W" << std::endl;
-}
-
-int32_t ProfileSettingsWorker::executeNvidiaSmi( const std::string &command )
-{
-  // Use executeProcess() with argument array to avoid shell injection.
-  // The 'command' parameter contains the full nvidia-smi invocation;
-  // we parse it into executable + args.
-
-  // All callers pass "nvidia-smi --flag1 --flag2 ..." so we split on spaces.
-  // For safety, we hard-code the executable path / name.
-  std::vector< std::string > args;
-  std::istringstream iss( command );
-  std::string token;
-  bool first = true;
-  while ( iss >> token )
-  {
-    if ( first )
-    {
-      first = false; // skip the "nvidia-smi" executable name from the string
-      continue;
-    }
-    args.push_back( token );
-  }
-
-  std::string result = ucc::executeProcess( "nvidia-smi", args );
-
-  // Trim whitespace and convert to int
-  result.erase( 0, result.find_first_not_of( " \t\n\r" ) );
-  result.erase( result.find_last_not_of( " \t\n\r" ) + 1 );
-
-  try
-  {
-    return std::stoi( result );
-  }
-  catch ( ... )
-  {
-    std::cerr << "[NVIDIAPowerCTRL] Failed to parse nvidia-smi output: " << result << std::endl;
-    return 0;
-  }
 }

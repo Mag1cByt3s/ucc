@@ -20,6 +20,7 @@
 #include <cstring>
 #include <chrono>
 #include <deque>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <sstream>
@@ -41,11 +42,8 @@ enum class MetricId : uint8_t
   GpuFanDuty,
   GpuPower,
   GpuFrequency,
-  IGpuTemp,
-  IGpuPower,
-  IGpuFrequency,
-  WaterCoolerFanDuty,
-  WaterCoolerPumpLevel,
+  GpuVramFrequency,
+  GpuCoreVoltage,
   Count  ///< Sentinel — must be last
 };
 
@@ -64,11 +62,8 @@ constexpr const char *metricName( MetricId id ) noexcept
     case MetricId::GpuFanDuty:          return "gpuFanDuty";
     case MetricId::GpuPower:            return "gpuPower";
     case MetricId::GpuFrequency:        return "gpuFrequency";
-    case MetricId::IGpuTemp:            return "igpuTemp";
-    case MetricId::IGpuPower:           return "igpuPower";
-    case MetricId::IGpuFrequency:       return "igpuFrequency";
-    case MetricId::WaterCoolerFanDuty:  return "waterCoolerFanDuty";
-    case MetricId::WaterCoolerPumpLevel:return "waterCoolerPumpLevel";
+    case MetricId::GpuVramFrequency:    return "gpuVramFrequency";
+    case MetricId::GpuCoreVoltage:      return "gpuCoreVoltage";
     default:                            return "unknown";
   }
 }

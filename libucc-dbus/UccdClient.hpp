@@ -68,6 +68,8 @@ public:
   bool deleteCustomProfile( const std::string &profileId );
   std::optional< std::string > getFanProfile( const std::string &fanProfileId );
   std::optional< std::string > getFanProfilesJSON();
+  std::optional< std::string > getGpuProfile( const std::string &gpuProfileId );
+  std::optional< std::string > getGpuProfilesJSON();
   std::optional< bool > setFanProfile( const std::string &fanProfileId, const std::string &json );
 
   // Display Control
@@ -131,6 +133,20 @@ public:
   std::optional< std::string > getPrimeProfile();
   std::optional< std::string > getGpuInfo();
 
+  // NVIDIA GPU OC Control
+  std::optional< bool > getNvidiaOCAvailable();
+  std::optional< std::string > getNvidiaOCState( int deviceIndex = 0 );
+  bool setNvidiaClockOffset( int deviceIndex, int clockType, int pstate, int offsetMHz );
+  bool setNvidiaGpuLockedClocks( int deviceIndex, int minMHz, int maxMHz );
+  bool setNvidiaVramLockedClocks( int deviceIndex, int minMHz, int maxMHz );
+  bool resetNvidiaGpuLockedClocks( int deviceIndex );
+  bool resetNvidiaVramLockedClocks( int deviceIndex );
+  bool resetNvidiaAllClockOffsets( int deviceIndex );
+  bool setNvidiaGpuPowerLimit( int deviceIndex, double watts );
+  bool resetNvidiaGpuPowerLimit( int deviceIndex );
+  bool applyNvidiaGpuOCProfile( const std::string &profileJSON, int deviceIndex = 0 );
+  bool resetNvidiaGpuOCAll( int deviceIndex = 0 );
+
   // Device Capability Queries
   std::optional< bool > getWaterCoolerSupported();
   std::optional< bool > getCTGPAdjustmentSupported();
@@ -161,6 +177,19 @@ public:
   std::optional< double > getCpuPower();
   std::optional< double > getGpuPower();
   std::optional< double > getIGpuPower();
+  // Extended discrete GPU metrics (NVIDIA, -1 when unavailable)
+  std::optional< int > getDGpuComputeUtilPct();       ///< Compute utilization 0–100 %
+  std::optional< int > getDGpuMemoryUtilPct();        ///< Memory-controller utilization 0–100 %
+  std::optional< int > getDGpuVramUsedMiB();          ///< Used VRAM in MiB
+  std::optional< int > getDGpuVramTotalMiB();         ///< Total VRAM in MiB
+  std::optional< std::string > getDGpuPerfLimitReason(); ///< Perf-cap/throttle reason
+  std::optional< int > getDGpuEncoderUtilPct();       ///< NVENC utilization 0–100 %
+  std::optional< int > getDGpuDecoderUtilPct();       ///< NVDEC utilization 0–100 %
+  std::optional< int > getDGpuCurrentPstate();        ///< Current P-state index (0–15)
+  std::optional< int > getDGpuGrClockOffsetMHz();     ///< Graphics-clock offset at current P-state
+  std::optional< int > getDGpuMemClockOffsetMHz();    ///< Memory-clock offset at current P-state
+  std::optional< int > getDGpuVramFrequencyMHz();     ///< VRAM frequency in MHz
+  std::optional< int > getDGpuCoreVoltageMv();        ///< Core voltage in mV
   std::optional< int > getFanSpeedRPM();
   std::optional< int > getGpuFanSpeedRPM();
   std::optional< int > getFanSpeedPercent();
@@ -193,12 +222,18 @@ public:
   bool isConnected() const;
 
 signals:
-  void profileChanged( const QString &profileId, const QString &keyboardProfileId, const QString &fanProfileId );
+  void profileChanged( const QString &profileId,
+                       const QString &keyboardProfileId,
+                       const QString &fanProfileId,
+                       const QString &gpuProfileId );
   void powerStateChanged( const QString &state );
   void connectionStatusChanged( bool connected );
 
 private slots:
-  void onProfileChangedSignal( const QString &profileId, const QString &keyboardProfileId, const QString &fanProfileId );
+  void onProfileChangedSignal( const QString &profileId,
+                               const QString &keyboardProfileId,
+                               const QString &fanProfileId,
+                               const QString &gpuProfileId );
   void onPowerStateChangedSignal( const QString &state );
   void onServiceRegistered( const QString &service );
   void onServiceUnregistered( const QString &service );

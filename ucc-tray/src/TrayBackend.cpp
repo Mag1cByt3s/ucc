@@ -19,7 +19,6 @@
 #include <QDebug>
 
 #include <algorithm>
-#include <ranges>
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -112,6 +111,18 @@ int    TrayBackend::cpuFanPercent() const { return m_cpuFanPercent; }
 int    TrayBackend::gpuFanPercent() const { return m_gpuFanPercent; }
 int    TrayBackend::wcFanSpeed()   const { return m_wcFanSpeed; }
 int    TrayBackend::wcPumpLevel()  const { return m_wcPumpLevel; }
+int    TrayBackend::gpuComputeUtilPct()   const { return m_gpuComputeUtilPct; }
+int    TrayBackend::gpuMemoryUtilPct()    const { return m_gpuMemoryUtilPct; }
+int    TrayBackend::gpuVramUsedMiB()      const { return m_gpuVramUsedMiB; }
+int    TrayBackend::gpuVramTotalMiB()     const { return m_gpuVramTotalMiB; }
+QString TrayBackend::gpuPerfLimitReason() const { return m_gpuPerfLimitReason; }
+int    TrayBackend::gpuEncoderUtilPct()   const { return m_gpuEncoderUtilPct; }
+int    TrayBackend::gpuDecoderUtilPct()   const { return m_gpuDecoderUtilPct; }
+int    TrayBackend::gpuCurrentPstate()    const { return m_gpuCurrentPstate; }
+int    TrayBackend::gpuGrClockOffsetMHz() const { return m_gpuGrClockOffsetMHz; }
+int    TrayBackend::gpuMemClockOffsetMHz() const { return m_gpuMemClockOffsetMHz; }
+int    TrayBackend::gpuVramFreqMHz() const { return m_gpuVramFreqMHz; }
+int    TrayBackend::gpuCoreVoltageMv() const { return m_gpuCoreVoltageMv; }
 
 // ---------------------------------------------------------------------------
 // Profile getters
@@ -257,6 +268,8 @@ QString TrayBackend::activeProfileFanName() const { return m_activeProfileFanNam
 QString TrayBackend::activeProfileFanId() const { return m_activeProfileFanId; }
 QString TrayBackend::activeProfileKeyboardName() const { return m_activeProfileKeyboardName; }
 QString TrayBackend::activeProfileKeyboardId() const { return m_activeProfileKeyboardId; }
+QString TrayBackend::activeProfileGpuName() const { return m_activeProfileGpuName; }
+QString TrayBackend::activeProfileGpuId() const { return m_activeProfileGpuId; }
 
 // ---------------------------------------------------------------------------
 // Keyboard profiles (from local settings)
@@ -264,6 +277,8 @@ QString TrayBackend::activeProfileKeyboardId() const { return m_activeProfileKey
 
 QStringList TrayBackend::keyboardProfileNames() const { return m_keyboardProfileNames; }
 QStringList TrayBackend::keyboardProfileIds()   const { return m_keyboardProfileIds; }
+QStringList TrayBackend::gpuProfileNames() const { return m_gpuProfileNames; }
+QStringList TrayBackend::gpuProfileIds()   const { return m_gpuProfileIds; }
 
 // ---------------------------------------------------------------------------
 // Invokable actions
@@ -340,6 +355,59 @@ void TrayBackend::setActiveKeyboardProfile( const QString &keyboardProfileId )
   emit activeProfileChanged();
 }
 
+void TrayBackend::setActiveGpuProfile( const QString &gpuProfileId )
+{
+  auto applyWithProfileId = [this, &gpuProfileId]( const QString &jsonText ) {
+    QJsonDocument doc = QJsonDocument::fromJson( jsonText.toUtf8() );
+    if ( !doc.isObject() )
+      return;
+
+    QJsonObject obj = doc.object();
+
+    if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj["nvidiaPowerCTRLProfile"].isObject() )
+    {
+      QJsonObject nvidiaObj = obj["nvidiaPowerCTRLProfile"].toObject();
+      int ctgpOffset = nvidiaObj["cTGPOffset"].toInt( 0 );
+      if ( m_client->getCTGPAdjustmentSupported().value_or( false ) )
+        (void)m_client->setNVIDIAPowerOffset( ctgpOffset );
+    }
+
+    obj[ "gpuProfileId" ] = gpuProfileId;
+    m_client->applyNvidiaGpuOCProfile(
+      QJsonDocument( obj ).toJson( QJsonDocument::Compact ).toStdString(), 0 );
+  };
+
+  if ( auto json = m_client->getGpuProfile( gpuProfileId.toStdString() ) )
+  {
+    applyWithProfileId( QString::fromStdString( *json ) );
+  }
+  else
+  {
+    QSettings settings( QDir::homePath() + "/.config/uccrc", QSettings::IniFormat );
+    QByteArray gpuRaw = settings.value( "customGpuProfiles", "[]" ).toByteArray();
+    QJsonDocument doc = QJsonDocument::fromJson( gpuRaw );
+    if ( doc.isArray() )
+    {
+      for ( const auto &val : doc.array() )
+      {
+        const QJsonObject obj = val.toObject();
+        if ( obj.value( "id" ).toString() == gpuProfileId )
+        {
+          const QString profileJson = obj.value( "json" ).toString();
+          if ( !profileJson.isEmpty() )
+            applyWithProfileId( profileJson );
+          break;
+        }
+      }
+    }
+  }
+
+  m_gpuProfileOverride = true;
+  m_activeProfileGpuId = gpuProfileId;
+  m_activeProfileGpuName = resolveGpuProfileName( gpuProfileId );
+  emit activeProfileChanged();
+}
+
 void TrayBackend::setODMPerformanceProfile( const QString &profile )
 {
   if ( m_client->setODMPerformanceProfile( profile.toStdString() ) )
@@ -394,6 +462,35 @@ void TrayBackend::pollMetrics()
   update( m_cpuFanPercent, m_client->getFanSpeedPercent() );
   update( m_gpuFanPercent, m_client->getGpuFanSpeedPercent() );
 
+  // Extended NVIDIA dGPU metrics
+  update( m_gpuComputeUtilPct,   m_client->getDGpuComputeUtilPct() );
+  update( m_gpuMemoryUtilPct,    m_client->getDGpuMemoryUtilPct() );
+  update( m_gpuVramUsedMiB,      m_client->getDGpuVramUsedMiB() );
+  update( m_gpuVramTotalMiB,     m_client->getDGpuVramTotalMiB() );
+
+  if ( auto v = m_client->getDGpuPerfLimitReason() )
+  {
+    QString reason = QString::fromStdString( *v );
+    if ( m_gpuPerfLimitReason != reason )
+    {
+      m_gpuPerfLimitReason = reason;
+      changed = true;
+    }
+  }
+  else if ( !m_gpuPerfLimitReason.isEmpty() )
+  {
+    m_gpuPerfLimitReason.clear();
+    changed = true;
+  }
+
+  update( m_gpuEncoderUtilPct,   m_client->getDGpuEncoderUtilPct() );
+  update( m_gpuDecoderUtilPct,   m_client->getDGpuDecoderUtilPct() );
+  update( m_gpuCurrentPstate,    m_client->getDGpuCurrentPstate() );
+  update( m_gpuGrClockOffsetMHz,  m_client->getDGpuGrClockOffsetMHz() );
+  update( m_gpuMemClockOffsetMHz, m_client->getDGpuMemClockOffsetMHz() );
+  update( m_gpuVramFreqMHz,      m_client->getDGpuVramFrequencyMHz() );
+  update( m_gpuCoreVoltageMv,    m_client->getDGpuCoreVoltageMv() );
+
   if ( m_waterCoolerSupported )
   {
     update( m_wcFanSpeed,  m_client->getWaterCoolerFanSpeed() );
@@ -424,6 +521,7 @@ void TrayBackend::pollSlowState()
       {
         m_fanProfileOverride = false;
         m_keyboardProfileOverride = false;
+        m_gpuProfileOverride = false;
         m_wcEnabledOverride = false;
       }
 
@@ -458,13 +556,18 @@ void TrayBackend::pollSlowState()
 
       // Extract keyboard profile reference — skip if user manually overrode it
       auto kbId = obj[ "selectedKeyboardProfile" ].toString();
-      // The daemon may return a UUID or a display name (backward compat).
-      // Resolve to a canonical UUID so combo-box indexing works correctly.
-      kbId = resolveKeyboardProfileId( kbId );
       if ( !m_keyboardProfileOverride && kbId != m_activeProfileKeyboardId )
       {
         m_activeProfileKeyboardId = kbId;
         m_activeProfileKeyboardName = resolveKeyboardProfileName( kbId );
+        changed = true;
+      }
+
+      const QString gpuId = obj[ "gpuProfileId" ].toString();
+      if ( !m_gpuProfileOverride && gpuId != m_activeProfileGpuId )
+      {
+        m_activeProfileGpuId = gpuId;
+        m_activeProfileGpuName = resolveGpuProfileName( gpuId );
         changed = true;
       }
 
@@ -524,7 +627,10 @@ void TrayBackend::pollSlowState()
 // Daemon signal handlers
 // ---------------------------------------------------------------------------
 
-void TrayBackend::onDaemonProfileChanged( const QString &profileId, const QString &keyboardProfileId, const QString &fanProfileId )
+void TrayBackend::onDaemonProfileChanged( const QString &profileId,
+                                          const QString &keyboardProfileId,
+                                          const QString &fanProfileId,
+                                          const QString &gpuProfileId )
 {
   bool changed = false;
 
@@ -536,6 +642,7 @@ void TrayBackend::onDaemonProfileChanged( const QString &profileId, const QStrin
     // Reset overrides when the system profile itself changes
     m_fanProfileOverride = false;
     m_keyboardProfileOverride = false;
+    m_gpuProfileOverride = false;
     m_wcEnabledOverride = false;
     changed = true;
   }
@@ -553,6 +660,14 @@ void TrayBackend::onDaemonProfileChanged( const QString &profileId, const QStrin
     m_fanProfileOverride = false;
     m_activeProfileFanId = fanProfileId;
     m_activeProfileFanName = resolveFanProfileName( fanProfileId );
+    changed = true;
+  }
+
+  if ( !gpuProfileId.isEmpty() && gpuProfileId != m_activeProfileGpuId )
+  {
+    m_gpuProfileOverride = false;
+    m_activeProfileGpuId = gpuProfileId;
+    m_activeProfileGpuName = resolveGpuProfileName( gpuProfileId );
     changed = true;
   }
 
@@ -699,6 +814,30 @@ void TrayBackend::loadProfiles()
     }
   }
 
+  if ( auto json = m_client->getGpuProfilesJSON() )
+  {
+    auto doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) );
+    if ( doc.isArray() )
+    {
+      QStringList gpNames, gpIds;
+      for ( const auto &val : doc.array() )
+      {
+        auto obj = val.toObject();
+        QString id   = obj[ "id" ].toString();
+        QString name = obj[ "name" ].toString();
+        if ( id.isEmpty() ) continue;
+        gpIds.append( id );
+        gpNames.append( name );
+      }
+      if ( gpIds != m_gpuProfileIds || gpNames != m_gpuProfileNames )
+      {
+        m_gpuProfileIds = gpIds;
+        m_gpuProfileNames = gpNames;
+        emit gpuProfilesChanged();
+      }
+    }
+  }
+
   // ODM profiles
   if ( auto profs = m_client->getAvailableODMProfiles() )
   {
@@ -828,6 +967,32 @@ void TrayBackend::loadLocalProfiles()
 
   if ( !m_activeProfileKeyboardId.isEmpty() )
     m_activeProfileKeyboardName = resolveKeyboardProfileName( m_activeProfileKeyboardId );
+
+  // Merge custom GPU OC profiles from local settings
+  {
+    QByteArray gpuRaw = settings.value( "customGpuProfiles", "[]" ).toByteArray();
+    auto doc = QJsonDocument::fromJson( gpuRaw );
+    if ( doc.isArray() )
+    {
+      for ( const auto &val : doc.array() )
+      {
+        auto obj = val.toObject();
+        QString id   = obj[ "id" ].toString();
+        QString name = obj[ "name" ].toString();
+        if ( id.isEmpty() )
+          continue;
+        if ( !m_gpuProfileIds.contains( id ) )
+        {
+          m_gpuProfileIds.append( id );
+          m_gpuProfileNames.append( name );
+        }
+      }
+      emit gpuProfilesChanged();
+    }
+  }
+
+  if ( !m_activeProfileGpuId.isEmpty() )
+    m_activeProfileGpuName = resolveGpuProfileName( m_activeProfileGpuId );
 }
 
 // ---------------------------------------------------------------------------
@@ -856,20 +1021,13 @@ QString TrayBackend::resolveKeyboardProfileName( const QString &kbProfileId ) co
   return kbProfileId;
 }
 
-QString TrayBackend::resolveKeyboardProfileId( const QString &daemonValue ) const
+QString TrayBackend::resolveGpuProfileName( const QString &gpuProfileId ) const
 {
-  if ( daemonValue.isEmpty() )
+  if ( gpuProfileId.isEmpty() )
     return {};
 
-  // If it's already a known ID (UUID), return as-is
-  if ( m_keyboardProfileIds.contains( daemonValue ) )
-    return daemonValue;
+  if ( auto idx = m_gpuProfileIds.indexOf( gpuProfileId ); idx >= 0 )
+    return m_gpuProfileNames[ idx ];
 
-  // Otherwise the daemon may have returned a display name (backward compat)
-  // — look it up in the names list and return the corresponding ID
-  if ( auto idx = m_keyboardProfileNames.indexOf( daemonValue ); idx >= 0 )
-    return m_keyboardProfileIds[ idx ];
-
-  // Unknown — return the raw value
-  return daemonValue;
+  return gpuProfileId;
 }

@@ -27,10 +27,10 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include "CommonTypes.hpp"
-#include "PolkitAuthority.hpp"
 #include "workers/DaemonWorker.hpp"
 #include "workers/HardwareMonitorWorker.hpp"
 #include "workers/DisplayWorker.hpp"
@@ -39,6 +39,7 @@
 #include "KeyboardBacklightController.hpp"
 #include "workers/ProfileSettingsWorker.hpp"
 #include "workers/LCTWaterCoolerWorker.hpp"
+#include "workers/NvidiaOCWorker.hpp"
 #include "FnLockController.hpp"
 #include "profiles/UccProfile.hpp"
 #include "profiles/DefaultProfiles.hpp"
@@ -292,7 +293,6 @@ public slots:
   QString GetActiveProfileJSON();
   QString GetPowerState();
   bool SetTempProfile( const QString &profileName );
-  bool SetTempProfileById( const QString &id );
   bool SetActiveProfile( const QString &id );
   bool ApplyProfile( const QString &profileJSON );
   QString GetProfilesJSON();
@@ -311,6 +311,8 @@ public slots:
   bool UpdateCustomProfile( const QString &profileJSON );
   QString GetFanProfile( const QString &name );
   QString GetFanProfileNames();
+  QString GetGpuProfile( const QString &id );
+  QString GetGpuProfileNames();
   bool SetFanProfile( const QString &name, const QString &json );
 
   // settings methods
@@ -361,9 +363,24 @@ public slots:
   int GetNVIDIAPowerCTRLDefaultPowerLimit();
   int GetNVIDIAPowerCTRLMaxPowerLimit();
   bool GetNVIDIAPowerCTRLAvailable();
+  bool SetNVIDIAPowerOffset( int offset );
   QString GetAvailableGovernors();
   QString GetAvailableEPPs();
   int GetCpuCoreCount();
+
+  // NVIDIA GPU OC methods
+  bool GetNvidiaOCAvailable();
+  QString GetNvidiaOCState( int deviceIndex );
+  bool SetNvidiaClockOffset( int deviceIndex, int clockType, int pstate, int offsetMHz );
+  bool SetNvidiaGpuLockedClocks( int deviceIndex, int minMHz, int maxMHz );
+  bool SetNvidiaVramLockedClocks( int deviceIndex, int minMHz, int maxMHz );
+  bool ResetNvidiaGpuLockedClocks( int deviceIndex );
+  bool ResetNvidiaVramLockedClocks( int deviceIndex );
+  bool ResetNvidiaAllClockOffsets( int deviceIndex );
+  bool SetNvidiaGpuPowerLimit( int deviceIndex, double watts );
+  bool ResetNvidiaGpuPowerLimit( int deviceIndex );
+  bool ApplyNvidiaGpuOCProfile( const QString &profileJSON, int deviceIndex );
+  bool ResetNvidiaGpuOCAll( int deviceIndex );
 
   // water cooler methods
   bool GetWaterCoolerAvailable();
@@ -391,7 +408,10 @@ public slots:
   int GetCpuFrequencyMHz();
 
 signals:
-  void ProfileChanged( const QString &profileId, const QString &keyboardProfileId, const QString &fanProfileId );
+  void ProfileChanged( const QString &profileId,
+                       const QString &keyboardProfileId,
+                       const QString &fanProfileId,
+                       const QString &gpuProfileId );
   void ModeReapplyPendingChanged( bool pending );
   void PowerStateChanged( const QString &state );
   void WaterCoolerStatusChanged( const QString &status );
@@ -401,7 +421,8 @@ public:
   void emitModeReapplyPendingChanged( bool pending );
   void emitProfileChanged( const std::string &profileId,
                            const std::string &keyboardProfileId = {},
-                           const std::string &fanProfileId = {} );
+                           const std::string &fanProfileId = {},
+                           const std::string &gpuProfileId = {} );
   void emitPowerStateChanged( const std::string &state );
   void emitWaterCoolerStatusChanged( const std::string &status );
 
@@ -518,6 +539,13 @@ protected:
   void onExit() override;
 
 private:
+  struct BuiltinGpuProfile
+  {
+    std::string id;
+    std::string name;
+    std::string json;
+  };
+
   static constexpr const char* INTERFACE_NAME = "com.uniwill.uccd";
   UccDBusData m_dbusData;
   TuxedoIOAPI m_io;
@@ -534,6 +562,7 @@ private:
   UccProfile m_activeProfile;
   std::vector< UccProfile > m_defaultProfiles;
   std::vector< UccProfile > m_customProfiles;
+  std::vector< BuiltinGpuProfile > m_builtinGpuProfiles;
 
   // state switching
   ProfileState m_currentState;
@@ -567,6 +596,8 @@ private:
   static constexpr int WC_DISCONNECT_DEBOUNCE_S = 10;         // seconds stable before accepting "disconnected"
 
   void setupGpuDataCallback();
+  void rebuildBuiltinGpuProfiles();
+  int readCurrentCTGPOffset() const;
   void readHardwareCapabilities();
   void updateFanData();
   void loadProfiles();
@@ -579,6 +610,7 @@ private:
   void serializeProfilesJSON();
   void applyProfileForCurrentState();
   void applyFanAndPumpSettings( const UccProfile &profile );
+  void applyGpuOCFromProfile( const UccProfile &profile );
   void fillDeviceSpecificDefaults( std::vector< UccProfile > &profiles );
   void snapProfileFrequencies( UccProfile &profile );
   std::optional< UniwillDeviceID > identifyDevice();
@@ -594,6 +626,10 @@ private:
   std::unique_ptr< FanControlWorker > m_fanControlWorker;
   KeyboardBacklightController m_keyboardBacklightController;
   std::unique_ptr< LCTWaterCoolerWorker > m_waterCoolerWorker;
+  std::unique_ptr< NvidiaOCWorker > m_nvidiaOCWorker;
+
+  // Shared NVML instance — created once, used by all workers and readHardwareCapabilities
+  std::shared_ptr< NvmlWrapper > m_nvml;
 
   // identified device
   std::optional< UniwillDeviceID > m_deviceId;
@@ -601,6 +637,7 @@ private:
 
   // periodic validation counters
   uint32_t m_nvidiaValidationCounter = 0;
+  bool m_nvidiaPowerLimitsInitialized = false;
 
   // monitoring history ring buffer (daemon-side storage for graph tab)
   MetricsHistoryStore m_metricsStore;
