@@ -35,16 +35,26 @@ USE AT YOUR OWN RISK
 - KDE Plasma (for widgets)
 - tuxedo-drivers (kernel/user drivers required for hardware control)
 
-## Building packages
+## Building
 
-To produce distribution packages (RPMs) locally you can use the project's
-packaging helpers. On a Fedora/RHEL-style environment:
+### Standard CMake Build
+
+```bash
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+sudo make install
+```
+
+### Distribution Packages
+
+To produce distribution packages locally:
 
 ```bash
 # clean previous artifacts
 make distclean
 
-# build SRPM and RPM (requires rpmbuild and packaging dependencies)
+# build SRPM and RPM (Fedora/RHEL)
 make srpm
 make rpm
 
@@ -57,6 +67,93 @@ make deb
 
 Note: packaging may require additional host tools (`rpmbuild`, `cmake`,
 `ninja`, etc.) and correct distro-specific setup.
+
+### Nix / NixOS
+
+The project provides a Nix flake with a package and NixOS module.
+
+#### Building with Nix
+
+Using flakes (recommended):
+
+```bash
+# Build the package
+nix build
+
+# Enter a development shell
+nix develop
+```
+
+Without flakes:
+
+```bash
+nix-build
+```
+
+#### Installing on NixOS
+
+Add the flake to your system configuration:
+
+```nix
+# flake.nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    ucc.url = "github:nanomatters/ucc";
+  };
+
+  outputs = { self, nixpkgs, ucc, ... }: {
+    nixosConfigurations.yourhost = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        ./configuration.nix
+        ucc.nixosModules.default
+      ];
+    };
+  };
+}
+```
+
+Then enable the service in your NixOS configuration:
+
+```nix
+# configuration.nix
+{
+  services.uccd = {
+    enable = true;
+    # Optional: extra arguments passed to uccd
+    # extraArgs = [ "--verbose" ];
+    # Optional: disable sleep handler (enabled by default)
+    # enableSleepHandler = false;
+  };
+}
+```
+
+Rebuild your system:
+
+```bash
+sudo nixos-rebuild switch
+```
+
+#### NixOS Module Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `services.uccd.enable` | bool | `false` | Enable the uccd daemon |
+| `services.uccd.package` | package | `pkgs.ucc` | The UCC package to use |
+| `services.uccd.extraArgs` | list of strings | `[]` | Extra arguments for uccd |
+| `services.uccd.enableSleepHandler` | bool | `true` | Restart uccd on suspend/hibernate |
+
+#### Using the Overlay
+
+You can also use the overlay to add `ucc` to your pkgs:
+
+```nix
+{
+  nixpkgs.overlays = [ ucc.overlays.default ];
+  environment.systemPackages = [ pkgs.ucc ];
+}
+```
 
 ## License
 
