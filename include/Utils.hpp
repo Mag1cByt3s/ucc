@@ -48,6 +48,7 @@ inline constexpr std::array kSupportedDeviceSKUs = {
   "STELLARIS16I07",
   "XNE16E25",
   "XNE16A25",
+  "IBP14A10MK1 / IBP15A10MK1",
 };
 
 /**
