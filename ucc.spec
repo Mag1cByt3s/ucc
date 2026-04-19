@@ -99,6 +99,7 @@ systemctl daemon-reload > /dev/null 2>&1 || true
 %{_libdir}/qt6/qml/com/uniwill/ucc/private/ucc-declarative.qmltypes
 %{_libdir}/qt6/qml/com/uniwill/ucc/private/kde-qmlmodule.version
 %{_unitdir}/uccd.service
+%{_unitdir}/uccd-pre-sleep.service
 %{_unitdir}/uccd-sleep.service
 %{_datadir}/dbus-1/system-services/com.uniwill.uccd.service
 %{_datadir}/dbus-1/system.d/com.uniwill.uccd.conf

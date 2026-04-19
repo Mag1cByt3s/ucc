@@ -8,6 +8,7 @@ usr/lib/*/qt6/qml/com/uniwill/ucc/private/qmldir
 usr/lib/*/qt6/qml/com/uniwill/ucc/private/ucc-declarative.qmltypes
 usr/lib/*/qt6/qml/com/uniwill/ucc/private/kde-qmlmodule.version
 usr/lib/systemd/system/uccd.service
+usr/lib/systemd/system/uccd-pre-sleep.service
 usr/lib/systemd/system/uccd-sleep.service
 usr/share/dbus-1/system-services/com.uniwill.uccd.service
 usr/share/dbus-1/system.d/com.uniwill.uccd.conf
