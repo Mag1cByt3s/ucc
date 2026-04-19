@@ -111,8 +111,46 @@ in
       };
     };
 
+    # Stop UCCD *before* the system enters sleep so that NVML is cleanly
+    # shut down while the NVIDIA GPU is still fully operational.  Without
+    # this, the NVML/CUDA cleanup runs *after* a suspend-resume cycle when
+    # the nvidia_uvm driver state is stale, causing the CUDA teardown
+    # thread to deadlock in uvm_va_space_mm_shutdown.  That stuck thread
+    # (in uninterruptible "D" state) survives SIGKILL, blocks the kernel
+    # process freezer on the next suspend attempt, and can cascade into
+    # GSP heartbeat timeouts, KWin DRM-master loss, and an unresponsive
+    # desktop.
+    #
+    # Ordering: uccd-pre-sleep → nvidia-suspend → systemd-suspend
+    systemd.services.uccd-pre-sleep = lib.mkIf cfg.enableSleepHandler {
+      description = "Stop UCCD before system sleep";
+      documentation = [ "man:uccd(8)" ];
+      before = [
+        "systemd-suspend.service"
+        "systemd-hibernate.service"
+        "systemd-hybrid-sleep.service"
+        "systemd-suspend-then-hibernate.service"
+        "nvidia-suspend.service"
+        "nvidia-hibernate.service"
+      ];
+      wantedBy = [
+        "suspend.target"
+        "hibernate.target"
+        "hybrid-sleep.target"
+        "suspend-then-hibernate.target"
+      ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${config.systemd.package}/bin/systemctl stop uccd.service";
+      };
+    };
+
+    # Start UCCD again after the system resumes.  At this point the NVIDIA
+    # driver has already restored GPU state (nvidia-resume.service), so
+    # UCCD initialises NVML against a clean, fully operational GPU.
     systemd.services.uccd-sleep = lib.mkIf cfg.enableSleepHandler {
-      description = "Uniwill Control Center Daemon Sleep Handler";
+      description = "Start UCCD after system resume";
       documentation = [ "man:uccd(8)" ];
       after = [
         "suspend.target"
@@ -129,7 +167,7 @@ in
 
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${config.systemd.package}/bin/systemctl restart uccd.service";
+        ExecStart = "${config.systemd.package}/bin/systemctl start uccd.service";
       };
     };
   };

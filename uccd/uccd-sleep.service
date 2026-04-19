@@ -1,11 +1,11 @@
 [Unit]
-Description=Uniwill Control Center Daemon Sleep Handler
+Description=Start UCCD after system resume
 Documentation=man:uccd(8)
 After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/systemctl restart uccd.service
+ExecStart=/usr/bin/systemctl start uccd.service
 
 [Install]
 WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target

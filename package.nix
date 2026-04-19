@@ -83,10 +83,12 @@ stdenv.mkDerivation {
           "$out/share/dbus-1/system-services/com.uniwill.uccd.service"
       fi
     fi
-    if [ -f "$out/lib/systemd/system/uccd-sleep.service" ]; then
-      substituteInPlace "$out/lib/systemd/system/uccd-sleep.service" \
-        --replace-fail "/usr/bin/systemctl" "${systemd}/bin/systemctl"
-    fi
+    for svc in uccd-pre-sleep.service uccd-sleep.service; do
+      if [ -f "$out/lib/systemd/system/$svc" ]; then
+        substituteInPlace "$out/lib/systemd/system/$svc" \
+          --replace-fail "/usr/bin/systemctl" "${systemd}/bin/systemctl"
+      fi
+    done
 
     if [ -f "$out/lib/systemd/system/uccd.service" ]; then
       if ! grep -q '^Type=dbus$' "$out/lib/systemd/system/uccd.service"; then

@@ -6,6 +6,7 @@ post_install() {
 
   echo ":: Enabling uccd daemon..."
   systemctl enable uccd.service
+  systemctl enable uccd-pre-sleep.service
   systemctl enable uccd-sleep.service
 
   echo ":: Starting uccd daemon..."
@@ -38,10 +39,12 @@ post_upgrade() {
 pre_remove() {
   echo ":: Stopping uccd daemon..."
   systemctl stop uccd.service 2>/dev/null || true
+  systemctl stop uccd-pre-sleep.service 2>/dev/null || true
   systemctl stop uccd-sleep.service 2>/dev/null || true
 
   echo ":: Disabling uccd services..."
   systemctl disable uccd.service 2>/dev/null || true
+  systemctl disable uccd-pre-sleep.service 2>/dev/null || true
   systemctl disable uccd-sleep.service 2>/dev/null || true
 }
 
