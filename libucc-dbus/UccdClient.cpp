@@ -701,7 +701,16 @@ std::optional< int > UccdClient::getNVIDIAPowerOffset()
     if ( QJsonDocument doc = QJsonDocument::fromJson( QString::fromStdString( *json ).toUtf8() ); doc.isObject() )
     {
       QJsonObject obj = doc.object();
-      // cTGP offset lives inside the embedded GPU OC profile data
+
+      if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj["nvidiaPowerCTRLProfile"].isObject() )
+      {
+        QJsonObject nvidiaObj = obj["nvidiaPowerCTRLProfile"].toObject();
+        if ( nvidiaObj.contains( "cTGPOffset" ) )
+          return nvidiaObj["cTGPOffset"].toInt();
+      }
+
+      // Backward compatibility for older daemon payloads where cTGP lived
+      // only inside the embedded GPU OC profile data.
       if ( obj.contains( "gpuOCProfileData" ) && obj["gpuOCProfileData"].isObject() )
       {
         QJsonObject gpuObj = obj["gpuOCProfileData"].toObject();

@@ -47,6 +47,7 @@ private:
       },
       "odmProfile": { "name": "enthusiast" },
       "odmPowerLimits": { "tdpValues": [45, 80] },
+      "nvidiaPowerCTRLProfile": { "cTGPOffset": 15 },
       "keyboard": { "keyboardProfileName": "Rainbow" },
       "selectedKeyboardProfile": "kb-uuid-001",
       "chargingProfile": "balanced",
@@ -125,7 +126,8 @@ private slots:
     QCOMPARE( *p.odmProfile.name, std::string( "enthusiast" ) );
     QCOMPARE( static_cast< int >( p.odmPowerLimits.tdpValues.size() ), 2 );
     QCOMPARE( p.odmPowerLimits.tdpValues[0], 45 );
-    // nvidiaPowerCTRLProfile removed from general profile — lives only in GPU profile
+    QVERIFY( p.nvidiaCTGPOffset.has_value() );
+    QCOMPARE( *p.nvidiaCTGPOffset, 15 );
   }
 
   void parseProfile_keyboard()
@@ -164,6 +166,7 @@ private slots:
     QCOMPARE( reparsed.chargingProfile,       original.chargingProfile );
     QCOMPARE( reparsed.chargeStartThreshold,  original.chargeStartThreshold );
     QCOMPARE( reparsed.chargeEndThreshold,    original.chargeEndThreshold );
+    QCOMPARE( reparsed.nvidiaCTGPOffset,      original.nvidiaCTGPOffset );
 
     // Fan tables survive the trip
     QCOMPARE( static_cast< int >( reparsed.fan.tableCPU.size() ),

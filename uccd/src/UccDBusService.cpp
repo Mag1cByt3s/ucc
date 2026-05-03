@@ -216,6 +216,12 @@ static std::string profileToJSON( const UccProfile &profile,
   {
     oss << ",\"gpuProfileId\":\"" << jsonEscape( profile.gpuProfileId ) << "\"";
   }
+  if ( profile.nvidiaCTGPOffset.has_value() )
+  {
+    oss << ",\"nvidiaPowerCTRLProfile\":{"
+        << "\"cTGPOffset\":" << *profile.nvidiaCTGPOffset
+        << "}";
+  }
   if ( !profile.gpuOCProfileData.empty() && profile.gpuOCProfileData != "{}" )
   {
     oss << ",\"gpuOCProfileData\":" << profile.gpuOCProfileData;
@@ -1958,11 +1964,13 @@ bool UccDBusInterfaceAdaptor::ApplyNvidiaGpuOCProfile( const QString &profileJSO
     if ( doc.isObject() )
     {
       QJsonObject obj = doc.object();
+      m_service->m_activeProfile.nvidiaCTGPOffset.reset();
       if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj[ "nvidiaPowerCTRLProfile" ].isObject() )
       {
         QJsonObject nvidiaObj = obj[ "nvidiaPowerCTRLProfile" ].toObject();
         int ctgpOffset = nvidiaObj.value( "cTGPOffset" ).toInt( 0 );
         m_service->m_profileSettingsWorker->applyNVIDIAPowerOffset( ctgpOffset );
+        m_service->m_activeProfile.nvidiaCTGPOffset = ctgpOffset;
       }
 
       // Update active profile's embedded GPU OC data for readback
@@ -4297,30 +4305,37 @@ void UccDBusService::applyFanAndPumpSettings( const UccProfile &profile )
 
 void UccDBusService::applyGpuOCFromProfile( const UccProfile &profile )
 {
-  // GPU OC / cTGP data lives exclusively inside gpuOCProfileData.
-  // Profiles with no GPU profile selected have empty gpuOCProfileData and
-  // should not touch GPU state at all.
-  if ( profile.gpuOCProfileData.empty() || profile.gpuOCProfileData == "{}" )
+  if ( !profile.nvidiaCTGPOffset.has_value()
+       && ( profile.gpuOCProfileData.empty() || profile.gpuOCProfileData == "{}" ) )
     return;
 
-  // Extract and apply cTGP offset from embedded GPU profile data
-  if ( m_profileSettingsWorker && m_dbusData.nvidiaPowerCTRLAvailable.load() )
+  bool hasGpuOCSettings = false;
+
+  if ( profile.nvidiaCTGPOffset.has_value()
+       && m_profileSettingsWorker
+       && m_dbusData.nvidiaPowerCTRLAvailable.load() )
   {
-    QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( profile.gpuOCProfileData ) );
+    std::cout << "[GpuOC] Applying cTGP offset from profile: "
+              << *profile.nvidiaCTGPOffset << std::endl;
+    m_profileSettingsWorker->applyNVIDIAPowerOffset( *profile.nvidiaCTGPOffset );
+  }
+
+  if ( !profile.gpuOCProfileData.empty() && profile.gpuOCProfileData != "{}" )
+  {
+    const QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( profile.gpuOCProfileData ) );
     if ( doc.isObject() )
     {
-      QJsonObject obj = doc.object();
-      if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj[ "nvidiaPowerCTRLProfile" ].isObject() )
-      {
-        const int ctgpOffset = obj[ "nvidiaPowerCTRLProfile" ].toObject().value( "cTGPOffset" ).toInt( 0 );
-        std::cout << "[GpuOC] Applying cTGP offset from profile: " << ctgpOffset << std::endl;
-        m_profileSettingsWorker->applyNVIDIAPowerOffset( ctgpOffset );
-      }
+      const QJsonObject obj = doc.object();
+
+      hasGpuOCSettings = obj.contains( "offsets" )
+                         || obj.contains( "gpuLockedClocks" )
+                         || obj.contains( "vramLockedClocks" )
+                         || obj.contains( "powerLimitW" );
     }
   }
 
-  // Apply GPU OC settings (clock offsets, locked clocks, power limit)
-  if ( m_nvidiaOCWorker && m_nvidiaOCWorker->isAvailable() )
+  // Apply GPU OC settings only when the payload actually contains OC fields.
+  if ( hasGpuOCSettings && m_nvidiaOCWorker && m_nvidiaOCWorker->isAvailable() )
   {
     std::cout << "[GpuOc] Applying embedded GPU OC profile data from profile '"
               << profile.name << "'" << std::endl;

@@ -56,8 +56,6 @@ set( UCC_GUI_SOURCES
   inc/AssignKeyZones.hpp
   src/MonitorTab.cpp
   inc/MonitorTab.hpp
-  src/GpuProfileTab.cpp
-  inc/GpuProfileTab.hpp
 )
 
 set( UCC_GUI_LIBRARIES

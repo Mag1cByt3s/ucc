@@ -19,7 +19,6 @@
 #include "profiles/DefaultProfiles.hpp"
 #include "CommonTypes.hpp"
 #include "StateUtils.hpp"
-#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 #include <sstream>
@@ -298,6 +297,32 @@ public:
     // Parse GPU profile reference and embedded GPU OC data
     profile.gpuProfileId = extractString( json, "gpuProfileId", "" );
     profile.gpuOCProfileData = extractObject( json, "gpuOCProfileData" );
+    if ( const std::string nvidiaPowerCtrlJson = extractObject( json, "nvidiaPowerCTRLProfile" );
+         !nvidiaPowerCtrlJson.empty() )
+    {
+      const int32_t ctgpOffset = extractInt( nvidiaPowerCtrlJson, "cTGPOffset", INT32_MIN );
+      if ( ctgpOffset != INT32_MIN )
+      {
+        profile.nvidiaCTGPOffset = ctgpOffset;
+      }
+    }
+
+    // Backward compatibility: older saved profiles may still carry cTGP only
+    // inside the embedded GPU OC payload.
+    if ( !profile.nvidiaCTGPOffset.has_value()
+         && !profile.gpuOCProfileData.empty()
+         && profile.gpuOCProfileData != "{}" )
+    {
+      const std::string legacyNvidiaPowerCtrlJson = extractObject( profile.gpuOCProfileData, "nvidiaPowerCTRLProfile" );
+      if ( !legacyNvidiaPowerCtrlJson.empty() )
+      {
+        const int32_t legacyCtgpOffset = extractInt( legacyNvidiaPowerCtrlJson, "cTGPOffset", INT32_MIN );
+        if ( legacyCtgpOffset != INT32_MIN )
+        {
+          profile.nvidiaCTGPOffset = legacyCtgpOffset;
+        }
+      }
+    }
 
     // Parse charging profile (firmware-level charging mode stored per-profile)
     profile.chargingProfile = extractString( json, "chargingProfile", "" );
@@ -671,6 +696,12 @@ public:
     if ( !profile.gpuProfileId.empty() )
     {
       oss << ",\"gpuProfileId\":\"" << jsonEscape( profile.gpuProfileId ) << "\"";
+    }
+    if ( profile.nvidiaCTGPOffset.has_value() )
+    {
+      oss << ",\"nvidiaPowerCTRLProfile\":{"
+          << "\"cTGPOffset\":" << *profile.nvidiaCTGPOffset
+          << "}";
     }
     if ( !profile.gpuOCProfileData.empty() && profile.gpuOCProfileData != "{}" )
     {

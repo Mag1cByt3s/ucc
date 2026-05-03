@@ -232,6 +232,7 @@ struct UccProfile
   UccODMPowerLimits odmPowerLimits;
   std::string gpuProfileId;     ///< UUID reference to GPU OC profile (stored in GUI QSettings)
   std::string gpuOCProfileData; ///< Embedded GPU OC profile JSON (offsets, locked clocks, powerLimitW)
+  std::optional< int32_t > nvidiaCTGPOffset; ///< Configurable graphics TGP offset in watts
   std::string chargingProfile;  ///< firmware-level charging profile descriptor (e.g. "balanced")
   std::string chargingPriority; ///< USB-C PD charging priority (e.g. "charge_battery", "performance")
   std::string chargeType;       ///< charge type: "Standard" or "Custom"
@@ -260,6 +261,7 @@ struct UccProfile
       odmPowerLimits( other.odmPowerLimits ),
       gpuProfileId( other.gpuProfileId ),
       gpuOCProfileData( other.gpuOCProfileData ),
+      nvidiaCTGPOffset( other.nvidiaCTGPOffset ),
       chargingProfile( other.chargingProfile ),
       chargingPriority( other.chargingPriority ),
       chargeType( other.chargeType ),
@@ -285,6 +287,7 @@ struct UccProfile
       odmPowerLimits = other.odmPowerLimits;
       gpuProfileId = other.gpuProfileId;
       gpuOCProfileData = other.gpuOCProfileData;
+      nvidiaCTGPOffset = other.nvidiaCTGPOffset;
       chargingProfile = other.chargingProfile;
       chargingPriority = other.chargingPriority;
       chargeType = other.chargeType;
