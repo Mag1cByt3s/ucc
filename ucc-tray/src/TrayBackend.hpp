@@ -111,16 +111,12 @@ class TrayBackend : public QObject
   Q_PROPERTY( QStringList fanProfileIds       READ fanProfileIds       NOTIFY fanProfilesChanged )
   Q_PROPERTY( QStringList keyboardProfileNames READ keyboardProfileNames NOTIFY keyboardProfilesChanged )
   Q_PROPERTY( QStringList keyboardProfileIds   READ keyboardProfileIds   NOTIFY keyboardProfilesChanged )
-  Q_PROPERTY( QStringList gpuProfileNames READ gpuProfileNames NOTIFY gpuProfilesChanged )
-  Q_PROPERTY( QStringList gpuProfileIds   READ gpuProfileIds   NOTIFY gpuProfilesChanged )
 
   // ── Active profile sub-profile info ──
   Q_PROPERTY( QString activeProfileFanName      READ activeProfileFanName      NOTIFY activeProfileChanged )
   Q_PROPERTY( QString activeProfileFanId        READ activeProfileFanId        NOTIFY activeProfileChanged )
   Q_PROPERTY( QString activeProfileKeyboardName READ activeProfileKeyboardName NOTIFY activeProfileChanged )
   Q_PROPERTY( QString activeProfileKeyboardId   READ activeProfileKeyboardId   NOTIFY activeProfileChanged )
-  Q_PROPERTY( QString activeProfileGpuName      READ activeProfileGpuName      NOTIFY activeProfileChanged )
-  Q_PROPERTY( QString activeProfileGpuId        READ activeProfileGpuId        NOTIFY activeProfileChanged )
 
 public:
   explicit TrayBackend( QObject *parent = nullptr );
@@ -206,23 +202,16 @@ public:
   QStringList keyboardProfileNames() const;
   QStringList keyboardProfileIds() const;
 
-  // ── GPU OC profiles ──
-  QStringList gpuProfileNames() const;
-  QStringList gpuProfileIds() const;
-
   // ── Active profile sub-profile info ──
   QString activeProfileFanName() const;
   QString activeProfileFanId() const;
   QString activeProfileKeyboardName() const;
   QString activeProfileKeyboardId() const;
-  QString activeProfileGpuName() const;
-  QString activeProfileGpuId() const;
 
   // ── Invokables for QML ──
   Q_INVOKABLE void setActiveProfile( const QString &profileId );
   Q_INVOKABLE void setActiveFanProfile( const QString &fanProfileId );
   Q_INVOKABLE void setActiveKeyboardProfile( const QString &keyboardProfileId );
-  Q_INVOKABLE void setActiveGpuProfile( const QString &gpuProfileId );
   Q_INVOKABLE void setODMPerformanceProfile( const QString &profile );
   Q_INVOKABLE void openControlCenter();
   Q_INVOKABLE void refreshAll();
@@ -252,15 +241,13 @@ signals:
   void odmPerformanceProfileChanged();
   void fanProfilesChanged();
   void keyboardProfilesChanged();
-  void gpuProfilesChanged();
 
 private slots:
   void pollMetrics();
   void pollSlowState();
   void onDaemonProfileChanged( const QString &profileId,
                                const QString &keyboardProfileId,
-                               const QString &fanProfileId,
-                               const QString &gpuProfileId );
+                               const QString &fanProfileId );
   void onSettingsFileChanged( const QString &path );
   void onConnectionStatusChanged( bool connected );
 
@@ -270,7 +257,6 @@ private:
   void loadLocalProfiles();  // custom fan + keyboard profiles from QSettings
   QString resolveFanProfileName( const QString &fanProfileId ) const;
   QString resolveKeyboardProfileName( const QString &kbProfileId ) const;
-  QString resolveGpuProfileName( const QString &gpuProfileId ) const;
 
   std::unique_ptr< ucc::UccdClient > m_client;
   QTimer *m_fastTimer = nullptr;   // ~1 s  — temps, fans
@@ -359,11 +345,5 @@ private:
   QStringList m_customFanProfileIds;
   QStringList m_keyboardProfileNames;
   QStringList m_keyboardProfileIds;
-  QStringList m_gpuProfileNames;
-  QStringList m_gpuProfileIds;
   QJsonArray  m_keyboardProfilesData;
-
-  QString m_activeProfileGpuId;
-  QString m_activeProfileGpuName;
-  bool m_gpuProfileOverride = false;
 };

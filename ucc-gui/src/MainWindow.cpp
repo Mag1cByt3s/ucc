@@ -807,13 +807,6 @@ void MainWindow::connectSignals()
     if ( m_initializing ) return;
     updateFanEditorFromProfile( fpId );
   } );
-  connect( m_profileManager.get(), &ProfileManager::activeGpuProfileChanged,
-           this, [this]( const QString &gpId ) {
-    if ( m_initializing || gpId.isEmpty() )
-      return;
-    // GPU power slider is handled by the profile's nvidiaPowerCTRLProfile data,
-    // which is loaded directly via loadProfileDetails. No separate tab needed.
-  } );
 
   connect( m_profileCombo, QOverload< int >::of( &QComboBox::currentIndexChanged ),
            this, &MainWindow::onProfileIndexChanged );
@@ -1805,18 +1798,7 @@ void MainWindow::loadProfileDetails( const QString &profileId )
   // Load GPU Power (cTGP) setting
   if ( m_ctgpSlider && m_cTGPAdjustmentSupported )
   {
-    int ctgpOffset = 0;
-    // Try loading from inline gpuOCProfileData first, then from nvidiaPowerCTRLProfile
-    if ( obj.contains( "gpuOCProfileData" ) && obj["gpuOCProfileData"].isObject() )
-    {
-      QJsonObject gpuData = obj["gpuOCProfileData"].toObject();
-      if ( gpuData.contains( "nvidiaPowerCTRLProfile" ) && gpuData["nvidiaPowerCTRLProfile"].isObject() )
-        ctgpOffset = gpuData["nvidiaPowerCTRLProfile"].toObject()["cTGPOffset"].toInt( 0 );
-    }
-    else if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj["nvidiaPowerCTRLProfile"].isObject() )
-    {
-      ctgpOffset = obj["nvidiaPowerCTRLProfile"].toObject()["cTGPOffset"].toInt( 0 );
-    }
+    int ctgpOffset = obj.value( "nvidiaCTGPOffset" ).toInt( 0 );
 
     int defaultPower = m_gpuDefaultPowerLimit > 0 ? m_gpuDefaultPowerLimit : 80;
     int maxPower = 175;
@@ -2147,30 +2129,13 @@ QString MainWindow::buildProfileJSON() const
     int sliderValue = m_ctgpSlider->value();
     int defaultPower = m_gpuDefaultPowerLimit > 0 ? m_gpuDefaultPowerLimit : 80;
     int ctgpOffset = sliderValue - defaultPower;
-
-    QJsonObject nvidiaPowerObj;
-    nvidiaPowerObj["cTGPOffset"] = ctgpOffset;
-    profileObj["nvidiaPowerCTRLProfile"] = nvidiaPowerObj;
+    profileObj["nvidiaCTGPOffset"] = ctgpOffset;
   }
 
-  // Keyboard — embed complete keyboard profile data
-  QJsonObject keyboardObj;
+  // Keyboard — only store the profile reference, not the full state data
+  // Full per-key states live in customKeyboardProfiles managed by uccd.
   QString keyboardProfileId  = m_profileKeyboardProfileCombo->currentData().toString();
-  QString keyboardProfileJSON = m_profileManager->getKeyboardProfile( keyboardProfileId );
-  if ( !keyboardProfileJSON.isEmpty() && keyboardProfileJSON != "{}" )
-  {
-    QJsonDocument kbDoc = QJsonDocument::fromJson( keyboardProfileJSON.toUtf8() );
-    if ( kbDoc.isObject() )
-      keyboardObj = kbDoc.object();
-    else if ( kbDoc.isArray() )
-      keyboardObj["states"] = kbDoc.array();
-  }
-  else
-  {
-    if ( auto keyboardStates = m_UccdClient->getKeyboardBacklightStates() )
-      keyboardObj["states"] = QJsonDocument::fromJson( QString::fromStdString( *keyboardStates ).toUtf8() ).array();
-  }
-  keyboardObj["keyboardProfileName"] = m_profileKeyboardProfileCombo->currentText();
+  QJsonObject keyboardObj;
   if ( m_keyboardBrightnessSlider )
     keyboardObj["brightness"] = m_keyboardBrightnessSlider->value();
   profileObj["keyboard"]               = keyboardObj;

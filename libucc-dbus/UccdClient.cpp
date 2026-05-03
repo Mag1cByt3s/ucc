@@ -61,14 +61,14 @@ void UccdClient::subscribeDbusSignals()
   // multiple reconnect cycles.
   QDBusConnection::systemBus().disconnect( DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,
                   "ProfileChanged", this,
-                  SLOT( onProfileChangedSignal( QString, QString, QString, QString ) ) );
+                  SLOT( onProfileChangedSignal( QString, QString, QString ) ) );
   QDBusConnection::systemBus().disconnect( DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,
                   "PowerStateChanged", this,
                   SLOT( onPowerStateChangedSignal( QString ) ) );
 
   QDBusConnection::systemBus().connect( DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,
                "ProfileChanged", this,
-               SLOT( onProfileChangedSignal( QString, QString, QString, QString ) ) );
+               SLOT( onProfileChangedSignal( QString, QString, QString ) ) );
   QDBusConnection::systemBus().connect( DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,
                "PowerStateChanged", this,
                SLOT( onPowerStateChangedSignal( QString ) ) );
@@ -138,10 +138,9 @@ bool UccdClient::isConnected() const
 // Signal handlers
 void UccdClient::onProfileChangedSignal( const QString &profileId,
                                          const QString &keyboardProfileId,
-                                         const QString &fanProfileId,
-                                         const QString &gpuProfileId )
+                                         const QString &fanProfileId )
 {
-  emit profileChanged( profileId, keyboardProfileId, fanProfileId, gpuProfileId );
+  emit profileChanged( profileId, keyboardProfileId, fanProfileId );
 }
 
 void UccdClient::onPowerStateChangedSignal( const QString &state )
@@ -351,25 +350,6 @@ std::optional< std::string > UccdClient::getFanProfile( const std::string &fanPr
 std::optional< std::string > UccdClient::getFanProfilesJSON()
 {
   if ( auto result = callMethod< QString >( "GetFanProfileNames" ) )
-  {
-    return result->toStdString();
-  }
-  return std::nullopt;
-}
-
-std::optional< std::string > UccdClient::getGpuProfile( const std::string &gpuProfileId )
-{
-  if ( auto result = callMethod< QString >( "GetGpuProfile", QString::fromStdString( gpuProfileId ) ) )
-  {
-    if ( const std::string json = result->toStdString(); !json.empty() && json != "{}" )
-      return json;
-  }
-  return std::nullopt;
-}
-
-std::optional< std::string > UccdClient::getGpuProfilesJSON()
-{
-  if ( auto result = callMethod< QString >( "GetGpuProfileNames" ) )
   {
     return result->toStdString();
   }
@@ -701,25 +681,8 @@ std::optional< int > UccdClient::getNVIDIAPowerOffset()
     if ( QJsonDocument doc = QJsonDocument::fromJson( QString::fromStdString( *json ).toUtf8() ); doc.isObject() )
     {
       QJsonObject obj = doc.object();
-
-      if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj["nvidiaPowerCTRLProfile"].isObject() )
-      {
-        QJsonObject nvidiaObj = obj["nvidiaPowerCTRLProfile"].toObject();
-        if ( nvidiaObj.contains( "cTGPOffset" ) )
-          return nvidiaObj["cTGPOffset"].toInt();
-      }
-
-      // Backward compatibility for older daemon payloads where cTGP lived
-      // only inside the embedded GPU OC profile data.
-      if ( obj.contains( "gpuOCProfileData" ) && obj["gpuOCProfileData"].isObject() )
-      {
-        QJsonObject gpuObj = obj["gpuOCProfileData"].toObject();
-        if ( gpuObj.contains( "nvidiaPowerCTRLProfile" ) && gpuObj["nvidiaPowerCTRLProfile"].isObject() )
-        {
-          if ( QJsonObject nvidiaObj = gpuObj["nvidiaPowerCTRLProfile"].toObject(); nvidiaObj.contains( "cTGPOffset" ) )
-            return nvidiaObj["cTGPOffset"].toInt();
-        }
-      }
+      if ( obj.contains( "nvidiaCTGPOffset" ) )
+        return obj["nvidiaCTGPOffset"].toInt();
     }
   }
   return std::nullopt;
@@ -754,77 +717,6 @@ std::optional< std::string > UccdClient::getPrimeProfile()
   return std::nullopt;
 }
 
-// ---------------------------------------------------------------------------
-// NVIDIA GPU OC Control
-// ---------------------------------------------------------------------------
-
-std::optional< bool > UccdClient::getNvidiaOCAvailable()
-{
-  return callMethod< bool >( "GetNvidiaOCAvailable" );
-}
-
-std::optional< std::string > UccdClient::getNvidiaOCState( int deviceIndex )
-{
-  if ( auto result = callMethod< QString, int >( "GetNvidiaOCState", deviceIndex ) )
-    return result->toStdString();
-  return std::nullopt;
-}
-
-bool UccdClient::setNvidiaClockOffset( int deviceIndex, int clockType, int pstate, int offsetMHz )
-{
-  return callMethod< bool, int, int, int, int >( "SetNvidiaClockOffset",
-      deviceIndex, clockType, pstate, offsetMHz ).value_or( false );
-}
-
-bool UccdClient::setNvidiaGpuLockedClocks( int deviceIndex, int minMHz, int maxMHz )
-{
-  return callMethod< bool, int, int, int >( "SetNvidiaGpuLockedClocks",
-      deviceIndex, minMHz, maxMHz ).value_or( false );
-}
-
-bool UccdClient::setNvidiaVramLockedClocks( int deviceIndex, int minMHz, int maxMHz )
-{
-  return callMethod< bool, int, int, int >( "SetNvidiaVramLockedClocks",
-      deviceIndex, minMHz, maxMHz ).value_or( false );
-}
-
-bool UccdClient::resetNvidiaGpuLockedClocks( int deviceIndex )
-{
-  return callMethod< bool, int >( "ResetNvidiaGpuLockedClocks", deviceIndex ).value_or( false );
-}
-
-bool UccdClient::resetNvidiaVramLockedClocks( int deviceIndex )
-{
-  return callMethod< bool, int >( "ResetNvidiaVramLockedClocks", deviceIndex ).value_or( false );
-}
-
-bool UccdClient::resetNvidiaAllClockOffsets( int deviceIndex )
-{
-  return callMethod< bool, int >( "ResetNvidiaAllClockOffsets", deviceIndex ).value_or( false );
-}
-
-bool UccdClient::setNvidiaGpuPowerLimit( int deviceIndex, double watts )
-{
-  return callMethod< bool, int, double >( "SetNvidiaGpuPowerLimit",
-      deviceIndex, watts ).value_or( false );
-}
-
-bool UccdClient::resetNvidiaGpuPowerLimit( int deviceIndex )
-{
-  return callMethod< bool, int >( "ResetNvidiaGpuPowerLimit", deviceIndex ).value_or( false );
-}
-
-bool UccdClient::applyNvidiaGpuOCProfile( const std::string &profileJSON, int deviceIndex )
-{
-  return callMethod< bool, QString, int >( "ApplyNvidiaGpuOCProfile",
-      QString::fromStdString( profileJSON ), deviceIndex ).value_or( false );
-}
-
-bool UccdClient::resetNvidiaGpuOCAll( int deviceIndex )
-{
-  return callMethod< bool, int >( "ResetNvidiaGpuOCAll", deviceIndex ).value_or( false );
-}
-
 bool UccdClient::setKeyboardBacklight( const std::string &config )
 {
   return callMethod< bool, QString >( "SetKeyboardBacklightStatesJSON", QString::fromStdString( config ) ).value_or( false );
@@ -846,6 +738,48 @@ std::optional< std::string > UccdClient::getKeyboardBacklightStates()
     return states->toStdString();
   }
   return std::nullopt;
+}
+
+std::optional< std::string > UccdClient::getCustomKeyboardProfiles()
+{
+  if ( auto json = callMethod< QString >( "GetCustomKeyboardProfilesJSON" ); json )
+  {
+    return json->toStdString();
+  }
+  return std::nullopt;
+}
+
+bool UccdClient::saveCustomKeyboardProfile( const std::string &id, const std::string &name, const std::string &json )
+{
+  return callMethod< bool, QString, QString, QString >( "SaveCustomKeyboardProfile", 
+         QString::fromStdString( id ), 
+         QString::fromStdString( name ), 
+         QString::fromStdString( json ) ).value_or( false );
+}
+
+bool UccdClient::deleteCustomKeyboardProfile( const std::string &id )
+{
+  return callMethod< bool, QString >( "DeleteCustomKeyboardProfile", QString::fromStdString( id ) ).value_or( false );
+}
+
+std::optional< std::string > UccdClient::getCustomFanProfiles()
+{
+  if ( auto json = callMethod< QString >( "GetCustomFanProfilesJSON" ) )
+    return json->toStdString();
+  return std::nullopt;
+}
+
+bool UccdClient::saveCustomFanProfile( const std::string &id, const std::string &name, const std::string &json )
+{
+  return callMethod< bool, QString, QString, QString >( "SaveCustomFanProfile",
+         QString::fromStdString( id ),
+         QString::fromStdString( name ),
+         QString::fromStdString( json ) ).value_or( false );
+}
+
+bool UccdClient::deleteCustomFanProfile( const std::string &id )
+{
+  return callMethod< bool, QString >( "DeleteCustomFanProfile", QString::fromStdString( id ) ).value_or( false );
 }
 
 bool UccdClient::setODMPerformanceProfile( [[maybe_unused]] const std::string &profile )

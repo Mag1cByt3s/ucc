@@ -23,8 +23,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include <QSettings>
-#include <QDir>
 #include <QTimer>
 
 #include <cstdio>
@@ -149,19 +147,10 @@ static std::string profileId( const std::string &json )
 }
 
 // ---------------------------------------------------------------------------
-// Local settings helper (same path as GUI/tray: ~/.config/uccrc)
-// ---------------------------------------------------------------------------
-
-static QSettings localSettings()
-{
-  return QSettings( QDir::homePath() + "/.config/uccrc", QSettings::IniFormat );
-}
-
-// ---------------------------------------------------------------------------
 // Local assignment helpers (stateMap + customProfiles cross-reference)
 // ---------------------------------------------------------------------------
 
-/// Per-profile assignment data loaded from local uccrc settings.
+/// Per-profile assignment data loaded from the daemon settings.
 struct LocalAssignments {
   QMap<QString, QStringList> profileStates;  ///< main profile id  -> power state names
   QMap<QString, QStringList> fanStates;      ///< fan profile id   -> power state names
@@ -185,19 +174,25 @@ static QString assignmentTag( const QStringList &states )
   return QString( " [%1]" ).arg( labels.join( ", " ) );
 }
 
-/// Load stateMap and customProfiles from uccrc and resolve which fan/keyboard profiles
-/// are transitively referenced through power-state-assigned main profiles.
-static LocalAssignments loadLocalAssignments()
+/// Load stateMap and customProfiles from the daemon settings (single source of truth)
+/// and resolve which fan/keyboard profiles are transitively referenced through
+/// power-state-assigned main profiles.
+static LocalAssignments loadLocalAssignments( ucc::UccdClient &c )
 {
   LocalAssignments result;
-  QSettings settings = localSettings();
+
+  auto settingsJSON = c.getSettingsJSON();
+  if ( !settingsJSON ) return result;
+
+  QJsonDocument settingsDoc = QJsonDocument::fromJson( QByteArray::fromStdString( *settingsJSON ) );
+  if ( !settingsDoc.isObject() ) return result;
+
+  const QJsonObject settings = settingsDoc.object();
 
   // stateMap: { "power_ac": "main-profile-uuid", "power_wc": "...", ... }
-  QByteArray smData = settings.value( "stateMap", "{}" ).toByteArray();
-  QJsonDocument smDoc = QJsonDocument::fromJson( smData );
-  if ( smDoc.isObject() )
+  if ( settings.contains( "stateMap" ) && settings["stateMap"].isObject() )
   {
-    QJsonObject stateMap = smDoc.object();
+    const QJsonObject stateMap = settings["stateMap"].toObject();
     for ( const QString &state : stateMap.keys() )
     {
       QString profId = stateMap[state].toString();
@@ -207,11 +202,9 @@ static LocalAssignments loadLocalAssignments()
   }
 
   // customProfiles: resolve which fan and keyboard profiles are used by assigned main profiles
-  QByteArray cpData = settings.value( "customProfiles", "[]" ).toByteArray();
-  QJsonDocument cpDoc = QJsonDocument::fromJson( cpData );
-  if ( cpDoc.isArray() )
+  if ( settings.contains( "customProfiles" ) && settings["customProfiles"].isArray() )
   {
-    for ( const QJsonValue &v : cpDoc.array() )
+    for ( const QJsonValue &v : settings["customProfiles"].toArray() )
     {
       if ( !v.isObject() ) continue;
       QJsonObject prof = v.toObject();
@@ -395,7 +388,7 @@ static int cmdStatus( ucc::UccdClient &c )
 
 static int cmdProfileList( ucc::UccdClient &c )
 {
-  LocalAssignments assignments = loadLocalAssignments();
+  LocalAssignments assignments = loadLocalAssignments( c );
 
   // Default (built-in) profiles from daemon
   auto defJSON = c.getDefaultProfilesJSON();
@@ -418,13 +411,8 @@ static int cmdProfileList( ucc::UccdClient &c )
     }
   }
 
-  // Custom profiles — use uccrc as authoritative source (daemon may only have assigned ones)
-  QSettings settings = localSettings();
-  QByteArray cpData = settings.value( "customProfiles", "[]" ).toByteArray();
-  QJsonDocument cpDoc = QJsonDocument::fromJson( cpData );
-
-  // Also collect IDs from daemon custom list so we can merge without duplicates
-  QSet<QString> daemonIds;
+  // Custom profiles — daemon is the authoritative source
+  QList<QJsonObject> customProfiles;
   auto custJSON = c.getCustomProfilesJSON();
   if ( custJSON )
   {
@@ -432,31 +420,6 @@ static int cmdProfileList( ucc::UccdClient &c )
     if ( dd.isArray() )
       for ( const QJsonValue &v : dd.array() )
         if ( v.isObject() )
-          daemonIds.insert( v.toObject()["id"].toString() );
-  }
-
-  // Collect all custom profiles: start from uccrc, then add any daemon-only ones
-  QList<QJsonObject> customProfiles;
-  QSet<QString> shownIds;
-  if ( cpDoc.isArray() )
-  {
-    for ( const QJsonValue &v : cpDoc.array() )
-    {
-      if ( v.isObject() )
-      {
-        QJsonObject obj = v.toObject();
-        shownIds.insert( obj["id"].toString() );
-        customProfiles.append( obj );
-      }
-    }
-  }
-  // Daemon-only entries not in uccrc
-  if ( custJSON )
-  {
-    QJsonDocument dd = QJsonDocument::fromJson( QByteArray::fromStdString( *custJSON ) );
-    if ( dd.isArray() )
-      for ( const QJsonValue &v : dd.array() )
-        if ( v.isObject() && !shownIds.contains( v.toObject()["id"].toString() ) )
           customProfiles.append( v.toObject() );
   }
 
@@ -582,20 +545,11 @@ static void printProfileSummary( const QJsonObject &obj, bool showHeader = true 
     }
   }
 
-  // NVIDIA cTGP
-  if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj["nvidiaPowerCTRLProfile"].isObject() )
+  // NVIDIA cTGP (stored directly in profile)
+  if ( obj.contains( "nvidiaCTGPOffset" ) )
   {
-    int ctgp = obj["nvidiaPowerCTRLProfile"].toObject()["cTGPOffset"].toInt();
+    int ctgp = obj["nvidiaCTGPOffset"].toInt();
     std::printf( "  %-24s %d W\n", "cTGP offset:", ctgp );
-  }
-  else if ( obj.contains( "gpuOCProfileData" ) && obj["gpuOCProfileData"].isObject() )
-  {
-    QJsonObject gpuObj = obj["gpuOCProfileData"].toObject();
-    if ( gpuObj.contains( "nvidiaPowerCTRLProfile" ) && gpuObj["nvidiaPowerCTRLProfile"].isObject() )
-    {
-      int ctgp = gpuObj["nvidiaPowerCTRLProfile"].toObject()["cTGPOffset"].toInt();
-      std::printf( "  %-24s %d W\n", "cTGP offset:", ctgp );
-    }
   }
 
   // ODM profile
@@ -723,7 +677,7 @@ static int cmdProfileDelete( ucc::UccdClient &c, const char *id )
 
 static int cmdFanList( ucc::UccdClient &c )
 {
-  LocalAssignments assignments = loadLocalAssignments();
+  LocalAssignments assignments = loadLocalAssignments( c );
 
   auto json = c.getFanProfilesJSON();
   if ( !json )
@@ -754,12 +708,11 @@ static int cmdFanList( ucc::UccdClient &c )
     printJSON( *json );
   }
 
-  // Custom fan profiles from local storage
-  QSettings settings = localSettings();
-  QByteArray customFP = settings.value( "customFanProfiles", "[]" ).toByteArray();
-  if ( !customFP.isEmpty() && customFP != "[]" )
+  // Custom fan profiles from daemon (single source of truth)
+  auto customFPJson = c.getCustomFanProfiles();
+  if ( customFPJson )
   {
-    QJsonDocument cdoc = QJsonDocument::fromJson( customFP );
+    QJsonDocument cdoc = QJsonDocument::fromJson( QByteArray::fromStdString( *customFPJson ) );
     if ( cdoc.isArray() && !cdoc.array().isEmpty() )
     {
       std::puts( "\nCustom fan profiles:" );
@@ -805,14 +758,13 @@ static int cmdFanGet( ucc::UccdClient &c, const char *fanProfileId )
   if ( json && *json == "{}" )
     json = std::nullopt;
 
-  // Fall back to custom fan profiles from local storage (GUI only, not in daemon)
+  // Fall back to custom fan profiles from daemon (GUI-managed)
   if ( !json )
   {
-    QSettings settings = localSettings();
-    QByteArray customFP = settings.value( "customFanProfiles", "[]" ).toByteArray();
-    if ( !customFP.isEmpty() && customFP != "[]" )
+    auto customFPJson = c.getCustomFanProfiles();
+    if ( customFPJson )
     {
-      QJsonDocument cdoc = QJsonDocument::fromJson( customFP );
+      QJsonDocument cdoc = QJsonDocument::fromJson( QByteArray::fromStdString( *customFPJson ) );
       if ( cdoc.isArray() )
       {
         for ( const QJsonValue &v : cdoc.array() )
@@ -893,14 +845,13 @@ static int cmdFanSet( ucc::UccdClient &c, const char *fanProfileId )
   if ( json && *json == "{}" )
     json = std::nullopt;
 
-  // Fall back to custom fan profiles from local storage (GUI only, not in daemon)
+  // Fall back to custom fan profiles from daemon (GUI-managed)
   if ( !json )
   {
-    QSettings settings = localSettings();
-    QByteArray customFP = settings.value( "customFanProfiles", "[]" ).toByteArray();
-    if ( !customFP.isEmpty() && customFP != "[]" )
+    auto customFPJson = c.getCustomFanProfiles();
+    if ( customFPJson )
     {
-      QJsonDocument cdoc = QJsonDocument::fromJson( customFP );
+      QJsonDocument cdoc = QJsonDocument::fromJson( QByteArray::fromStdString( *customFPJson ) );
       if ( cdoc.isArray() )
       {
         for ( const QJsonValue &v : cdoc.array() )
@@ -1113,19 +1064,18 @@ static int cmdKeyboardSet( ucc::UccdClient &c, const char *jsonStr )
   return 0;
 }
 
-/// List custom keyboard profiles from local settings.
-static int cmdKeyboardProfileList()
+/// List custom keyboard profiles from the daemon.
+static int cmdKeyboardProfileList( ucc::UccdClient &c )
 {
-  LocalAssignments assignments = loadLocalAssignments();
+  LocalAssignments assignments = loadLocalAssignments( c );
 
-  QSettings settings = localSettings();
-  QByteArray customKP = settings.value( "customKeyboardProfiles", "[]" ).toByteArray();
-  if ( customKP.isEmpty() || customKP == "[]" )
+  auto customKPJson = c.getCustomKeyboardProfiles();
+  if ( !customKPJson )
   {
     std::puts( "No custom keyboard profiles found." );
     return 0;
   }
-  QJsonDocument doc = QJsonDocument::fromJson( customKP );
+  QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *customKPJson ) );
   if ( !doc.isArray() || doc.array().isEmpty() )
   {
     std::puts( "No custom keyboard profiles found." );
@@ -1148,17 +1098,16 @@ static int cmdKeyboardProfileList()
   return 0;
 }
 
-/// Set a keyboard profile by ID from local settings.
+/// Set a keyboard profile by ID from the daemon.
 static int cmdKeyboardProfileSet( ucc::UccdClient &c, const char *profileId )
 {
-  QSettings settings = localSettings();
-  QByteArray customKP = settings.value( "customKeyboardProfiles", "[]" ).toByteArray();
-  if ( customKP.isEmpty() || customKP == "[]" )
+  auto customKPJson = c.getCustomKeyboardProfiles();
+  if ( !customKPJson )
   {
     std::fputs( "Error: No custom keyboard profiles found\n", stderr );
     return 1;
   }
-  QJsonDocument doc = QJsonDocument::fromJson( customKP );
+  QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *customKPJson ) );
   if ( !doc.isArray() )
   {
     std::fputs( "Error: Invalid keyboard profiles data\n", stderr );
@@ -2000,7 +1949,7 @@ int main( int argc, char *argv[] )
       return cmdKeyboardSet( client, args[2] );
     }
     if ( matchArg( sub, "profiles" ) || matchArg( sub, "profile-list" ) || matchArg( sub, "ls" ) )
-      return cmdKeyboardProfileList();
+      return cmdKeyboardProfileList( client );
     if ( matchArg( sub, "activate" ) || matchArg( sub, "use" ) )
     {
       if ( args.size() < 3 ) { std::fputs( "Usage: ucc-cli keyboard activate <PROFILE_ID>\n", stderr ); return 1; }

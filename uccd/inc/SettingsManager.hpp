@@ -212,7 +212,19 @@ private:
           settings.profiles[key] = value.dump();
         }
       }
-
+      // Parse customKeyboardProfiles object
+      if (j.contains("customKeyboardProfiles")) {
+        auto& kbps = j["customKeyboardProfiles"];
+        for (auto& [key, value] : kbps.items()) {
+          settings.customKeyboardProfiles[key] = value.dump();
+        }
+      }
+      // Parse customFanProfiles object
+      if (j.contains("customFanProfiles")) {
+        for (auto& [key, value] : j["customFanProfiles"].items()) {
+          settings.customFanProfiles[key] = value.dump();
+        }
+      }
       // Parse boolean settings
       if (j.contains("fahrenheit")) settings.fahrenheit = j["fahrenheit"];
       if (j.contains("cpuSettingsEnabled")) settings.cpuSettingsEnabled = j["cpuSettingsEnabled"];
@@ -273,6 +285,27 @@ private:
       profileCount++;
     }
     json << "\n  },\n";
+
+    json << "  \"customKeyboardProfiles\": {\n";
+    size_t kbpCount = 0;
+    for ( const auto &[kbpId, kbpJson] : settings.customKeyboardProfiles )
+    {
+      if ( kbpCount > 0 ) json << ",\n";
+      json << "    \"" << kbpId << "\": " << kbpJson;
+      kbpCount++;
+    }
+    json << "\n  },\n";
+
+    json << "  \"customFanProfiles\": {\n";
+    size_t fanpCount = 0;
+    for ( const auto &[id, val] : settings.customFanProfiles )
+    {
+      if ( fanpCount > 0 ) json << ",\n";
+      json << "    \"" << id << "\": " << val;
+      fanpCount++;
+    }
+    json << "\n  },\n";
+
     json << "  \"shutdownTime\": " << ( settings.shutdownTime.has_value() ? "\"" + settings.shutdownTime.value() + "\"" : "null" ) << ",\n";
     json << "  \"cpuSettingsEnabled\": " << ( settings.cpuSettingsEnabled ? "true" : "false" ) << ",\n";
     json << "  \"fanControlEnabled\": " << ( settings.fanControlEnabled ? "true" : "false" ) << ",\n";

@@ -294,34 +294,11 @@ public:
       profile.keyboard.keyboardProfileId = topLevelKeyboardProfile;
     }
 
-    // Parse GPU profile reference and embedded GPU OC data
-    profile.gpuProfileId = extractString( json, "gpuProfileId", "" );
-    profile.gpuOCProfileData = extractObject( json, "gpuOCProfileData" );
-    if ( const std::string nvidiaPowerCtrlJson = extractObject( json, "nvidiaPowerCTRLProfile" );
-         !nvidiaPowerCtrlJson.empty() )
+    // Parse cTGP offset (inlined directly in profile)
     {
-      const int32_t ctgpOffset = extractInt( nvidiaPowerCtrlJson, "cTGPOffset", INT32_MIN );
+      const int32_t ctgpOffset = extractInt( json, "nvidiaCTGPOffset", INT32_MIN );
       if ( ctgpOffset != INT32_MIN )
-      {
         profile.nvidiaCTGPOffset = ctgpOffset;
-      }
-    }
-
-    // Backward compatibility: older saved profiles may still carry cTGP only
-    // inside the embedded GPU OC payload.
-    if ( !profile.nvidiaCTGPOffset.has_value()
-         && !profile.gpuOCProfileData.empty()
-         && profile.gpuOCProfileData != "{}" )
-    {
-      const std::string legacyNvidiaPowerCtrlJson = extractObject( profile.gpuOCProfileData, "nvidiaPowerCTRLProfile" );
-      if ( !legacyNvidiaPowerCtrlJson.empty() )
-      {
-        const int32_t legacyCtgpOffset = extractInt( legacyNvidiaPowerCtrlJson, "cTGPOffset", INT32_MIN );
-        if ( legacyCtgpOffset != INT32_MIN )
-        {
-          profile.nvidiaCTGPOffset = legacyCtgpOffset;
-        }
-      }
     }
 
     // Parse charging profile (firmware-level charging mode stored per-profile)
@@ -692,20 +669,10 @@ public:
 
     oss << "]}";
 
-    // GPU OC profile reference and embedded data
-    if ( !profile.gpuProfileId.empty() )
-    {
-      oss << ",\"gpuProfileId\":\"" << jsonEscape( profile.gpuProfileId ) << "\"";
-    }
+    // cTGP offset (inlined directly in profile)
     if ( profile.nvidiaCTGPOffset.has_value() )
     {
-      oss << ",\"nvidiaPowerCTRLProfile\":{"
-          << "\"cTGPOffset\":" << *profile.nvidiaCTGPOffset
-          << "}";
-    }
-    if ( !profile.gpuOCProfileData.empty() && profile.gpuOCProfileData != "{}" )
-    {
-      oss << ",\"gpuOCProfileData\":" << profile.gpuOCProfileData;
+      oss << ",\"nvidiaCTGPOffset\":" << *profile.nvidiaCTGPOffset;
     }
 
     // Keyboard section

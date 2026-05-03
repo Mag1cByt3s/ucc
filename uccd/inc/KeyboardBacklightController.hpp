@@ -459,6 +459,8 @@ private:
     if ( states.empty() || m_ledPaths.empty() )
       return;
 
+    std::cout << "[KeyboardBacklight] applyStates length: " << states.size() << " | r=" << states[0].red << " g=" << states[0].green << " b=" << states[0].blue << " bright=" << states[0].brightness << std::endl;
+    std::cout << "[KeyboardBacklight] applyStates length: " << states.size() << " | r=" << states[0].red << " g=" << states[0].green << " b=" << states[0].blue << " bright=" << states[0].brightness << std::endl;
     setBrightness( states[0].brightness );
 
     if ( m_capabilities.maxRed > 0 )
@@ -497,7 +499,7 @@ private:
                        std::to_string( green ) + " " +
                        std::to_string( blue );
 
-    std::ofstream file( multiIntensityPath, std::ios::app );
+    std::ofstream file( multiIntensityPath, std::ios::out );
     if ( file.is_open() )
     {
       file << value;
@@ -516,7 +518,7 @@ private:
     if ( !fs::exists( bufferPath, ec ) )
       return;
 
-    std::ofstream file( bufferPath, std::ios::app );
+    std::ofstream file( bufferPath, std::ios::out );
     if ( file.is_open() )
     {
       file << ( bufferOn ? "1" : "0" );

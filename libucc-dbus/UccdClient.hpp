@@ -68,8 +68,6 @@ public:
   bool deleteCustomProfile( const std::string &profileId );
   std::optional< std::string > getFanProfile( const std::string &fanProfileId );
   std::optional< std::string > getFanProfilesJSON();
-  std::optional< std::string > getGpuProfile( const std::string &gpuProfileId );
-  std::optional< std::string > getGpuProfilesJSON();
   std::optional< bool > setFanProfile( const std::string &fanProfileId, const std::string &json );
 
   // Display Control
@@ -133,20 +131,6 @@ public:
   std::optional< std::string > getPrimeProfile();
   std::optional< std::string > getGpuInfo();
 
-  // NVIDIA GPU OC Control
-  std::optional< bool > getNvidiaOCAvailable();
-  std::optional< std::string > getNvidiaOCState( int deviceIndex = 0 );
-  bool setNvidiaClockOffset( int deviceIndex, int clockType, int pstate, int offsetMHz );
-  bool setNvidiaGpuLockedClocks( int deviceIndex, int minMHz, int maxMHz );
-  bool setNvidiaVramLockedClocks( int deviceIndex, int minMHz, int maxMHz );
-  bool resetNvidiaGpuLockedClocks( int deviceIndex );
-  bool resetNvidiaVramLockedClocks( int deviceIndex );
-  bool resetNvidiaAllClockOffsets( int deviceIndex );
-  bool setNvidiaGpuPowerLimit( int deviceIndex, double watts );
-  bool resetNvidiaGpuPowerLimit( int deviceIndex );
-  bool applyNvidiaGpuOCProfile( const std::string &profileJSON, int deviceIndex = 0 );
-  bool resetNvidiaGpuOCAll( int deviceIndex = 0 );
-
   // Device Capability Queries
   std::optional< bool > getWaterCoolerSupported();
   std::optional< bool > getCTGPAdjustmentSupported();
@@ -155,6 +139,17 @@ public:
   bool setKeyboardBacklight( const std::string &config );
   std::optional< std::string > getKeyboardBacklightInfo();
   std::optional< std::string > getKeyboardBacklightStates();
+  
+  // Custom Keyboard Profiles
+  std::optional< std::string > getCustomKeyboardProfiles();
+  bool saveCustomKeyboardProfile( const std::string &id, const std::string &name, const std::string &json );
+  bool deleteCustomKeyboardProfile( const std::string &id );
+
+  // Custom Fan Profiles
+  std::optional< std::string > getCustomFanProfiles();
+  bool saveCustomFanProfile( const std::string &id, const std::string &name, const std::string &json );
+  bool deleteCustomFanProfile( const std::string &id );
+
   bool setFnLock( bool enabled );
   std::optional< bool > getFnLock();
 
@@ -224,16 +219,14 @@ public:
 signals:
   void profileChanged( const QString &profileId,
                        const QString &keyboardProfileId,
-                       const QString &fanProfileId,
-                       const QString &gpuProfileId );
+                       const QString &fanProfileId );
   void powerStateChanged( const QString &state );
   void connectionStatusChanged( bool connected );
 
 private slots:
   void onProfileChangedSignal( const QString &profileId,
                                const QString &keyboardProfileId,
-                               const QString &fanProfileId,
-                               const QString &gpuProfileId );
+                               const QString &fanProfileId );
   void onPowerStateChangedSignal( const QString &state );
   void onServiceRegistered( const QString &service );
   void onServiceUnregistered( const QString &service );

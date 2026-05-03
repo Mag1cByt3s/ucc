@@ -39,12 +39,6 @@
 #include <QCoreApplication>
 #include <QEventLoop>
 
-namespace
-{
-constexpr const char *BUILTIN_GPU_PROFILE_ID = "gpu-default-builtin";
-constexpr const char *BUILTIN_GPU_PROFILE_NAME = "Default [Built-in]";
-}
-
 static std::string jsonEscape( const std::string &value );
 
 // helper function to convert GPU info to JSON
@@ -211,33 +205,14 @@ static std::string profileToJSON( const UccProfile &profile,
 
   oss << "]}";
 
-  // GPU OC profile reference and embedded data
-  if ( !profile.gpuProfileId.empty() )
-  {
-    oss << ",\"gpuProfileId\":\"" << jsonEscape( profile.gpuProfileId ) << "\"";
-  }
+  // cTGP offset (inlined directly in the profile)
   if ( profile.nvidiaCTGPOffset.has_value() )
   {
-    oss << ",\"nvidiaPowerCTRLProfile\":{"
-        << "\"cTGPOffset\":" << *profile.nvidiaCTGPOffset
-        << "}";
-  }
-  if ( !profile.gpuOCProfileData.empty() && profile.gpuOCProfileData != "{}" )
-  {
-    oss << ",\"gpuOCProfileData\":" << profile.gpuOCProfileData;
+    oss << ",\"nvidiaCTGPOffset\":" << *profile.nvidiaCTGPOffset;
   }
 
-  // Keyboard section
-  if ( !profile.keyboard.keyboardProfileData.empty() && profile.keyboard.keyboardProfileData != "{}" )
-  {
-    oss << ",\"keyboard\":" << profile.keyboard.keyboardProfileData;
-  }
-  else
-  {
-    oss << ",\"keyboard\":{}";
-  }
-
-  // Prefer UUID over display name — tray/GUI use the ID for combo-box indexing
+  // Keyboard section — only store the reference, not the full state data
+  // Full per-key states live in customKeyboardProfiles in /etc/ucc/settings.
   {
     const std::string &kbRef = !profile.keyboard.keyboardProfileId.empty()
                               ? profile.keyboard.keyboardProfileId
@@ -1172,41 +1147,6 @@ QString UccDBusInterfaceAdaptor::GetFanProfileNames()
   return QString::fromStdString( json );
 }
 
-QString UccDBusInterfaceAdaptor::GetGpuProfile( const QString &id )
-{
-  if ( !m_service )
-    return QStringLiteral( "{}" );
-
-  const std::string requestedId = id.toStdString();
-  auto it = std::find_if( m_service->m_builtinGpuProfiles.begin(),
-                          m_service->m_builtinGpuProfiles.end(),
-                          [&requestedId]( const UccDBusService::BuiltinGpuProfile &profile ) {
-                            return profile.id == requestedId;
-                          } );
-
-  if ( it == m_service->m_builtinGpuProfiles.end() )
-    return QStringLiteral( "{}" );
-
-  return QString::fromStdString( it->json );
-}
-
-QString UccDBusInterfaceAdaptor::GetGpuProfileNames()
-{
-  if ( !m_service )
-    return QStringLiteral( "[]" );
-
-  QJsonArray arr;
-  for ( const auto &profile : m_service->m_builtinGpuProfiles )
-  {
-    QJsonObject obj;
-    obj[ "id" ] = QString::fromStdString( profile.id );
-    obj[ "name" ] = QString::fromStdString( profile.name );
-    arr.append( obj );
-  }
-
-  return QString::fromUtf8( QJsonDocument( arr ).toJson( QJsonDocument::Compact ) );
-}
-
 bool UccDBusInterfaceAdaptor::SetFanProfile( const QString &name, const QString &json )
 {
   if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
@@ -1430,31 +1370,175 @@ bool UccDBusInterfaceAdaptor::SetKeyboardBacklightStatesJSON( const QString &key
   };
   std::string keyboardProfileId = extractStr( inputJSON, "keyboardProfileId" );
 
-  // Apply the states array to hardware (extracts "states" from the object)
-  if ( !m_service->m_keyboardBacklightController.applyProfileKeyboardStates( inputJSON ) )
+  // GUI live edits send a raw states array, while profile selection sends
+  // {"keyboardProfileId": ..., "states": [...]}. Accept both formats.
+  const bool wrappedStates = inputJSON.find( "\"states\":" ) != std::string::npos;
+  const bool applied = wrappedStates
+    ? m_service->m_keyboardBacklightController.applyProfileKeyboardStates( inputJSON )
+    : m_service->m_keyboardBacklightController.applyStatesFromJSON( inputJSON );
+
+  if ( !applied )
+  {
+    std::cerr << "[KeyboardBacklight] Failed to apply keyboard states from D-Bus payload" << std::endl;
     return false;
+  }
+
+  const std::string currentStatesJSON =
+    m_service->m_keyboardBacklightController.currentStatesJSON();
+
+  auto extractFirstBrightness = []( const std::string &statesJSON ) -> int {
+    std::string search = "\"brightness\":";
+    size_t pos = statesJSON.find( search );
+    if ( pos == std::string::npos ) return -1;
+
+    pos += search.length();
+    size_t end = statesJSON.find_first_of( ",}", pos );
+    if ( end == std::string::npos ) return -1;
+
+    try
+    {
+      return std::stoi( statesJSON.substr( pos, end - pos ) );
+    }
+    catch ( ... )
+    {
+      return -1;
+    }
+  };
+
+  std::ostringstream keyboardProfileData;
+  keyboardProfileData << "{";
+  if ( const int brightness = extractFirstBrightness( currentStatesJSON ); brightness >= 0 )
+    keyboardProfileData << "\"brightness\":" << brightness << ",";
+  keyboardProfileData << "\"states\":" << currentStatesJSON << "}";
+  m_service->m_activeProfile.keyboard.keyboardProfileData = keyboardProfileData.str();
 
   // Update the D-Bus readable state with the states *array* so
   // GetKeyboardBacklightStatesJSON returns a clean array.
   {
     std::lock_guard< std::mutex > lock( m_data.dataMutex );
-    m_data.keyboardBacklightStatesJSON =
-      m_service->m_keyboardBacklightController.currentStatesJSON();
+    m_data.keyboardBacklightStatesJSON = currentStatesJSON;
   }
 
+  m_service->updateDBusActiveProfileData();
+
   // If the caller provided a keyboard profile ID, update the active profile
-  // reference and notify all clients so they stay in sync.
+  // reference.
   if ( !keyboardProfileId.empty() )
   {
     m_service->m_activeProfile.keyboard.keyboardProfileId = keyboardProfileId;
-    m_service->updateDBusActiveProfileData();
-    if ( m_service->m_adaptor )
-      emitProfileChanged( m_service->m_activeProfile.id,
-                          keyboardProfileId,
-                          m_service->m_activeProfile.fan.fanProfile );
+  }
+
+  // Keep the assigned custom profile in sync silently so startup replays the current color
+  // without requiring an explicit SaveCustomProfile (and its Polkit password dialog).
+  if ( auto it = std::ranges::find_if( m_service->m_customProfiles,
+                         [ & ]( const UccProfile &p ) { return p.id == m_service->m_activeProfile.id; } );
+       it != m_service->m_customProfiles.end() )
+  {
+    it->keyboard = m_service->m_activeProfile.keyboard;
+    m_service->m_settings.profiles[ it->id ] = ProfileManager::profileToJSON( *it );
+    (void)m_service->m_settingsManager.writeSettings( m_service->m_settings );
+  }
+
+  m_service->updateDBusActiveProfileData();
+  if ( m_service->m_adaptor )
+  {
+    emitProfileChanged( m_service->m_activeProfile.id,
+                        m_service->m_activeProfile.keyboard.keyboardProfileId,
+                        m_service->m_activeProfile.fan.fanProfile );
   }
 
   return true;
+}
+
+QString UccDBusInterfaceAdaptor::GetCustomKeyboardProfilesJSON()
+{
+  std::ostringstream json;
+  json << "[";
+  size_t count = 0;
+  for ( const auto &[id, prof] : m_service->m_settings.customKeyboardProfiles )
+  {
+    if ( count++ > 0 ) json << ",";
+    // prof already contains {"id":"...","name":"...","json":{...}} — return as-is
+    json << prof;
+  }
+  json << "]";
+  return QString::fromStdString( json.str() );
+}
+
+bool UccDBusInterfaceAdaptor::SaveCustomKeyboardProfile( const QString &id, const QString &name, const QString &json )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
+  if ( id.isEmpty() || json.isEmpty() ) return false;
+
+  const std::string idStr = id.toStdString();
+  const std::string nameStr = name.toStdString();
+  const std::string jsonStr = json.toStdString();
+
+  // Create a JSON object representing the profile (similar to what uccrc expects)
+  std::ostringstream combined;
+  combined << "{\"id\":\"" << idStr << "\",\"name\":\"" << nameStr << "\",\"json\":" << jsonStr << "}";
+
+  m_service->m_settings.customKeyboardProfiles[idStr] = combined.str();
+  // FIXME: Should probably update dbus data here, though the GUI reads manually.
+  return m_service->m_settingsManager.writeSettings( m_service->m_settings );
+}
+
+bool UccDBusInterfaceAdaptor::DeleteCustomKeyboardProfile( const QString &id )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
+  if ( id.isEmpty() ) return false;
+
+  const std::string idStr = id.toStdString();
+
+  auto it = m_service->m_settings.customKeyboardProfiles.find( idStr );
+  if ( it != m_service->m_settings.customKeyboardProfiles.end() )
+  {
+    m_service->m_settings.customKeyboardProfiles.erase( it );
+    return m_service->m_settingsManager.writeSettings( m_service->m_settings );
+  }
+  return false;
+}
+
+QString UccDBusInterfaceAdaptor::GetCustomFanProfilesJSON()
+{
+  std::ostringstream json;
+  json << "[";
+  size_t count = 0;
+  for ( const auto &[id, prof] : m_service->m_settings.customFanProfiles )
+  {
+    if ( count++ > 0 ) json << ",";
+    json << prof;
+  }
+  json << "]";
+  return QString::fromStdString( json.str() );
+}
+
+bool UccDBusInterfaceAdaptor::SaveCustomFanProfile( const QString &id, const QString &name, const QString &json )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
+  if ( id.isEmpty() || json.isEmpty() ) return false;
+
+  const std::string idStr = id.toStdString();
+  std::ostringstream combined;
+  combined << "{\"id\":\"" << idStr << "\",\"name\":\"" << name.toStdString() << "\",\"json\":" << json.toStdString() << "}";
+
+  m_service->m_settings.customFanProfiles[idStr] = combined.str();
+  return m_service->m_settingsManager.writeSettings( m_service->m_settings );
+}
+
+bool UccDBusInterfaceAdaptor::DeleteCustomFanProfile( const QString &id )
+{
+  if ( !checkAuth( PolkitAuthority::ACTION_MANAGE_HARDWARE ) ) return false;
+  if ( id.isEmpty() ) return false;
+
+  const std::string idStr = id.toStdString();
+  auto it = m_service->m_settings.customFanProfiles.find( idStr );
+  if ( it != m_service->m_settings.customFanProfiles.end() )
+  {
+    m_service->m_settings.customFanProfiles.erase( it );
+    return m_service->m_settingsManager.writeSettings( m_service->m_settings );
+  }
+  return false;
 }
 
 
@@ -1870,156 +1954,6 @@ int UccDBusInterfaceAdaptor::GetCpuFrequencyMHz()
   return m_data.cpuFrequencyMHz.load();
 }
 
-// ---------------------------------------------------------------------------
-// NVIDIA GPU OC methods
-// ---------------------------------------------------------------------------
-
-bool UccDBusInterfaceAdaptor::GetNvidiaOCAvailable()
-{
-  return m_service && m_service->m_nvidiaOCWorker && m_service->m_nvidiaOCWorker->isAvailable();
-}
-
-QString UccDBusInterfaceAdaptor::GetNvidiaOCState( int deviceIndex )
-{
-  if ( !m_service || !m_service->m_nvidiaOCWorker )
-    return QStringLiteral( "{}" );
-  return QString::fromStdString(
-      m_service->m_nvidiaOCWorker->getOCStateJSON( static_cast< unsigned int >( deviceIndex ) ) );
-}
-
-bool UccDBusInterfaceAdaptor::SetNvidiaClockOffset( int deviceIndex, int clockType, int pstate, int offsetMHz )
-{
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
-  return m_service->m_nvidiaOCWorker->setClockOffset(
-      static_cast< unsigned int >( deviceIndex ),
-      static_cast< unsigned int >( clockType ),
-      static_cast< unsigned int >( pstate ),
-      offsetMHz );
-}
-
-bool UccDBusInterfaceAdaptor::SetNvidiaGpuLockedClocks( int deviceIndex, int minMHz, int maxMHz )
-{
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
-  return m_service->m_nvidiaOCWorker->setGpuLockedClocks(
-      static_cast< unsigned int >( deviceIndex ),
-      static_cast< unsigned int >( minMHz ),
-      static_cast< unsigned int >( maxMHz ) );
-}
-
-bool UccDBusInterfaceAdaptor::SetNvidiaVramLockedClocks( int deviceIndex, int minMHz, int maxMHz )
-{
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
-  return m_service->m_nvidiaOCWorker->setVramLockedClocks(
-      static_cast< unsigned int >( deviceIndex ),
-      static_cast< unsigned int >( minMHz ),
-      static_cast< unsigned int >( maxMHz ) );
-}
-
-bool UccDBusInterfaceAdaptor::ResetNvidiaGpuLockedClocks( int deviceIndex )
-{
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
-  return m_service->m_nvidiaOCWorker->resetGpuLockedClocks( static_cast< unsigned int >( deviceIndex ) );
-}
-
-bool UccDBusInterfaceAdaptor::ResetNvidiaVramLockedClocks( int deviceIndex )
-{
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
-  return m_service->m_nvidiaOCWorker->resetVramLockedClocks( static_cast< unsigned int >( deviceIndex ) );
-}
-
-bool UccDBusInterfaceAdaptor::ResetNvidiaAllClockOffsets( int deviceIndex )
-{
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
-  return m_service->m_nvidiaOCWorker->resetAllClockOffsets( static_cast< unsigned int >( deviceIndex ) );
-}
-
-bool UccDBusInterfaceAdaptor::SetNvidiaGpuPowerLimit( int deviceIndex, double watts )
-{
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
-  return m_service->m_nvidiaOCWorker->setPowerLimit( static_cast< unsigned int >( deviceIndex ), watts );
-}
-
-bool UccDBusInterfaceAdaptor::ResetNvidiaGpuPowerLimit( int deviceIndex )
-{
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
-  return m_service->m_nvidiaOCWorker->resetPowerLimit( static_cast< unsigned int >( deviceIndex ) );
-}
-
-bool UccDBusInterfaceAdaptor::ApplyNvidiaGpuOCProfile( const QString &profileJSON, int deviceIndex )
-{
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
-
-  const std::string profileJsonStd = profileJSON.toStdString();
-  const bool result = m_service->m_nvidiaOCWorker->applyGpuOCProfile(
-      profileJsonStd, static_cast< unsigned int >( deviceIndex ) );
-
-  if ( !result )
-    return false;
-
-  // Apply cTGP offset from GPU profile payload (GPU-profile path only)
-  if ( m_service->m_profileSettingsWorker && m_service->m_dbusData.nvidiaPowerCTRLAvailable.load() )
-  {
-    QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( profileJsonStd ) );
-    if ( doc.isObject() )
-    {
-      QJsonObject obj = doc.object();
-      m_service->m_activeProfile.nvidiaCTGPOffset.reset();
-      if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj[ "nvidiaPowerCTRLProfile" ].isObject() )
-      {
-        QJsonObject nvidiaObj = obj[ "nvidiaPowerCTRLProfile" ].toObject();
-        int ctgpOffset = nvidiaObj.value( "cTGPOffset" ).toInt( 0 );
-        m_service->m_profileSettingsWorker->applyNVIDIAPowerOffset( ctgpOffset );
-        m_service->m_activeProfile.nvidiaCTGPOffset = ctgpOffset;
-      }
-
-      // Update active profile's embedded GPU OC data for readback
-      m_service->m_activeProfile.gpuOCProfileData = profileJsonStd;
-      m_service->updateDBusActiveProfileData();
-    }
-  }
-
-  auto extractStr = []( const std::string &json, const std::string &key ) -> std::string {
-    std::string search = "\"" + key + "\":\"";
-    size_t pos = json.find( search );
-    if ( pos == std::string::npos ) return {};
-    pos += search.length();
-    size_t end = json.find( '"', pos );
-    if ( end == std::string::npos ) return {};
-    return json.substr( pos, end - pos );
-  };
-
-  const std::string gpuProfileId = extractStr( profileJsonStd, "gpuProfileId" );
-  if ( !gpuProfileId.empty() )
-  {
-    m_service->m_activeProfile.gpuProfileId = gpuProfileId;
-    m_service->updateDBusActiveProfileData();
-
-    if ( m_service->m_adaptor )
-      emitProfileChanged( m_service->m_activeProfile.id,
-                          m_service->m_activeProfile.keyboard.keyboardProfileId,
-                          m_service->m_activeProfile.fan.fanProfile,
-                          gpuProfileId );
-  }
-
-  return true;
-}
-
-bool UccDBusInterfaceAdaptor::ResetNvidiaGpuOCAll( int deviceIndex )
-{
-  if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  if ( !m_service || !m_service->m_nvidiaOCWorker ) return false;
-  return m_service->m_nvidiaOCWorker->resetAll( static_cast< unsigned int >( deviceIndex ) );
-}
-
 // signal emitters
 // These may be called from the DaemonWorker thread, but the adaptor lives in
 // the main thread.  Use QMetaObject::invokeMethod with a queued connection so
@@ -2034,20 +1968,14 @@ void UccDBusInterfaceAdaptor::emitModeReapplyPendingChanged( bool pending )
 
 void UccDBusInterfaceAdaptor::emitProfileChanged( const std::string &profileId,
                                                   const std::string &keyboardProfileId,
-                                                  const std::string &fanProfileId,
-                                                  const std::string &gpuProfileId )
+                                                  const std::string &fanProfileId )
 {
   QString id = QString::fromStdString( profileId );
   QString kbId = QString::fromStdString( keyboardProfileId );
   QString fpId = QString::fromStdString( fanProfileId );
 
-  std::string effectiveGpu = gpuProfileId;
-  if ( effectiveGpu.empty() && m_service )
-    effectiveGpu = m_service->m_activeProfile.gpuProfileId;
-  QString gpId = QString::fromStdString( effectiveGpu );
-
-  QMetaObject::invokeMethod( this, [this, id, kbId, fpId, gpId]() {
-    emit ProfileChanged( id, kbId, fpId, gpId );
+  QMetaObject::invokeMethod( this, [this, id, kbId, fpId]() {
+    emit ProfileChanged( id, kbId, fpId );
   }, Qt::QueuedConnection );
 }
 
@@ -2139,7 +2067,7 @@ UccDBusService::UccDBusService()
   // hardware values so the D-Bus data is never populated with fake defaults.
   //
   // Create the single shared NvmlWrapper instance first — it is reused by
-  // readHardwareCapabilities(), HardwareMonitorWorker, NvidiaOCWorker, and
+  // readHardwareCapabilities(), HardwareMonitorWorker, and
   // ProfileSettingsWorker so that NVML is initialised exactly once.
   m_nvml = std::make_shared< NvmlWrapper >();
   readHardwareCapabilities();
@@ -2430,14 +2358,6 @@ UccDBusService::UccDBusService()
   m_displayWorker->start();
   m_cpuWorker->start();
   m_fanControlWorker->start();
-
-  // Initialize NVIDIA OC worker (non-threaded, on-demand calls via D-Bus)
-  m_nvidiaOCWorker = std::make_unique< NvidiaOCWorker >(
-    m_nvml,
-    []( const std::string &msg ) { syslog( LOG_INFO, "%s", msg.c_str() ); }
-  );
-
-  rebuildBuiltinGpuProfiles();
 }
 
 int UccDBusService::readCurrentCTGPOffset() const
@@ -2458,65 +2378,6 @@ int UccDBusService::readCurrentCTGPOffset() const
   {
     return 0;
   }
-}
-
-void UccDBusService::rebuildBuiltinGpuProfiles()
-{
-  m_builtinGpuProfiles.clear();
-
-  if ( !m_nvidiaOCWorker || !m_nvidiaOCWorker->isAvailable() )
-    return;
-
-  const std::string ocStateJson = m_nvidiaOCWorker->getOCStateJSON( 0 );
-  QJsonDocument stateDoc = QJsonDocument::fromJson( QByteArray::fromStdString( ocStateJson ) );
-  if ( !stateDoc.isObject() )
-    return;
-
-  const QJsonObject state = stateDoc.object();
-  QJsonObject profile;
-
-  QJsonArray offsets;
-  const QJsonArray pstates = state.value( "pstates" ).toArray();
-  for ( const QJsonValue &entry : pstates )
-  {
-    const QJsonObject pstate = entry.toObject();
-    QJsonObject offset;
-    offset[ "pstate" ] = pstate.value( "pstate" ).toInt();
-    offset[ "gpuOffsetMHz" ] = pstate.value( "gpu" ).toObject().value( "currentOffset" ).toInt( 0 );
-    offset[ "vramOffsetMHz" ] = pstate.value( "vram" ).toObject().value( "currentOffset" ).toInt( 0 );
-    offsets.append( offset );
-  }
-  profile[ "offsets" ] = offsets;
-
-  QJsonObject gpuLocked;
-  const QJsonObject gpuLockedState = state.value( "gpuLockedClocks" ).toObject();
-  const QJsonObject gpuRange = state.value( "gpuClockRange" ).toObject();
-  const bool gpuLockedEnabled = !gpuLockedState.isEmpty();
-  gpuLocked[ "enabled" ] = gpuLockedEnabled;
-  gpuLocked[ "min" ] = gpuLockedEnabled ? gpuLockedState.value( "min" ).toInt() : gpuRange.value( "min" ).toInt( 0 );
-  gpuLocked[ "max" ] = gpuLockedEnabled ? gpuLockedState.value( "max" ).toInt() : gpuRange.value( "max" ).toInt( 0 );
-  profile[ "gpuLockedClocks" ] = gpuLocked;
-
-  QJsonObject vramLocked;
-  const QJsonObject vramLockedState = state.value( "vramLockedClocks" ).toObject();
-  const QJsonObject vramRange = state.value( "vramClockRange" ).toObject();
-  const bool vramLockedEnabled = !vramLockedState.isEmpty();
-  vramLocked[ "enabled" ] = vramLockedEnabled;
-  vramLocked[ "min" ] = vramLockedEnabled ? vramLockedState.value( "min" ).toInt() : vramRange.value( "min" ).toInt( 0 );
-  vramLocked[ "max" ] = vramLockedEnabled ? vramLockedState.value( "max" ).toInt() : vramRange.value( "max" ).toInt( 0 );
-  profile[ "vramLockedClocks" ] = vramLocked;
-
-  profile[ "powerLimitW" ] = state.value( "powerLimitW" ).toDouble( 0.0 );
-
-  QJsonObject nvidiaPowerCtrl;
-  nvidiaPowerCtrl[ "cTGPOffset" ] = readCurrentCTGPOffset();
-  profile[ "nvidiaPowerCTRLProfile" ] = nvidiaPowerCtrl;
-
-  BuiltinGpuProfile builtin;
-  builtin.id = BUILTIN_GPU_PROFILE_ID;
-  builtin.name = BUILTIN_GPU_PROFILE_NAME;
-  builtin.json = QJsonDocument( profile ).toJson( QJsonDocument::Compact ).toStdString();
-  m_builtinGpuProfiles.push_back( builtin );
 }
 
 void UccDBusService::readHardwareCapabilities()
@@ -3312,7 +3173,7 @@ void UccDBusService::initializeProfiles()
   std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
   m_dbusData.profilesJSON = defaultProfilesJSON.str();  // Only default profiles now
   m_dbusData.defaultProfilesJSON = defaultProfilesJSON.str();
-  m_dbusData.customProfilesJSON = "[]";  // Empty array since custom profiles are local
+  m_dbusData.customProfilesJSON = customProfilesJSON.str();
   m_dbusData.defaultValuesProfileJSON = profileToJSON( baseCustomProfile,
                                                        defaultOnlineCores,
                                                        defaultScalingMin,
@@ -3528,15 +3389,30 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
 
     if ( m_keyboardBacklightController.isAvailable()
          && m_settings.keyboardBacklightControlEnabled
-         && !profile.keyboard.keyboardProfileData.empty()
-         && profile.keyboard.keyboardProfileData != "{}" )
+         && !profile.keyboard.keyboardProfileId.empty() )
     {
-      std::cout << "[Profile] Applying keyboard backlight settings from profile" << std::endl;
-      m_keyboardBacklightController.applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
+      const auto kbIt = m_settings.customKeyboardProfiles.find( profile.keyboard.keyboardProfileId );
+      if ( kbIt != m_settings.customKeyboardProfiles.end() )
+      {
+        const QJsonObject stored = QJsonDocument::fromJson( QByteArray::fromStdString( kbIt->second ) ).object();
+        const std::string kbStateJSON = QJsonDocument( stored.value( "json" ).toObject() )
+                                          .toJson( QJsonDocument::Compact )
+                                          .toStdString();
+        std::cout << "[Profile] Applying keyboard backlight settings from profile" << std::endl;
+        if ( m_keyboardBacklightController.applyProfileKeyboardStates( kbStateJSON ) )
+        {
+          std::lock_guard< std::mutex > lk( m_dbusData.dataMutex );
+          m_dbusData.keyboardBacklightStatesJSON = m_keyboardBacklightController.currentStatesJSON();
+        }
+        else
+        {
+          std::cerr << "[Profile] Failed to apply keyboard backlight settings from profile" << std::endl;
+        }
+      }
     }
 
-    // Apply GPU OC and cTGP from the profile
-    applyGpuOCFromProfile( profile );
+    // Apply cTGP offset from the profile
+    applyCTGPFromProfile( profile );
 
     // Emit ProfileChanged signal for DBus clients
     if ( m_adaptor )
@@ -3620,6 +3496,9 @@ bool UccDBusService::addCustomProfile( const UccProfile &profile )
 
   // Update DBus data
   updateDBusActiveProfileData();
+  // Re-serialize the custom profiles JSON exposed over D-Bus so clients
+  // (ucc-gui, ucc-cli) immediately see the new profile.
+  serializeProfilesJSON();
 
   std::cout << "[ProfileManager] Profile added successfully" << std::endl;
   return true;
@@ -3638,6 +3517,8 @@ bool UccDBusService::deleteCustomProfile( const std::string &profileId )
 
     // Update DBus data
     updateDBusActiveProfileData();
+    // Refresh exposed custom profiles JSON.
+    serializeProfilesJSON();
 
     std::cout << "[ProfileManager] Profile deleted successfully" << std::endl;
     return true;
@@ -3682,6 +3563,8 @@ bool UccDBusService::updateCustomProfile( const UccProfile &profile )
 
     // Update DBus data
     updateDBusActiveProfileData();
+    // Refresh exposed custom profiles JSON.
+    serializeProfilesJSON();
 
     // Update active profile if it was the one modified
     if ( m_activeProfile.id == profile.id )
@@ -3922,6 +3805,37 @@ void UccDBusService::computeDeviceCapabilities()
           m_dbusData.cTGPAdjustmentSupported.load() ? "supported" : "hidden" );
 }
 
+void UccDBusService::seedDefaultKeyboardProfileIfEmpty()
+{
+  if ( !m_settings.customKeyboardProfiles.empty() )
+    return;
+
+  // Built-in template — a 126-key per-key colour layout the user can use
+  // as a starting point.  Persisted as an ordinary custom keyboard profile
+  // so the user can rename, copy, modify or delete it freely.
+  static constexpr const char *kDefaultKeyboardJSON = R"JSON({"brightness":36,"states":[{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":82,"brightness":36,"green":79,"mode":0,"red":255},{"blue":82,"brightness":36,"green":79,"mode":0,"red":255},{"blue":82,"brightness":36,"green":79,"mode":0,"red":255},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":82,"brightness":36,"green":79,"mode":0,"red":255},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":255,"brightness":36,"green":96,"mode":0,"red":181},{"blue":255,"brightness":36,"green":96,"mode":0,"red":181},{"blue":255,"brightness":36,"green":96,"mode":0,"red":181},{"blue":255,"brightness":36,"green":96,"mode":0,"red":181},{"blue":255,"brightness":36,"green":96,"mode":0,"red":181},{"blue":255,"brightness":36,"green":96,"mode":0,"red":181},{"blue":255,"brightness":36,"green":96,"mode":0,"red":181},{"blue":255,"brightness":36,"green":96,"mode":0,"red":181},{"blue":255,"brightness":36,"green":96,"mode":0,"red":181},{"blue":255,"brightness":36,"green":96,"mode":0,"red":181},{"blue":255,"brightness":36,"green":96,"mode":0,"red":181},{"blue":255,"brightness":36,"green":96,"mode":0,"red":181},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":205,"brightness":36,"green":77,"mode":0,"red":55},{"blue":56,"brightness":36,"green":255,"mode":0,"red":179}]})JSON";
+
+  const std::string id   = generateProfileId();
+  const std::string name = "Keyboard";
+
+  std::ostringstream entry;
+  entry << "{\"id\":\"" << id
+        << "\",\"name\":\"" << name
+        << "\",\"json\":" << kDefaultKeyboardJSON << "}";
+
+  m_settings.customKeyboardProfiles[id] = entry.str();
+
+  if ( m_settingsManager.writeSettings( m_settings ) )
+  {
+    std::cout << "[Settings] Seeded default keyboard profile '" << name
+              << "' (id: " << id << ")" << std::endl;
+  }
+  else
+  {
+    std::cerr << "[Settings] Failed to persist seeded default keyboard profile" << std::endl;
+  }
+}
+
 void UccDBusService::loadSettings()
 {
   if ( auto loadedSettings = m_settingsManager.readSettings(); loadedSettings.has_value() )
@@ -3987,6 +3901,11 @@ void UccDBusService::loadSettings()
   // Resyncing can change keys or representation, breaking stateMap lookups.
   // Keep m_settings.profiles exactly as loaded from file.
   // Only modify it when profiles are explicitly added/edited via API.
+
+  // Seed a default keyboard profile if none exist, so the user always has
+  // something to start from in the GUI keyboard editor.  The user is free
+  // to rename, modify, copy or delete it.
+  seedDefaultKeyboardProfileIfEmpty();
 
   // validate and fix state map if needed
   auto allProfiles = getAllProfiles();
@@ -4196,44 +4115,16 @@ void UccDBusService::applyFanAndPumpSettings( const UccProfile &profile )
   }
 }
 
-void UccDBusService::applyGpuOCFromProfile( const UccProfile &profile )
+void UccDBusService::applyCTGPFromProfile( const UccProfile &profile )
 {
-  if ( !profile.nvidiaCTGPOffset.has_value()
-       && ( profile.gpuOCProfileData.empty() || profile.gpuOCProfileData == "{}" ) )
+  if ( !profile.nvidiaCTGPOffset.has_value() )
     return;
 
-  bool hasGpuOCSettings = false;
-
-  if ( profile.nvidiaCTGPOffset.has_value()
-       && m_profileSettingsWorker
-       && m_dbusData.nvidiaPowerCTRLAvailable.load() )
+  if ( m_profileSettingsWorker && m_dbusData.nvidiaPowerCTRLAvailable.load() )
   {
-    std::cout << "[GpuOC] Applying cTGP offset from profile: "
+    std::cout << "[cTGP] Applying cTGP offset from profile: "
               << *profile.nvidiaCTGPOffset << std::endl;
     m_profileSettingsWorker->applyNVIDIAPowerOffset( *profile.nvidiaCTGPOffset );
-  }
-
-  if ( !profile.gpuOCProfileData.empty() && profile.gpuOCProfileData != "{}" )
-  {
-    const QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( profile.gpuOCProfileData ) );
-    if ( doc.isObject() )
-    {
-      const QJsonObject obj = doc.object();
-
-      hasGpuOCSettings = obj.contains( "offsets" )
-                         || obj.contains( "gpuLockedClocks" )
-                         || obj.contains( "vramLockedClocks" )
-                         || obj.contains( "powerLimitW" );
-    }
-  }
-
-  // Apply GPU OC settings only when the payload actually contains OC fields.
-  if ( hasGpuOCSettings && m_nvidiaOCWorker && m_nvidiaOCWorker->isAvailable() )
-  {
-    std::cout << "[GpuOc] Applying embedded GPU OC profile data from profile '"
-              << profile.name << "'" << std::endl;
-    if ( !m_nvidiaOCWorker->applyGpuOCProfile( profile.gpuOCProfileData, 0 ) )
-      std::cerr << "[GpuOC] Failed to apply GPU OC profile data" << std::endl;
   }
 }
 
@@ -4368,7 +4259,7 @@ void UccDBusService::serializeProfilesJSON()
   std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
   m_dbusData.profilesJSON = defaultProfilesJSON.str();  // Only default profiles now
   m_dbusData.defaultProfilesJSON = defaultProfilesJSON.str();
-  m_dbusData.customProfilesJSON = "[]";  // Empty array since custom profiles are local
+  m_dbusData.customProfilesJSON = customProfilesJSON.str();
   m_dbusData.defaultValuesProfileJSON = profileToJSON( defaultProfile,
                                                        defaultOnlineCores,
                                                        defaultScalingMin,
