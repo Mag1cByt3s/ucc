@@ -273,6 +273,14 @@ static std::string profileToJSON( const UccProfile &profile,
   return oss.str();
 }
 
+static std::string buildApplyProfileJSON( const UccProfile &profile )
+{
+  return profileToJSON( profile,
+                        getDefaultOnlineCores(),
+                        getCpuMinFrequency(),
+                        getCpuMaxFrequency() );
+}
+
 
 static std::string buildSettingsJSON( const std::string &keyboardBacklightStatesJSON,
                                       const std::string &chargingProfile,
@@ -3330,22 +3338,13 @@ bool UccDBusService::setCurrentProfileByName( const std::string &profileName )
   for ( const auto &profile : allProfiles )
   {
     if ( profile.name == profileName )
-    {
-      const bool preservedWcEnable = m_dbusData.waterCoolerScanningEnabled.load();
-      m_activeProfile = profile;
-      m_activeProfile.fan.enableWaterCooler = preservedWcEnable;
-      snapProfileFrequencies( m_activeProfile );
-      updateDBusActiveProfileData();
-      return true;
-    }
+      return setCurrentProfileById( profile.id );
   }
 
-  // fallback to default profile
-  const bool preservedWcEnable = m_dbusData.waterCoolerScanningEnabled.load();
-  m_activeProfile = getDefaultProfile();
-  m_activeProfile.fan.enableWaterCooler = preservedWcEnable;
-  snapProfileFrequencies( m_activeProfile );
-  updateDBusActiveProfileData();
+  std::cout << "[Profile] Profile name not found: " << profileName << ", using default" << std::endl;
+  const auto defaultProfile = getDefaultProfile();
+  if ( !defaultProfile.id.empty() )
+    (void)setCurrentProfileById( defaultProfile.id );
   return false;
 }
 
@@ -3358,117 +3357,15 @@ bool UccDBusService::setCurrentProfileById( const std::string &id )
     if ( profile.id == id )
     {
       std::cout << "[Profile] Switching to profile: " << profile.name << " (ID: " << id << ")" << std::endl;
-      // Preserve runtime water cooler enable state across profile switches.
-      // The user's explicit EnableWaterCooler() D-Bus call is authoritative.
-      const bool preservedWcEnable = m_dbusData.waterCoolerScanningEnabled.load();
-      m_activeProfile = profile;
-      m_activeProfile.fan.enableWaterCooler = preservedWcEnable;
-      snapProfileFrequencies( m_activeProfile );
-      updateDBusActiveProfileData();
-
-      // apply fan curves and pump auto-control
-      applyFanAndPumpSettings( profile );
-
-      // apply new profile to workers
-      if ( m_cpuWorker )
-      {
-        std::cout << "[Profile] Applying CPU settings from profile" << std::endl;
-        m_cpuWorker->reapplyProfile();
-      }
-      if ( m_profileSettingsWorker )
-      {
-        std::cout << "[Profile] Applying TDP settings from profile" << std::endl;
-        m_profileSettingsWorker->reapplyProfile();
-
-        // Re-read TDP values after apply so D-Bus data reflects new hardware state
-        readHardwareCapabilities();
-
-        // Apply charging profile if the profile specifies one
-        if ( !profile.chargingProfile.empty() && m_dbusData.chargingProfilesAvailable != "[]" )
-        {
-          std::cout << "[Profile] Applying charging profile '" << profile.chargingProfile << "'" << std::endl;
-          if ( m_profileSettingsWorker->applyChargingProfile( profile.chargingProfile ) )
-          {
-            std::lock_guard< std::mutex > lk( m_dbusData.dataMutex );
-            m_dbusData.currentChargingProfile = profile.chargingProfile;
-          }
-        }
-
-        // Apply charging priority if the profile specifies one
-        if ( !profile.chargingPriority.empty() && m_dbusData.chargingPrioritiesAvailable != "[]" )
-        {
-          std::cout << "[Profile] Applying charging priority '" << profile.chargingPriority << "'" << std::endl;
-          if ( m_profileSettingsWorker->applyChargingPriority( profile.chargingPriority ) )
-          {
-            std::lock_guard< std::mutex > lk( m_dbusData.dataMutex );
-            m_dbusData.currentChargingPriority = profile.chargingPriority;
-          }
-        }
-
-        // Apply charge type and thresholds if the profile specifies them
-        if ( !profile.chargeType.empty() )
-        {
-          std::cout << "[Profile] Applying charge type '" << profile.chargeType << "'" << std::endl;
-          if ( m_profileSettingsWorker->setChargeType( profile.chargeType ) )
-          {
-            std::lock_guard< std::mutex > lk( m_dbusData.dataMutex );
-            m_dbusData.chargeType = profile.chargeType;
-          }
-        }
-        if ( profile.chargeStartThreshold >= 0 )
-        {
-          std::cout << "[Profile] Applying charge start threshold " << profile.chargeStartThreshold << std::endl;
-          if ( m_profileSettingsWorker->setChargeStartThreshold( profile.chargeStartThreshold ) )
-            m_dbusData.chargeStartThreshold = profile.chargeStartThreshold;
-        }
-        if ( profile.chargeEndThreshold >= 0 )
-        {
-          std::cout << "[Profile] Applying charge end threshold " << profile.chargeEndThreshold << std::endl;
-          if ( m_profileSettingsWorker->setChargeEndThreshold( profile.chargeEndThreshold ) )
-            m_dbusData.chargeEndThreshold = profile.chargeEndThreshold;
-        }
-      }
-
-      if ( m_keyboardBacklightController.isAvailable()
-           && m_settings.keyboardBacklightControlEnabled
-           && !profile.keyboard.keyboardProfileData.empty()
-           && profile.keyboard.keyboardProfileData != "{}" )
-      {
-        bool kbResult = m_keyboardBacklightController.applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
-        std::cout << "[Profile] Keyboard apply result: " << ( kbResult ? "SUCCESS" : "FAILED" ) << std::endl;
-      }
-      else
-      {
-        std::cout << "[Profile] Keyboard apply SKIPPED — one or more conditions not met" << std::endl;
-      }
-
-      // Emit ProfileChanged signal for DBus clients
-      if ( m_adaptor )
-        m_adaptor->emitProfileChanged( id,
-                                       profile.keyboard.keyboardProfileId,
-                                       profile.fan.fanProfile );
-
-      return true;
+      return applyProfileJSON( buildApplyProfileJSON( profile ) );
     }
   }
 
   // fallback to default profile
   std::cout << "[Profile] Profile ID not found: " << id << ", using default" << std::endl;
-  {
-    const bool preservedWcEnable = m_dbusData.waterCoolerScanningEnabled.load();
-    m_activeProfile = getDefaultProfile();
-    m_activeProfile.fan.enableWaterCooler = preservedWcEnable;
-  }
-  snapProfileFrequencies( m_activeProfile );
-  updateDBusActiveProfileData();
-
-  // Emit ProfileChanged signal for DBus clients
-  if ( m_adaptor )
-  {
-    m_adaptor->emitProfileChanged( m_activeProfile.id,
-                                   m_activeProfile.keyboard.keyboardProfileId,
-                                   m_activeProfile.fan.fanProfile );
-  }
+  const auto defaultProfile = getDefaultProfile();
+  if ( !defaultProfile.id.empty() )
+    (void)applyProfileJSON( buildApplyProfileJSON( defaultProfile ) );
 
   return false;
 }
@@ -3480,7 +3377,7 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
     // Parse the profile JSON
     auto profile = m_profileManager.parseProfileJSON( profileJSON );
 
-    std::cout << "[Profile] Applying profile from GUI: " << profile.name << std::endl;
+    std::cout << "[Profile] Applying profile: " << profile.name << std::endl;
 
     // Set as active profile, but preserve the runtime water cooler enable state.
     // The user's explicit EnableWaterCooler() D-Bus call is authoritative;
@@ -4207,26 +4104,22 @@ void UccDBusService::applyStartupProfile()
   if ( m_activeProfile.id.empty() )
     return;
 
-  const auto &profile = m_activeProfile;
+  const bool startupWaterCoolerEnable = m_activeProfile.fan.enableWaterCooler;
+  const std::string startupProfileJSON = buildApplyProfileJSON( m_activeProfile );
 
-  applyFanAndPumpSettings( profile );
-
-  if ( m_cpuWorker )
-    m_cpuWorker->reapplyProfile();
-
-  if ( m_profileSettingsWorker )
-    m_profileSettingsWorker->reapplyProfile();
-
-  if ( m_keyboardBacklightController.isAvailable()
-       && m_settings.keyboardBacklightControlEnabled
-       && !profile.keyboard.keyboardProfileData.empty()
-       && profile.keyboard.keyboardProfileData != "{}" )
-    m_keyboardBacklightController.applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
-
-  applyGpuOCFromProfile( profile );
+  if ( !applyProfileJSON( startupProfileJSON ) )
+  {
+    std::cerr << "[Startup] Failed to apply startup profile '"
+              << m_activeProfile.name << "'" << std::endl;
+    return;
+  }
 
   if ( m_dbusData.waterCoolerSupported )
-    setWaterCoolerScanningEnabled( profile.fan.enableWaterCooler );
+  {
+    m_activeProfile.fan.enableWaterCooler = startupWaterCoolerEnable;
+    setWaterCoolerScanningEnabled( startupWaterCoolerEnable );
+    updateDBusActiveProfileData();
+  }
 }
 
 void UccDBusService::applyFanAndPumpSettings( const UccProfile &profile )
@@ -4359,114 +4252,11 @@ void UccDBusService::applyProfileForCurrentState()
 
   std::cout << "[State] Applying profile for state '" << stateKey << "': " << profileId << std::endl;
 
-  // Lambda to apply all profile settings (fan curves, sameSpeed, CPU, ODM, keyboard, pump auto-control)
-  auto applyFullProfile = [this]( const UccProfile &profile )
+  auto applyFullProfile = [this, &stateKey]( const UccProfile &profile )
   {
-    // Preserve runtime water cooler enable state across profile re-application.
-    // The user's explicit EnableWaterCooler() D-Bus call is authoritative;
-    // the stored profile may have a stale enableWaterCooler value.
-    const bool preservedWcEnable = m_dbusData.waterCoolerScanningEnabled.load();
-    m_activeProfile = profile;
-    m_activeProfile.fan.enableWaterCooler = preservedWcEnable;
-    snapProfileFrequencies( m_activeProfile );
-    updateDBusActiveProfileData();
-
-    // Apply sameSpeed setting to fan worker
-    if ( m_fanControlWorker )
-    {
-      m_fanControlWorker->setSameSpeed( profile.fan.sameSpeed );
-    }
-
-    // Resolve and apply fan curves: prefer embedded tables, fallback to named profile
-    try
-    {
-      std::vector< FanTableEntry > cpuTable;
-      std::vector< FanTableEntry > gpuTable;
-      std::vector< FanTableEntry > wcFanTable;
-      std::vector< FanTableEntry > pumpTable;
-
-      if ( profile.fan.hasEmbeddedTables() )
-      {
-        cpuTable = profile.fan.tableCPU;
-        gpuTable = profile.fan.tableGPU;
-        wcFanTable = profile.fan.tableWaterCoolerFan;
-        pumpTable = profile.fan.tablePump;
-        std::cout << "[State] Using embedded fan tables from profile" << std::endl;
-      }
-      else
-      {
-        const std::string &fpName = profile.fan.fanProfile;
-        if ( !fpName.empty() )
-        {
-          FanProfile fp = getDefaultFanProfile( fpName );
-          if ( fp.isValid() )
-          {
-            cpuTable = fp.tableCPU;
-            gpuTable = fp.tableGPU;
-            wcFanTable = fp.tableWaterCoolerFan;
-            pumpTable = fp.tablePump;
-            std::cout << "[State] Using fan tables from named profile '" << fpName << "'" << std::endl;
-          }
-        }
-      }
-
-      if ( m_fanControlWorker && !cpuTable.empty() )
-      {
-        m_fanControlWorker->applyTemporaryFanCurves( cpuTable, gpuTable, wcFanTable, pumpTable );
-        std::cout << "[State] Applied fan curves (CPU=" << cpuTable.size()
-                  << " GPU=" << gpuTable.size()
-                  << " WCFan=" << wcFanTable.size()
-                  << " Pump=" << pumpTable.size() << ")" << std::endl;
-      }
-
-      // Apply pump auto-control if water cooler is connected and autoControlWC is enabled
-      if ( profile.fan.autoControlWC && m_waterCoolerWorker && m_dbusData.waterCoolerConnected.load()
-           && !pumpTable.empty() )
-      {
-        int maxTemp = 0;
-        {
-          std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
-          for ( const auto &fan : m_dbusData.fans )
-            maxTemp = std::max( maxTemp, fan.temp.data );
-        }
-        FanProfile tempFp;
-        tempFp.tablePump = pumpTable;
-        // Reset hysteresis before a one-shot profile apply so the continuous
-        // loop re-initialises to the correct level on the next tick.
-        m_pumpHysSpeedIdx = 0;
-        m_pumpHysThreshold = 0;
-        m_waterCoolerWorker->setPumpVoltage( static_cast<int>( tempFp.getPumpSpeedForTemp( maxTemp ) ) );
-        std::cout << "[State] Applied pump voltage for temp " << maxTemp << "°C" << std::endl;
-      }
-    }
-    catch ( const std::exception &e )
-    {
-      std::cerr << "[State] Failed to apply fan curves: " << e.what() << std::endl;
-    }
-
-    // Apply CPU/ODM/keyboard workers
-    if ( m_cpuWorker )
-      m_cpuWorker->reapplyProfile();
-    if ( m_profileSettingsWorker )
-      m_profileSettingsWorker->reapplyProfile();
-    if ( m_keyboardBacklightController.isAvailable()
-         && m_settings.keyboardBacklightControlEnabled
-         && !profile.keyboard.keyboardProfileData.empty()
-         && profile.keyboard.keyboardProfileData != "{}" )
-      m_keyboardBacklightController.applyProfileKeyboardStates( profile.keyboard.keyboardProfileData );
-
-    // Apply GPU OC and cTGP from the profile
-    applyGpuOCFromProfile( profile );
-
-    // Water cooler scanning state is preserved from the runtime flag
-    // (set via EnableWaterCooler D-Bus call). Do NOT re-read enableWaterCooler
-    // from the stored profile — it may be stale.
-
-    // Emit ProfileChanged signal for DBus clients
-    if ( m_adaptor )
-      m_adaptor->emitProfileChanged( profile.id,
-                                     profile.keyboard.keyboardProfileId,
-                                     profile.fan.fanProfile );
+    if ( !applyProfileJSON( buildApplyProfileJSON( profile ) ) )
+      std::cerr << "[State] Failed to apply profile '" << profile.id
+                << "' for state '" << stateKey << "'" << std::endl;
   };
 
   // Try persistent (custom) profiles first
