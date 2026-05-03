@@ -582,8 +582,13 @@ static void printProfileSummary( const QJsonObject &obj, bool showHeader = true 
     }
   }
 
-  // NVIDIA cTGP (from embedded GPU OC profile data)
-  if ( obj.contains( "gpuOCProfileData" ) && obj["gpuOCProfileData"].isObject() )
+  // NVIDIA cTGP
+  if ( obj.contains( "nvidiaPowerCTRLProfile" ) && obj["nvidiaPowerCTRLProfile"].isObject() )
+  {
+    int ctgp = obj["nvidiaPowerCTRLProfile"].toObject()["cTGPOffset"].toInt();
+    std::printf( "  %-24s %d W\n", "cTGP offset:", ctgp );
+  }
+  else if ( obj.contains( "gpuOCProfileData" ) && obj["gpuOCProfileData"].isObject() )
   {
     QJsonObject gpuObj = obj["gpuOCProfileData"].toObject();
     if ( gpuObj.contains( "nvidiaPowerCTRLProfile" ) && gpuObj["nvidiaPowerCTRLProfile"].isObject() )

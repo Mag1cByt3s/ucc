@@ -589,9 +589,9 @@ void MainWindow::setupProfilesPage()
   row++;
 
   // === GPU POWER (cTGP) SECTION ===
-  QLabel *gpuPowerHeader = new QLabel( "GPU Power" );
-  gpuPowerHeader->setStyleSheet( "font-weight: bold; font-size: 14px;" );
-  detailsLayout->addWidget( gpuPowerHeader, row, 0, 1, 2 );
+  m_ctgpHeader = new QLabel( "GPU Power" );
+  m_ctgpHeader->setStyleSheet( "font-weight: bold; font-size: 14px;" );
+  detailsLayout->addWidget( m_ctgpHeader, row, 0, 1, 2 );
   row++;
 
   // cTGP slider widget (hidden when not supported)
@@ -604,19 +604,14 @@ void MainWindow::setupProfilesPage()
   m_ctgpSlider->setMaximum( 175 );
   m_ctgpSlider->setValue( 0 );
   m_ctgpValueLabel = new QLabel( "0 W" );
-  m_ctgpValueLabel->setMinimumWidth( 60 );
-  ctgpLayout->addWidget( m_ctgpLabel );
+  m_ctgpValueLabel->setMinimumWidth( 50 );
   ctgpLayout->addWidget( m_ctgpSlider, 1 );
   ctgpLayout->addWidget( m_ctgpValueLabel );
-  detailsLayout->addWidget( m_ctgpWidget, row, 0, 1, 2 );
+  detailsLayout->addWidget( m_ctgpLabel, row, 0 );
+  detailsLayout->addWidget( m_ctgpWidget, row, 1 );
   row++;
 
-  // Show/hide based on hardware support
-  if ( !m_cTGPAdjustmentSupported )
-  {
-    gpuPowerHeader->setVisible( false );
-    m_ctgpWidget->setVisible( false );
-  }
+  updateCtgpVisibility();
 
   // Add spacer
   detailsLayout->addItem( new QSpacerItem( 0, 10 ), row, 0, 1, 2 );
@@ -2053,11 +2048,22 @@ void MainWindow::updateProfileEditingWidgets( bool isCustom )
 
   // GPU Power (cTGP) slider
   if ( m_ctgpSlider ) m_ctgpSlider->setEnabled( isCustom );
-
   // Charging profile
   if ( m_profileChargingProfileCombo ) m_profileChargingProfileCombo->setEnabled( isCustom );
   if ( m_profileChargingPriorityCombo ) m_profileChargingPriorityCombo->setEnabled( isCustom );
   if ( m_profileChargeLimitCombo ) m_profileChargeLimitCombo->setEnabled( isCustom );
+}
+
+void MainWindow::updateCtgpVisibility()
+{
+  const bool visible = m_cTGPAdjustmentSupported;
+
+  if ( m_ctgpHeader )
+    m_ctgpHeader->setVisible( visible );
+  if ( m_ctgpLabel )
+    m_ctgpLabel->setVisible( visible );
+  if ( m_ctgpWidget )
+    m_ctgpWidget->setVisible( visible );
 }
 
 void MainWindow::markChanged()
@@ -2670,6 +2676,8 @@ void MainWindow::onUccdConnectionChanged( bool connected )
     m_cTGPAdjustmentSupported = *ctgp;
   if ( auto gpuDefault = m_UccdClient->getNVIDIAPowerCTRLDefaultPowerLimit() )
     m_gpuDefaultPowerLimit = *gpuDefault;
+
+  updateCtgpVisibility();
 
   // Repopulate driver-reported option lists
   reloadFanProfiles();

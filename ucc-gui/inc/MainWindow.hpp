@@ -136,6 +136,7 @@ namespace ucc
     void setupFanControlTab();
     void connectFanControlTab();
     void updateProfileEditingWidgets( bool isCustom );
+    void updateCtgpVisibility();
     void updateFanCrosshairs();
 
     /** Parse a numeric value from a SystemMonitor formatted string (e.g. "65°C" → 65). */
@@ -195,6 +196,7 @@ namespace ucc
     FanControlTab *m_fanControlTab = nullptr;
 
     // GPU power (cTGP) slider on Profiles page
+    QLabel *m_ctgpHeader = nullptr;
     QSlider *m_ctgpSlider = nullptr;
     QLabel *m_ctgpValueLabel = nullptr;
     QLabel *m_ctgpLabel = nullptr;
@@ -246,7 +248,7 @@ namespace ucc
 
     // Device capability flags (queried from daemon at startup)
     bool m_waterCoolerSupported = false;
-    bool m_cTGPAdjustmentSupported = true;
+    bool m_cTGPAdjustmentSupported = false;
     int m_gpuDefaultPowerLimit = 0;  // Default GPU power limit in watts, queried from daemon
 
     // Statusbar connection indicator
