@@ -195,17 +195,22 @@ export class UccdClient {
     getActiveProfileJSON()   { return this._call('GetActiveProfileJSON'); }
     getPowerState()          { return this._call('GetPowerState'); }
     getDefaultProfilesJSON() { return this._call('GetDefaultProfilesJSON'); }
+    getCustomProfilesJSON()  { return this._call('GetCustomProfilesJSON'); }
     getFanProfileNames()     { return this._call('GetFanProfileNames'); }
+
+    getCustomFanProfiles()      { return this._call('GetCustomFanProfiles'); }
+    getCustomKeyboardProfiles() { return this._call('GetCustomKeyboardProfiles'); }
 
     getWebcamEnabled()      { return this._call('GetWebcamSWStatus') ?? false; }
     getFnLock()             { return this._call('GetFnLockStatus') ?? false; }
     getDisplayBrightness()  { return this._call('GetDisplayBrightness') ?? 50; }
 
-    getAvailableODMProfiles() { return this._call('ODMProfilesAvailable') ?? []; }
-    getWaterCoolerSupported() { return this._call('GetWaterCoolerSupported') ?? false; }
-    isWaterCoolerEnabled()    { return this._call('IsWaterCoolerEnabled') ?? false; }
-    isDeviceSupported()       { return this._call('IsDeviceSupported') ?? false; }
-    getSystemInfoJSON()       { return this._call('GetSystemInfoJSON'); }
+    getAvailableODMProfiles()           { return this._call('ODMProfilesAvailable') ?? []; }
+    getWaterCoolerSupported()           { return this._call('GetWaterCoolerSupported') ?? false; }
+    isWaterCoolerEnabled()              { return this._call('IsWaterCoolerEnabled') ?? false; }
+    isDeviceSupported()                 { return this._call('IsDeviceSupported') ?? false; }
+    getKeyboardBacklightControlEnabled(){ return this._call('GetKeyboardBacklightControlEnabled') ?? false; }
+    getSystemInfoJSON()                 { return this._call('GetSystemInfoJSON'); }
 
     getFanProfile(name) { return this._call('GetFanProfile', [name], 's'); }
 

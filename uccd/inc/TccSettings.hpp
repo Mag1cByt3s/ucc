@@ -55,7 +55,7 @@ struct TccSettings
   std::optional< std::string > shutdownTime;  // null in TypeScript
   bool cpuSettingsEnabled = true;
   bool fanControlEnabled = true;
-  bool keyboardBacklightControlEnabled = true;
+  bool keyboardBacklightControlSupported = true;
   std::vector< YCbCr420Card > ycbcr420Workaround;  // YUV420 workaround per card/port
   std::optional< std::string > chargingProfile;  // null in TypeScript
   std::optional< std::string > chargingPriority;  // null in TypeScript

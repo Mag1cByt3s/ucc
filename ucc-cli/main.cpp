@@ -1446,8 +1446,8 @@ static int cmdStateMapGet( ucc::UccdClient &c )
     std::printf( "    %-24s %s\n", "CPU settings:", obj["cpuSettingsEnabled"].toBool() ? "enabled" : "disabled" );
   if ( obj.contains( "fanControlEnabled" ) )
     std::printf( "    %-24s %s\n", "Fan control:", obj["fanControlEnabled"].toBool() ? "enabled" : "disabled" );
-  if ( obj.contains( "keyboardBacklightControlEnabled" ) )
-    std::printf( "    %-24s %s\n", "Keyboard backlight:", obj["keyboardBacklightControlEnabled"].toBool() ? "enabled" : "disabled" );
+  if ( obj.contains( "keyboardBacklightControlSupported" ) )
+    std::printf( "    %-24s %s\n", "Keyboard backlight:", obj["keyboardBacklightControlSupported"].toBool() ? "enabled" : "disabled" );
   if ( obj.contains( "fahrenheit" ) )
     std::printf( "    %-24s %s\n", "Temperature unit:", obj["fahrenheit"].toBool() ? "Fahrenheit" : "Celsius" );
 

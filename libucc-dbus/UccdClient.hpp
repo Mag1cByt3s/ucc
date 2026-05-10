@@ -134,6 +134,7 @@ public:
   // Device Capability Queries
   std::optional< bool > getWaterCoolerSupported();
   std::optional< bool > getCTGPAdjustmentSupported();
+  std::optional< bool > getKeyboardBacklightControlSupported();
 
   // Keyboard Control
   bool setKeyboardBacklight( const std::string &config );

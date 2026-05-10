@@ -280,7 +280,7 @@ static std::string buildSettingsJSON( const std::string &keyboardBacklightStates
       << "\"shutdownTime\":" << ( settings.shutdownTime.has_value() ? "\"" + jsonEscape( *settings.shutdownTime ) + "\"" : "null" ) << ","
       << "\"cpuSettingsEnabled\":" << ( settings.cpuSettingsEnabled ? "true" : "false" ) << ","
       << "\"fanControlEnabled\":" << ( settings.fanControlEnabled ? "true" : "false" ) << ","
-      << "\"keyboardBacklightControlEnabled\":" << ( settings.keyboardBacklightControlEnabled ? "true" : "false" ) << ","
+      << "\"keyboardBacklightControlSupported\":" << ( settings.keyboardBacklightControlSupported ? "true" : "false" ) << ","
       << "\"ycbcr420Workaround\":[],"
       << "\"chargingProfile\":\"" << jsonEscape( chargingProfile ) << "\" ,"
       << "\"chargingPriority\":" << ( settings.chargingPriority.has_value() ? "\"" + jsonEscape( *settings.chargingPriority ) + "\"" : "null" ) << ","
@@ -1352,7 +1352,7 @@ QString UccDBusInterfaceAdaptor::GetKeyboardBacklightStatesJSON()
 bool UccDBusInterfaceAdaptor::SetKeyboardBacklightStatesJSON( const QString &keyboardBacklightStatesJSON )
 {
   if ( !checkAuth( PolkitAuthority::ACTION_CONTROL ) ) return false;
-  if ( !m_service->m_settings.keyboardBacklightControlEnabled ) return false;
+  if ( !m_service->m_settings.keyboardBacklightControlSupported ) return false;
 
   auto inputJSON = keyboardBacklightStatesJSON.toStdString();
 
@@ -2339,7 +2339,7 @@ UccDBusService::UccDBusService()
       std::string defaultStates = m_keyboardBacklightController.buildDefaultStatesJSON();
       m_dbusData.keyboardBacklightStatesJSON = defaultStates;
 
-      if ( m_settings.keyboardBacklightControlEnabled )
+      if ( m_settings.keyboardBacklightControlSupported )
         m_keyboardBacklightController.applyStatesFromJSON( defaultStates );
     }
   }
@@ -2884,7 +2884,11 @@ void UccDBusService::onWork()
 
       // Emit signal for UCC to handle profile switching
       m_adaptor->emitPowerStateChanged( stateKey );
-    }
+
+      // Apply the profile mapped to the new power state immediately.
+      // This internally calls emitProfileChanged so all D-Bus clients
+      // (tray, GNOME extension, CLI) are pushed the update.
+      applyProfileForCurrentState();    }
   }
 
   // Check for temp profile requests
@@ -3388,7 +3392,7 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
     }
 
     if ( m_keyboardBacklightController.isAvailable()
-         && m_settings.keyboardBacklightControlEnabled
+         && m_settings.keyboardBacklightControlSupported
          && !profile.keyboard.keyboardProfileId.empty() )
     {
       const auto kbIt = m_settings.customKeyboardProfiles.find( profile.keyboard.keyboardProfileId );

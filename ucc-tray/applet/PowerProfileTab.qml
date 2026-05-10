@@ -100,13 +100,13 @@ PC3.ScrollView {
             PC3.Label {
                 text: i18n("Keyboard profile:")
                 opacity: 0.7
-                visible: powerTab.backend.keyboardProfileIds.length > 0
+                visible: powerTab.backend.keyboardBacklightControlSupported && powerTab.backend.keyboardProfileIds.length > 0
             }
             PC3.ComboBox {
                 id: kbCombo
                 Layout.fillWidth: true
                 model: powerTab.backend.keyboardProfileNames
-                visible: powerTab.backend.keyboardProfileIds.length > 0
+                visible: powerTab.backend.keyboardBacklightControlSupported && powerTab.backend.keyboardProfileIds.length > 0
                 currentIndex: {
                     var idx = powerTab.backend.keyboardProfileIds.indexOf(powerTab.backend.activeProfileKeyboardId)
                     return idx >= 0 ? idx : 0

@@ -229,7 +229,7 @@ private:
       if (j.contains("fahrenheit")) settings.fahrenheit = j["fahrenheit"];
       if (j.contains("cpuSettingsEnabled")) settings.cpuSettingsEnabled = j["cpuSettingsEnabled"];
       if (j.contains("fanControlEnabled")) settings.fanControlEnabled = j["fanControlEnabled"];
-      if (j.contains("keyboardBacklightControlEnabled")) settings.keyboardBacklightControlEnabled = j["keyboardBacklightControlEnabled"];
+      if (j.contains("keyboardBacklightControlSupported")) settings.keyboardBacklightControlSupported = j["keyboardBacklightControlSupported"];
 
       // Parse optional string fields
       if (j.contains("shutdownTime") && j["shutdownTime"].is_string()) settings.shutdownTime = j["shutdownTime"];
@@ -309,7 +309,7 @@ private:
     json << "  \"shutdownTime\": " << ( settings.shutdownTime.has_value() ? "\"" + settings.shutdownTime.value() + "\"" : "null" ) << ",\n";
     json << "  \"cpuSettingsEnabled\": " << ( settings.cpuSettingsEnabled ? "true" : "false" ) << ",\n";
     json << "  \"fanControlEnabled\": " << ( settings.fanControlEnabled ? "true" : "false" ) << ",\n";
-    json << "  \"keyboardBacklightControlEnabled\": " << ( settings.keyboardBacklightControlEnabled ? "true" : "false" ) << ",\n";
+    json << "  \"keyboardBacklightControlSupported\": " << ( settings.keyboardBacklightControlSupported ? "true" : "false" ) << ",\n";
 
     // Serialize ycbcr420Workaround array
     json << "  \"ycbcr420Workaround\": [";

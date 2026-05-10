@@ -754,11 +754,23 @@ class UccIndicator extends PanelMenu.Button {
 
         // Built-in profiles
         const names = [], ids = [];
-        const raw = this._client.getDefaultProfilesJSON();
-        if (raw) {
+        const rawDef = this._client.getDefaultProfilesJSON();
+        if (rawDef) {
             try {
-                for (const p of JSON.parse(raw)) {
+                for (const p of JSON.parse(rawDef)) {
                     if (p.id) { ids.push(p.id); names.push(p.name ?? p.id); }
+                }
+            } catch { /* ignore */ }
+        }
+
+        // Custom profiles from daemon (Primary Source)
+        const rawCust = this._client.getCustomProfilesJSON();
+        if (rawCust) {
+            try {
+                for (const p of JSON.parse(rawCust)) {
+                    if (p.id && !ids.includes(p.id)) {
+                        ids.push(p.id); names.push(p.name ?? p.id);
+                    }
                 }
             } catch { /* ignore */ }
         }
@@ -774,7 +786,7 @@ class UccIndicator extends PanelMenu.Button {
             uccrcKf.load_from_file(uccrc, GLib.KeyFileFlags.NONE);
         } catch { /* file may not exist */ }
 
-        // Custom profiles from uccrc
+        // Fallback: Custom profiles from uccrc
         if (uccrcKf) {
             try {
                 const cp = unwrapQByteArray(uccrcKf.get_value('General', 'customProfiles'));
@@ -814,7 +826,19 @@ class UccIndicator extends PanelMenu.Button {
             } catch { /* ignore */ }
         }
 
-        // Custom fan profiles from uccrc
+        // Custom fan profiles from daemon
+        const rawFanCust = this._client.getCustomFanProfiles();
+        if (rawFanCust) {
+            try {
+                for (const p of JSON.parse(rawFanCust)) {
+                    if (p.id && !fanIds.includes(p.id)) {
+                        fanIds.push(p.id); fanNames.push(p.name ?? p.id);
+                    }
+                }
+            } catch { /* ignore */ }
+        }
+
+        // Fallback: Custom fan profiles from uccrc
         if (uccrcKf) {
             try {
                 const cfp = unwrapQByteArray(uccrcKf.get_value('General', 'customFanProfiles'));
@@ -831,14 +855,30 @@ class UccIndicator extends PanelMenu.Button {
         s.fanProfileNames = fanNames;
         s.fanProfileIds = fanIds;
 
-        // Keyboard profiles from uccrc
+        // Keyboard profiles
         const kbNames = [], kbIds = [], kbData = [];
+
+        // Custom keyboard profiles from daemon
+        const rawKbCust = this._client.getCustomKeyboardProfiles();
+        if (rawKbCust) {
+            try {
+                for (const p of JSON.parse(rawKbCust)) {
+                    if (p.id) {
+                        kbIds.push(p.id);
+                        kbNames.push(p.name ?? p.id);
+                        kbData.push(p);
+                    }
+                }
+            } catch { /* ignore */ }
+        }
+
+        // Fallback: Keyboard profiles from uccrc
         if (uccrcKf) {
             try {
                 const ckp = unwrapQByteArray(uccrcKf.get_value('General', 'customKeyboardProfiles'));
                 if (ckp) {
                     for (const p of JSON.parse(ckp)) {
-                        if (p.id) {
+                        if (p.id && !kbIds.includes(p.id)) {
                             kbIds.push(p.id);
                             kbNames.push(p.name ?? p.id);
                             kbData.push(p);

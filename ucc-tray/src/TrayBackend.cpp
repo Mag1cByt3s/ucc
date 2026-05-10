@@ -84,6 +84,11 @@ bool TrayBackend::deviceSupported() const
   return m_deviceSupported;
 }
 
+bool TrayBackend::keyboardBacklightControlSupported() const
+{
+  return m_keyboardBacklightControlSupported;
+}
+
 // ---------------------------------------------------------------------------
 // Monitoring getters
 // ---------------------------------------------------------------------------
@@ -647,10 +652,10 @@ void TrayBackend::onConnectionStatusChanged( bool connected )
 
 void TrayBackend::loadProfiles()
 {
-  // Default (built-in) profiles come from the daemon
+  // Default (built-in) + Custom profiles come from the daemon via DBus.
   QStringList names, ids;
 
-  // Built-in profiles from daemon
+  // 1. Built-in profiles from daemon
   if ( auto json = m_client->getDefaultProfilesJSON() )
   {
     auto doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) );
@@ -668,25 +673,21 @@ void TrayBackend::loadProfiles()
     }
   }
 
-  // Custom profiles are stored client-side in ~/.config/uccrc (same as GUI).
-  // The values are QByteArray-encoded JSON, so we must use toByteArray().
-  QSettings settings( QDir::homePath() + "/.config/uccrc", QSettings::IniFormat );
-  QByteArray customRaw = settings.value( "customProfiles", "[]" ).toByteArray();
-  fprintf( stderr, "[TrayBackend] loadProfiles: uccrc exists=%d customProfiles bytes=%d\n",
-           QFile::exists( QDir::homePath() + "/.config/uccrc" ), (int)customRaw.size() );
-  auto customDoc = QJsonDocument::fromJson( customRaw );
-  fprintf( stderr, "[TrayBackend] customProfiles isArray=%d count=%d\n",
-           (int)customDoc.isArray(), customDoc.isArray() ? (int)customDoc.array().size() : 0 );
-  if ( customDoc.isArray() )
+  // 2. Custom profiles from daemon
+  if ( auto json = m_client->getCustomProfilesJSON() )
   {
-    for ( const auto &val : customDoc.array() )
+    auto doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) );
+    if ( doc.isArray() )
     {
-      auto obj = val.toObject();
-      QString id   = obj[ "id" ].toString();
-      QString name = obj[ "name" ].toString();
-      if ( id.isEmpty() ) continue;
-      ids.append( id );
-      names.append( name );
+      for ( const auto &val : doc.array() )
+      {
+        auto obj = val.toObject();
+        QString id   = obj[ "id" ].toString();
+        QString name = obj[ "name" ].toString();
+        if ( id.isEmpty() ) continue;
+        ids.append( id );
+        names.append( name );
+      }
     }
   }
 
@@ -694,11 +695,11 @@ void TrayBackend::loadProfiles()
   {
     m_profileIds   = ids;
     m_profileNames = names;
-    fprintf( stderr, "[TrayBackend] Profiles emitted: %d profiles\n", (int)ids.size() );
+    fprintf( stderr, "[TrayBackend] Profiles updated: %d total (built-in + custom)\n", (int)ids.size() );
     emit profilesChanged();
   }
 
-  // Active profile
+  // 3. Active profile info (ID/Name)
   if ( auto json = m_client->getActiveProfileJSON() )
   {
     auto doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) );
@@ -707,13 +708,11 @@ void TrayBackend::loadProfiles()
       auto obj = doc.object();
       m_activeProfileId = obj[ "id" ].toString();
       m_activeProfileName = obj[ "name" ].toString();
-      fprintf( stderr, "[TrayBackend] Active profile: %s / %s\n",
-               qPrintable( m_activeProfileId ), qPrintable( m_activeProfileName ) );
       emit activeProfileChanged();
     }
   }
 
-  // Fan profiles
+  // 4. Fan Profile built-ins
   if ( auto json = m_client->getFanProfilesJSON() )
   {
     auto doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) );
@@ -738,7 +737,7 @@ void TrayBackend::loadProfiles()
     }
   }
 
-  // ODM profiles
+  // 5. ODM profiles
   if ( auto profs = m_client->getAvailableODMProfiles() )
   {
     QStringList sl;
@@ -773,6 +772,14 @@ void TrayBackend::loadCapabilities()
       emit waterCoolerSupportedChanged();
   }
 
+  if ( auto v = m_client->getKeyboardBacklightControlSupported() )
+  {
+    bool was = m_keyboardBacklightControlSupported;
+    m_keyboardBacklightControlSupported = *v;
+    if ( was != m_keyboardBacklightControlSupported )
+      emit keyboardBacklightControlSupportedChanged();
+  }
+
   if ( auto sysInfoJson = m_client->getSystemInfoJSON() )
   {
     QJsonDocument doc = QJsonDocument::fromJson( QByteArray::fromStdString( *sysInfoJson ) );
@@ -794,21 +801,14 @@ void TrayBackend::loadCapabilities()
 
 void TrayBackend::loadLocalProfiles()
 {
-  QString uccrcPath = QDir::homePath() + "/.config/uccrc";
-  bool fileExists = QFile::exists( uccrcPath );
-  fprintf( stderr, "[TrayBackend] loadLocalProfiles: path=%s exists=%d\n",
-           qPrintable( uccrcPath ), (int)fileExists );
+  // 1. Fan Profiles (Built-in + Custom from Daemon)
+  m_customFanProfileNames.clear();
+  m_customFanProfileIds.clear();
 
-  QSettings settings( uccrcPath, QSettings::IniFormat );
-  fprintf( stderr, "[TrayBackend] QSettings keys: %s\n",
-           qPrintable( settings.allKeys().join(", ") ) );
-
-  // Merge custom fan profiles — append to the daemon-loaded lists (avoid duplicates on re-load)
+  // Try daemon custom fan profiles first
+  if ( auto json = m_client->getCustomFanProfiles() )
   {
-    m_customFanProfileNames.clear();
-    m_customFanProfileIds.clear();
-    QByteArray fanRaw = settings.value( "customFanProfiles", "[]" ).toByteArray();
-    auto doc = QJsonDocument::fromJson( fanRaw );
+    auto doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) );
     if ( doc.isArray() )
     {
       for ( const auto &val : doc.array() )
@@ -819,7 +819,6 @@ void TrayBackend::loadLocalProfiles()
         if ( id.isEmpty() ) continue;
         m_customFanProfileIds.append( id );
         m_customFanProfileNames.append( name );
-        // Only append if not already present (built-ins already loaded by loadProfiles())
         if ( !m_fanProfileIds.contains( id ) )
         {
           m_fanProfileIds.append( id );
@@ -827,19 +826,15 @@ void TrayBackend::loadLocalProfiles()
         }
       }
     }
-    emit fanProfilesChanged();
   }
 
-  // Re-resolve active fan profile name after loading local data
-  if ( !m_activeProfileFanId.isEmpty() )
-    m_activeProfileFanName = resolveFanProfileName( m_activeProfileFanId );
-
-  // Custom keyboard profiles from QSettings
+  // Fallback/Legacy: Local ~/.config/uccrc custom fan profiles
+  QString uccrcPath = QDir::homePath() + "/.config/uccrc";
+  if ( QFile::exists( uccrcPath ) )
   {
-    QStringList kpNames, kpIds;
-    QJsonArray  kpData;
-    QByteArray kbRaw = settings.value( "customKeyboardProfiles", "[]" ).toByteArray();
-    auto doc = QJsonDocument::fromJson( kbRaw );
+    QSettings settings( uccrcPath, QSettings::IniFormat );
+    QByteArray fanRaw = settings.value( "customFanProfiles", "[]" ).toByteArray();
+    auto doc = QJsonDocument::fromJson( fanRaw );
     if ( doc.isArray() )
     {
       for ( const auto &val : doc.array() )
@@ -847,10 +842,61 @@ void TrayBackend::loadLocalProfiles()
         auto obj = val.toObject();
         QString id   = obj[ "id" ].toString();
         QString name = obj[ "name" ].toString();
-        if ( id.isEmpty() ) continue;
-        kpIds.append( id );
-        kpNames.append( name );
-        kpData.append( obj );
+        if ( id.isEmpty() || m_fanProfileIds.contains( id ) ) continue;
+        m_customFanProfileIds.append( id );
+        m_customFanProfileNames.append( name );
+        m_fanProfileIds.append( id );
+        m_fanProfileNames.append( name );
+      }
+    }
+  }
+  emit fanProfilesChanged();
+
+  // Re-resolve active fan profile name after loading data
+  if ( !m_activeProfileFanId.isEmpty() )
+    m_activeProfileFanName = resolveFanProfileName( m_activeProfileFanId );
+
+  // 2. Keyboard Profiles (Built-in + Custom from Daemon)
+  {
+    QStringList kpNames, kpIds;
+    QJsonArray  kpData;
+
+    // Load from Daemon (Primary source)
+    if ( auto json = m_client->getCustomKeyboardProfiles() )
+    {
+      auto doc = QJsonDocument::fromJson( QByteArray::fromStdString( *json ) );
+      if ( doc.isArray() )
+      {
+        for ( const auto &val : doc.array() )
+        {
+          auto obj = val.toObject();
+          QString id   = obj[ "id" ].toString();
+          QString name = obj[ "name" ].toString();
+          if ( id.isEmpty() ) continue;
+          kpIds.append( id );
+          kpNames.append( name );
+          kpData.append( obj );
+        }
+      }
+    }
+
+    // Merge legacy local ones if not already present by ID
+    if ( QFile::exists( uccrcPath ) )
+    {
+      QSettings settings( uccrcPath, QSettings::IniFormat );
+      QByteArray kbRaw = settings.value( "customKeyboardProfiles", "[]" ).toByteArray();
+      auto doc = QJsonDocument::fromJson( kbRaw );
+      if ( doc.isArray() )
+      {
+        for ( const auto &val : doc.array() )
+        {
+          auto obj = val.toObject();
+          QString id = obj[ "id" ].toString();
+          if ( id.isEmpty() || kpIds.contains( id ) ) continue;
+          kpIds.append( id );
+          kpNames.append( obj[ "name" ].toString() );
+          kpData.append( obj );
+        }
       }
     }
 
@@ -859,8 +905,6 @@ void TrayBackend::loadLocalProfiles()
       m_keyboardProfileIds   = kpIds;
       m_keyboardProfileNames = kpNames;
       m_keyboardProfilesData = kpData;
-      fprintf( stderr, "[TrayBackend] keyboardProfiles updated: %d entries — [%s]\n",
-               (int)kpIds.size(), qPrintable( kpNames.join(", ") ) );
       emit keyboardProfilesChanged();
     }
   }

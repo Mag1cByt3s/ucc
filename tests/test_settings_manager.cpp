@@ -28,7 +28,7 @@ private:
       "shutdownTime": "22:30",
       "cpuSettingsEnabled": false,
       "fanControlEnabled": true,
-      "keyboardBacklightControlEnabled": false,
+      "keyboardBacklightControlSupported": false,
       "ycbcr420Workaround": [],
       "chargingProfile": "balanced",
       "chargingPriority": "performance"
@@ -67,7 +67,7 @@ private slots:
     QVERIFY( opt->fahrenheit );
     QVERIFY( !opt->cpuSettingsEnabled );
     QVERIFY( opt->fanControlEnabled );
-    QVERIFY( !opt->keyboardBacklightControlEnabled );
+    QVERIFY( !opt->keyboardBacklightControlSupported );
   }
 
   void parse_optionalStrings()
@@ -119,7 +119,7 @@ private slots:
     s.shutdownTime = "22:30";
     s.cpuSettingsEnabled = false;
     s.fanControlEnabled = true;
-    s.keyboardBacklightControlEnabled = false;
+    s.keyboardBacklightControlSupported = false;
     s.chargingProfile = "balanced";
     s.chargingPriority = "performance";
 
@@ -144,7 +144,7 @@ private slots:
     QVERIFY( !opt->fahrenheit );             // default false
     QVERIFY( opt->cpuSettingsEnabled );      // default true
     QVERIFY( opt->fanControlEnabled );       // default true
-    QVERIFY( opt->keyboardBacklightControlEnabled ); // default true
+    QVERIFY( opt->keyboardBacklightControlSupported ); // default true
     // Optional strings default to nullopt
     QVERIFY( !opt->shutdownTime.has_value() );
     QVERIFY( !opt->chargingProfile.has_value() );

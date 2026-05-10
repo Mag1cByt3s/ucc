@@ -75,10 +75,13 @@ class TrayBackend : public QObject
   Q_PROPERTY( int  gpuVramFreqMHz READ gpuVramFreqMHz NOTIFY metricsUpdated )
   Q_PROPERTY( int  gpuCoreVoltageMv READ gpuCoreVoltageMv NOTIFY metricsUpdated )
 
-  // ── Profiles ──
+  // ── profiles ──
   Q_PROPERTY( QString      activeProfileId READ activeProfileId NOTIFY activeProfileChanged )
   Q_PROPERTY( QString      activeProfileName READ activeProfileName NOTIFY activeProfileChanged )
   Q_PROPERTY( QString      powerState      READ powerState      NOTIFY powerStateChanged )
+
+  // ── Keyboard Backlight control flag ──
+  Q_PROPERTY( bool keyboardBacklightControlSupported READ keyboardBacklightControlSupported NOTIFY keyboardBacklightControlSupportedChanged )
 
   // ── Hardware toggles ──
   Q_PROPERTY( bool webcamEnabled  READ webcamEnabled  WRITE setWebcamEnabled  NOTIFY webcamEnabledChanged )
@@ -229,6 +232,7 @@ signals:
   void profilesChanged();
   void activeProfileChanged();
   void powerStateChanged();
+  void keyboardBacklightControlSupportedChanged();
   void webcamEnabledChanged();
   void fnLockChanged();
   void displayBrightnessChanged();
@@ -257,6 +261,7 @@ private:
   void loadLocalProfiles();  // custom fan + keyboard profiles from QSettings
   QString resolveFanProfileName( const QString &fanProfileId ) const;
   QString resolveKeyboardProfileName( const QString &kbProfileId ) const;
+  bool keyboardBacklightControlSupported() const;
 
   std::unique_ptr< ucc::UccdClient > m_client;
   QTimer *m_fastTimer = nullptr;   // ~1 s  — temps, fans
@@ -296,6 +301,7 @@ private:
   QString m_activeProfileId;
   QString m_activeProfileName;
   QString m_powerState;
+  bool m_keyboardBacklightControlSupported = true;
 
   // Hardware toggles
   bool m_webcamEnabled = true;

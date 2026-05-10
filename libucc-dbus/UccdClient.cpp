@@ -398,6 +398,11 @@ std::optional< bool > UccdClient::getCTGPAdjustmentSupported()
   return callMethod< bool >( "GetCTGPAdjustmentSupported" );
 }
 
+std::optional< bool > UccdClient::getKeyboardBacklightControlSupported()
+{
+  return callMethod< bool >( "GetKeyboardBacklightControlSupported" );
+}
+
 // Fn Lock
 bool UccdClient::setFnLock( bool enabled )
 {
