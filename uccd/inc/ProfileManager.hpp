@@ -210,6 +210,7 @@ public:
       profile.cpu.governor = extractString( cpuJson, "governor", "" );
       profile.cpu.energyPerformancePreference = extractString( cpuJson, "energyPerformancePreference", "" );
       profile.cpu.noTurbo = extractBool( cpuJson, "noTurbo", false );
+      profile.cpu.hwpDynamicBoost = extractBool( cpuJson, "hwpDynamicBoost", false );
     }
 
     // Parse webcam settings
@@ -623,7 +624,8 @@ public:
         << "\"scalingMaxFrequency\":" << ( profile.cpu.scalingMaxFrequency.has_value() ? std::to_string( *profile.cpu.scalingMaxFrequency ) : "-1" ) << ","
         << "\"governor\":\"" << jsonEscape( profile.cpu.governor ) << "\","
         << "\"energyPerformancePreference\":\"" << jsonEscape( profile.cpu.energyPerformancePreference ) << "\","
-        << "\"noTurbo\":" << ( profile.cpu.noTurbo ? "true" : "false" )
+        << "\"noTurbo\":" << ( profile.cpu.noTurbo ? "true" : "false" ) << ","
+        << "\"hwpDynamicBoost\":" << ( profile.cpu.hwpDynamicBoost ? "true" : "false" )
         << "},"
         << "\"webcam\":{"
         << "\"status\":" << ( profile.webcam.status ? "true" : "false" ) << ","

@@ -153,6 +153,7 @@ public:
   std::atomic< bool > waterCoolerScanningEnabled;
   std::atomic< bool > waterCoolerSupported;
   std::atomic< bool > cTGPAdjustmentSupported;
+  std::atomic< bool > hwpDynamicBoostSupported;
   std::atomic< bool > deviceSupported{ false };
   std::atomic< int32_t > cpuFrequencyMHz;
 
@@ -209,6 +210,7 @@ public:
         waterCoolerScanningEnabled( ucc::WATER_COOLER_INITIAL_STATE ),
         waterCoolerSupported( false ),
         cTGPAdjustmentSupported( false ),
+        hwpDynamicBoostSupported( false ),
         cpuFrequencyMHz( -1 )
   {
   }
@@ -389,6 +391,7 @@ public slots:
   // device capability methods
   bool GetWaterCoolerSupported();
   bool GetCTGPAdjustmentSupported();
+  bool GetHwpDynamicBoostSupported();
 
   // monitoring history methods
   QByteArray GetMonitorDataSince( qlonglong sinceTimestampMs );

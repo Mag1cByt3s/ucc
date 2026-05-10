@@ -135,6 +135,7 @@ public:
   std::optional< bool > getWaterCoolerSupported();
   std::optional< bool > getCTGPAdjustmentSupported();
   std::optional< bool > getKeyboardBacklightControlSupported();
+  std::optional< bool > getHwpDynamicBoostSupported();
 
   // Keyboard Control
   bool setKeyboardBacklight( const std::string &config );

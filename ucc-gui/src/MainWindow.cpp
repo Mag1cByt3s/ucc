@@ -107,6 +107,8 @@ MainWindow::MainWindow( QWidget *parent )
     m_waterCoolerSupported = *waterCooler;
   if ( auto ctgp = m_UccdClient->getCTGPAdjustmentSupported() )
     m_cTGPAdjustmentSupported = *ctgp;
+  if ( auto hwpBoost = m_UccdClient->getHwpDynamicBoostSupported() )
+    m_hwpDynamicBoostSupported = *hwpBoost;
   if ( auto gpuDefault = m_UccdClient->getNVIDIAPowerCTRLDefaultPowerLimit() )
     m_gpuDefaultPowerLimit = *gpuDefault;
 
@@ -760,6 +762,17 @@ void MainWindow::setupProfilesPage()
   detailsLayout->addLayout( maxFreqLayout, row, 1 );
   row++;
 
+  m_hwpDynamicBoostLabel = new QLabel( "HWP Dynamic Boost" );
+  m_hwpDynamicBoostCheckBox = new QCheckBox( "Enable" );
+  m_hwpDynamicBoostLabel->setVisible( m_hwpDynamicBoostSupported );
+  m_hwpDynamicBoostCheckBox->setVisible( m_hwpDynamicBoostSupported );
+  if ( m_hwpDynamicBoostSupported )
+  {
+    detailsLayout->addWidget( m_hwpDynamicBoostLabel, row, 0 );
+    detailsLayout->addWidget( m_hwpDynamicBoostCheckBox, row, 1, Qt::AlignLeft );
+    row++;
+  }
+
   // Add spacer
   detailsLayout->addItem( new QSpacerItem( 0, 10 ), row, 0, 1, 2 );
   row++;
@@ -931,6 +944,10 @@ void MainWindow::connectSignals()
 
   connect( m_eppCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
            this, &MainWindow::markChanged );
+
+  if ( m_hwpDynamicBoostCheckBox )
+    connect( m_hwpDynamicBoostCheckBox, &QCheckBox::toggled,
+             this, [this]() { markChanged(); } );
 
   connect( m_minFrequencySlider, &QSlider::valueChanged,
            this, [this]() { markChanged(); } );
@@ -1723,6 +1740,9 @@ void MainWindow::loadProfileDetails( const QString &profileId )
       int requestedKHz = cpuObj["scalingMaxFrequency"].toInt( 5000000 );
       m_maxFrequencySlider->setValue( requestedKHz );
     }
+
+    if ( m_hwpDynamicBoostCheckBox && m_hwpDynamicBoostSupported )
+      m_hwpDynamicBoostCheckBox->setChecked( cpuObj["hwpDynamicBoost"].toBool( false ) );
   }
   else
   {
@@ -2019,6 +2039,7 @@ void MainWindow::updateProfileEditingWidgets( bool isCustom )
   if ( m_eppCombo ) m_eppCombo->setEnabled( isCustom );
   if ( m_minFrequencySlider ) m_minFrequencySlider->setEnabled( isCustom );
   if ( m_maxFrequencySlider ) m_maxFrequencySlider->setEnabled( isCustom );
+  if ( m_hwpDynamicBoostCheckBox ) m_hwpDynamicBoostCheckBox->setEnabled( isCustom );
 
   // Keyboard profile
   if ( m_profileKeyboardProfileCombo ) m_profileKeyboardProfileCombo->setEnabled( isCustom );
@@ -2112,6 +2133,8 @@ QString MainWindow::buildProfileJSON() const
   cpuObj["energyPerformancePreference"] = m_eppCombo ? m_eppCombo->currentData().toString() : QString();
   cpuObj["scalingMinFrequency"]         = std::clamp( m_minFrequencySlider->value(), m_cpuMinFreqKHz, m_cpuMaxFreqKHz );
   cpuObj["scalingMaxFrequency"]         = std::clamp( m_maxFrequencySlider->value(), m_cpuMinFreqKHz, m_cpuMaxFreqKHz );
+  if ( m_hwpDynamicBoostCheckBox && m_hwpDynamicBoostSupported )
+    cpuObj["hwpDynamicBoost"]           = m_hwpDynamicBoostCheckBox->isChecked();
   profileObj["cpu"] = cpuObj;
 
   // ODM Power Limits (TDP)

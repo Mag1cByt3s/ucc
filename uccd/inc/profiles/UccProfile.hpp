@@ -59,9 +59,11 @@ struct UccProfileCpu
   std::string governor;
   std::string energyPerformancePreference;
   bool noTurbo;
+  bool hwpDynamicBoost;
 
   UccProfileCpu()
     : noTurbo( false )
+    , hwpDynamicBoost( false )
   {
     // governor and energyPerformancePreference default to empty,
     // meaning "use the system's current value" (read at CpuWorker startup)

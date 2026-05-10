@@ -332,6 +332,10 @@ private:
     // set no_turbo if available
     if ( m_cpuCtrl.intelPstateNoTurbo.isAvailable() )
       m_cpuCtrl.intelPstateNoTurbo.write( profile.cpu.noTurbo );
+
+    // set hwp_dynamic_boost if available
+    if ( m_cpuCtrl.intelHwpDynamicBoost.isAvailable() )
+      m_cpuCtrl.intelHwpDynamicBoost.write( profile.cpu.hwpDynamicBoost );
   }
 
   /**
@@ -350,6 +354,9 @@ private:
 
     if ( m_cpuCtrl.intelPstateNoTurbo.isAvailable() )
       m_cpuCtrl.intelPstateNoTurbo.write( false );
+
+    if ( m_cpuCtrl.intelHwpDynamicBoost.isAvailable() )
+      m_cpuCtrl.intelHwpDynamicBoost.write( false );
   }
 
   /**

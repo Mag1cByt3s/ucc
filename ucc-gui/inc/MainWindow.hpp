@@ -211,6 +211,8 @@ namespace ucc
     QLabel *m_minFrequencyValue = nullptr;
     QSlider *m_maxFrequencySlider = nullptr;
     QLabel *m_maxFrequencyValue = nullptr;
+    QCheckBox *m_hwpDynamicBoostCheckBox = nullptr;
+    QLabel *m_hwpDynamicBoostLabel = nullptr;
     int m_cpuMinFreqKHz = 400000;   // hardware min frequency in kHz
     int m_cpuMaxFreqKHz = 6000000;  // hardware max frequency in kHz
     // ODM Power Limit (TDP) widgets
@@ -249,6 +251,7 @@ namespace ucc
     // Device capability flags (queried from daemon at startup)
     bool m_waterCoolerSupported = false;
     bool m_cTGPAdjustmentSupported = false;
+    bool m_hwpDynamicBoostSupported = false;
     int m_gpuDefaultPowerLimit = 0;  // Default GPU power limit in watts, queried from daemon
 
     // Statusbar connection indicator

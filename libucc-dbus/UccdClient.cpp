@@ -403,6 +403,11 @@ std::optional< bool > UccdClient::getKeyboardBacklightControlSupported()
   return callMethod< bool >( "GetKeyboardBacklightControlSupported" );
 }
 
+std::optional< bool > UccdClient::getHwpDynamicBoostSupported()
+{
+  return callMethod< bool >( "GetHwpDynamicBoostSupported" );
+}
+
 // Fn Lock
 bool UccdClient::setFnLock( bool enabled )
 {

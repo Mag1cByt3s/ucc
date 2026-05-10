@@ -127,6 +127,7 @@ public:
 
   // intel_pstate
   SysfsNode< bool > intelPstateNoTurbo;
+  SysfsNode< bool > intelHwpDynamicBoost;
 
   // boost
   SysfsNode< bool > boost;
@@ -138,6 +139,7 @@ public:
     , possible( std::string( basePath ) + "/possible", " " )
     , present( std::string( basePath ) + "/present", " " )
     , intelPstateNoTurbo( std::string( basePath ) + "/intel_pstate/no_turbo" )
+    , intelHwpDynamicBoost( std::string( basePath ) + "/intel_pstate/hwp_dynamic_boost" )
     , boost( std::string( basePath ) + "/cpufreq/boost" )
   {
     getAvailableLogicalCores();

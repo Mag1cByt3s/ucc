@@ -475,6 +475,8 @@ static void printProfileSummary( const QJsonObject &obj, bool showHeader = true 
       std::printf( "    %-22s %s\n", "EPP:", epp.toStdString().c_str() );
     std::printf( "    %-22s %d\n", "Online cores:", cpu["onlineCores"].toInt() );
     std::printf( "    %-22s %s\n", "No turbo:", cpu["noTurbo"].toBool() ? "yes" : "no" );
+    if ( cpu.contains( "hwpDynamicBoost" ) )
+      std::printf( "    %-22s %s\n", "HWP Dynamic Boost:", cpu["hwpDynamicBoost"].toBool() ? "on" : "off" );
     int minFreq = cpu["scalingMinFrequency"].toInt();
     int maxFreq = cpu["scalingMaxFrequency"].toInt();
     if ( minFreq > 0 )

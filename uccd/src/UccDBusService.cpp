@@ -164,6 +164,7 @@ static std::string profileToJSON( const UccProfile &profile,
       << "\"governor\":\"" << jsonEscape( profile.cpu.governor ) << "\" ,"
       << "\"energyPerformancePreference\":\"" << jsonEscape( profile.cpu.energyPerformancePreference ) << "\" ,"
       << "\"noTurbo\":" << ( profile.cpu.noTurbo ? "true" : "false" ) << ","
+      << "\"hwpDynamicBoost\":" << ( profile.cpu.hwpDynamicBoost ? "true" : "false" ) << ","
       << "\"onlineCores\":" << optionalValueOr( profile.cpu.onlineCores, defaultOnlineCores ) << ","
       << "\"scalingMinFrequency\":" << optionalValueOr( profile.cpu.scalingMinFrequency, defaultScalingMin ) << ","
       << "\"scalingMaxFrequency\":" << optionalValueOr( profile.cpu.scalingMaxFrequency, defaultScalingMax )
@@ -259,7 +260,8 @@ static std::string buildApplyProfileJSON( const UccProfile &profile )
 
 static std::string buildSettingsJSON( const std::string &keyboardBacklightStatesJSON,
                                       const std::string &chargingProfile,
-                                      const TccSettings &settings )
+                                      const TccSettings &settings,
+                                      bool hwpDynamicBoostSupported = false )
 {
   std::ostringstream oss;
   oss << "{"
@@ -281,6 +283,7 @@ static std::string buildSettingsJSON( const std::string &keyboardBacklightStates
       << "\"cpuSettingsEnabled\":" << ( settings.cpuSettingsEnabled ? "true" : "false" ) << ","
       << "\"fanControlEnabled\":" << ( settings.fanControlEnabled ? "true" : "false" ) << ","
       << "\"keyboardBacklightControlSupported\":" << ( settings.keyboardBacklightControlSupported ? "true" : "false" ) << ","
+      << "\"hwpDynamicBoostSupported\":" << ( hwpDynamicBoostSupported ? "true" : "false" ) << ","
       << "\"ycbcr420Workaround\":[],"
       << "\"chargingProfile\":\"" << jsonEscape( chargingProfile ) << "\" ,"
       << "\"chargingPriority\":" << ( settings.chargingPriority.has_value() ? "\"" + jsonEscape( *settings.chargingPriority ) + "\"" : "null" ) << ","
@@ -1926,6 +1929,11 @@ bool UccDBusInterfaceAdaptor::GetCTGPAdjustmentSupported()
   return m_data.cTGPAdjustmentSupported;
 }
 
+bool UccDBusInterfaceAdaptor::GetHwpDynamicBoostSupported()
+{
+  return m_data.hwpDynamicBoostSupported;
+}
+
 // --- Monitoring history D-Bus methods ---
 
 QByteArray UccDBusInterfaceAdaptor::GetMonitorDataSince( qlonglong sinceTimestampMs )
@@ -2081,7 +2089,8 @@ UccDBusService::UccDBusService()
   // Now build settings JSON with actual stateMap
   m_dbusData.settingsJSON = buildSettingsJSON( m_dbusData.keyboardBacklightStatesJSON,
                                                m_dbusData.currentChargingProfile,
-                                               m_settings );
+                                               m_settings,
+                                               m_dbusData.hwpDynamicBoostSupported.load() );
 
   // Load autosave
   loadAutosave();
@@ -2606,7 +2615,8 @@ void UccDBusService::readHardwareCapabilities()
   // Rebuild settings JSON with real charging data
   m_dbusData.settingsJSON = buildSettingsJSON( m_dbusData.keyboardBacklightStatesJSON,
                                                m_dbusData.currentChargingProfile,
-                                               m_settings );
+                                               m_settings,
+                                               m_dbusData.hwpDynamicBoostSupported.load() );
 }
 
 void UccDBusService::setupGpuDataCallback()
@@ -3488,7 +3498,8 @@ void UccDBusService::updateDBusSettingsData()
   std::lock_guard< std::mutex > lock( m_dbusData.dataMutex );
   m_dbusData.settingsJSON = buildSettingsJSON( m_dbusData.keyboardBacklightStatesJSON,
                                                m_dbusData.currentChargingProfile,
-                                               m_settings );
+                                               m_settings,
+                                               m_dbusData.hwpDynamicBoostSupported.load() );
 }
 
 bool UccDBusService::addCustomProfile( const UccProfile &profile )
@@ -3804,9 +3815,18 @@ void UccDBusService::computeDeviceCapabilities()
     m_dbusData.cTGPAdjustmentSupported = hardwareExists;
   }
 
-  syslog( LOG_INFO, "Device capabilities: aquaris=%s, cTGP=%s",
+  // Detect HWP Dynamic Boost support
+  {
+    std::error_code ec;
+    const std::string hwpBoostPath = "/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost";
+    m_dbusData.hwpDynamicBoostSupported = std::filesystem::exists( hwpBoostPath, ec )
+                                          && std::filesystem::is_regular_file( hwpBoostPath, ec );
+  }
+
+  syslog( LOG_INFO, "Device capabilities: aquaris=%s, cTGP=%s, hwpDynamicBoost=%s",
           m_dbusData.waterCoolerSupported.load() ? "supported" : "not supported",
-          m_dbusData.cTGPAdjustmentSupported.load() ? "supported" : "hidden" );
+          m_dbusData.cTGPAdjustmentSupported.load() ? "supported" : "hidden",
+          m_dbusData.hwpDynamicBoostSupported.load() ? "supported" : "not supported" );
 }
 
 void UccDBusService::seedDefaultKeyboardProfileIfEmpty()
