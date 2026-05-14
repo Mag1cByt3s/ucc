@@ -951,105 +951,100 @@ bool UccDBusInterfaceAdaptor::SaveCustomProfile( const QString &profileJSON )
       }
     }
 
-    // Check if a profile with the same name already exists in memory
-    auto existingProfileIt = std::ranges::find_if( m_service->m_customProfiles,
-                                          [&profile]( const UccProfile &p ) { return p.name == profile.name; } );
+    // Check if a profile with the same ID already exists in memory
+    auto existingByIdIt = std::ranges::find_if( m_service->m_customProfiles,
+                                                [&profile]( const UccProfile &p ) { return !p.id.empty() && p.id == profile.id; } );
 
-    // Also check settings for profiles with the same name (in case parsing failed on load)
-    std::string existingIdFromSettings;
-    for ( const auto &[profileId, profileJson] : m_service->m_settings.profiles )
-    {
-      try
-      {
-        auto parsedProfile = ProfileManager::parseProfileJSON( profileJson );
-        if ( parsedProfile.name == profile.name )
-        {
-          existingIdFromSettings = profileId;
-          break;
-        }
-      }
-      catch ( const std::exception &e )
-      {
-        // Skip malformed entries
-        continue;
-      }
-    }
+    bool result = false;
 
-    bool result;
-    if ( existingProfileIt != m_service->m_customProfiles.end() )
+    if ( existingByIdIt != m_service->m_customProfiles.end() )
     {
-      // Profile with same name exists in memory
-      // Check if they have the SAME ID (genuine update) or DIFFERENT ID (name collision)
-      if ( profile.id == existingProfileIt->id )
-      {
-        // Same profile, update it
-        std::cout << "[Profile] SaveCustomProfile: updating existing profile '" << profile.name << "' (id: " << profile.id << ")" << std::endl;
-        result = m_service->updateCustomProfile( profile );
-      }
-      else if ( !profile.id.empty() )
-      {
-        // Different ID but same name - GUI sent a new profile with same name
-        // Respect the GUI's ID, don't overwrite it with the old one
-        std::cout << "[Profile] SaveCustomProfile: received profile with new ID '" << profile.id << "' but same name as existing profile (id: " << existingProfileIt->id << ")" << std::endl;
-        std::cout << "[Profile] Treating as NEW profile since IDs differ" << std::endl;
-        result = m_service->addCustomProfile( profile );
-      }
-      else
-      {
-        // Received profile has no ID but same name exists - assign old ID
-        profile.id = existingProfileIt->id;
-        std::cout << "[Profile] SaveCustomProfile: received profile with no ID, using existing ID '" << profile.id << "'" << std::endl;
-        result = m_service->updateCustomProfile( profile );
-      }
-    }
-    else if ( !existingIdFromSettings.empty() )
-    {
-      // Profile with same name exists in settings but not in memory
-      // Check if ID matches
-      if ( profile.id == existingIdFromSettings )
-      {
-        // Same profile, reuse the ID
-        std::cout << "[Profile] SaveCustomProfile: updating existing profile '" << profile.name << "' from settings (id: " << profile.id << ")" << std::endl;
-        m_service->m_customProfiles.push_back( profile );
-        result = true;
-      }
-      else if ( !profile.id.empty() )
-      {
-        // Different ID but same name - treat as new profile
-        std::cout << "[Profile] SaveCustomProfile: received profile with new ID '" << profile.id << "' but same name in settings (id: " << existingIdFromSettings << ")" << std::endl;
-        std::cout << "[Profile] Treating as NEW profile since IDs differ" << std::endl;
-        result = m_service->addCustomProfile( profile );
-      }
-      else
-      {
-        // No ID provided, use the one from settings
-        profile.id = existingIdFromSettings;
-        std::cout << "[Profile] SaveCustomProfile: received profile with no ID, using existing ID from settings '" << profile.id << "'" << std::endl;
-        m_service->m_customProfiles.push_back( profile );
-        result = true;
-      }
+      // Profile exists by ID, it's a genuine update (possibly renaming it)
+      std::cout << "[Profile] SaveCustomProfile: updating existing profile by ID '" << profile.id << "' (new name: " << profile.name << ")" << std::endl;
+      result = m_service->updateCustomProfile( profile );
     }
     else
     {
-      // No profile with this name exists, add as new
-      if ( profile.id.empty() )
+      // Check if a profile with the same name already exists in memory (fallback or duplicate prevention)
+      auto existingProfileIt = std::ranges::find_if( m_service->m_customProfiles,
+                                            [&profile]( const UccProfile &p ) { return p.name == profile.name; } );
+
+      // Also check settings for profiles with the same name (in case parsing failed on load)
+      std::string existingIdFromSettings;
+      for ( const auto &[profileId, profileJson] : m_service->m_settings.profiles )
       {
-        profile.id = generateProfileId();
-        std::cout << "[Profile] SaveCustomProfile: adding new profile '" << profile.name << "' with generated id " << profile.id << std::endl;
+        try
+        {
+          auto parsedProfile = ProfileManager::parseProfileJSON( profileJson );
+          if ( parsedProfile.name == profile.name )
+          {
+            existingIdFromSettings = profileId;
+            break;
+          }
+        }
+        catch ( const std::exception &e )
+        {
+          // Skip malformed entries
+          continue;
+        }
+      }
+
+      if ( existingProfileIt != m_service->m_customProfiles.end() )
+      {
+        // Profile with same name exists in memory
+        if ( !profile.id.empty() )
+        {
+          // Different ID but same name - GUI sent a new profile with same name
+          // Respect the GUI's ID, don't overwrite it with the old one
+          std::cout << "[Profile] SaveCustomProfile: received profile with new ID '" << profile.id << "' but same name as existing profile (id: " << existingProfileIt->id << ")" << std::endl;
+          std::cout << "[Profile] Treating as NEW profile since IDs differ" << std::endl;
+          result = m_service->addCustomProfile( profile );
+        }
+        else
+        {
+          // Received profile has no ID but same name exists - assign old ID
+          profile.id = existingProfileIt->id;
+          std::cout << "[Profile] SaveCustomProfile: received profile with no ID, using existing ID '" << profile.id << "'" << std::endl;
+          result = m_service->updateCustomProfile( profile );
+        }
+      }
+      else if ( !existingIdFromSettings.empty() )
+      {
+        // Profile with same name exists in settings but not in memory
+        if ( !profile.id.empty() )
+        {
+          // Different ID but same name - treat as new profile
+          std::cout << "[Profile] SaveCustomProfile: received profile with new ID '" << profile.id << "' but same name in settings (id: " << existingIdFromSettings << ")" << std::endl;
+          std::cout << "[Profile] Treating as NEW profile since IDs differ" << std::endl;
+          result = m_service->addCustomProfile( profile );
+        }
+        else
+        {
+          // No ID provided, use the one from settings
+          profile.id = existingIdFromSettings;
+          std::cout << "[Profile] SaveCustomProfile: received profile with no ID, using existing ID from settings '" << profile.id << "'" << std::endl;
+          m_service->m_customProfiles.push_back( profile );
+          result = true;
+        }
       }
       else
       {
-        std::cout << "[Profile] SaveCustomProfile: adding new profile '" << profile.name << "' with provided id " << profile.id << std::endl;
-      }
-      result = m_service->addCustomProfile( profile );
-      if ( result )
-      {
-        std::cout << "[Profile] Successfully added profile '" << profile.name << "'" << std::endl;
-      }
-      else
-      {
-        std::cerr << "[Profile] Failed to add profile '" << profile.name << "'" << std::endl;
-        return false;
+        // No profile with this name exists, add as new
+        if ( profile.id.empty() )
+        {
+          profile.id = generateProfileId();
+          std::cout << "[Profile] SaveCustomProfile: adding new profile '" << profile.name << "' with generated id " << profile.id << std::endl;
+        }
+        else
+        {
+          std::cout << "[Profile] SaveCustomProfile: adding new profile '" << profile.name << "' with provided id " << profile.id << std::endl;
+        }
+        result = m_service->addCustomProfile( profile );
+        if ( !result )
+        {
+          std::cerr << "[Profile] Failed to add profile '" << profile.name << "'" << std::endl;
+          return false;
+        }
       }
     }
 
