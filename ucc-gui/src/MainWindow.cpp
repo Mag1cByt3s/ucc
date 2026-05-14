@@ -2100,7 +2100,9 @@ QString MainWindow::buildProfileJSON() const
 
   // Brightness
   QJsonObject displayObj;
-  if ( m_setBrightnessCheckBox->isChecked() )
+  const bool useBrightness = m_setBrightnessCheckBox->isChecked();
+  displayObj["useBrightness"] = useBrightness;
+  if ( useBrightness )
     displayObj["brightness"] = m_brightnessSlider->value();
   profileObj["display"] = displayObj;
 

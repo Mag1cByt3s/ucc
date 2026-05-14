@@ -131,6 +131,7 @@ public:
    * @return true if successful
    */
   bool setRefreshRate( int refreshRate ) noexcept;
+    void reapplyProfile() noexcept;
 
 protected:
   void onStart() override;
