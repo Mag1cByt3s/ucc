@@ -1406,8 +1406,8 @@ bool UccDBusInterfaceAdaptor::SetKeyboardBacklightStatesJSON( const QString &key
   std::ostringstream keyboardProfileData;
   keyboardProfileData << "{";
   if ( const int brightness = extractFirstBrightness( currentStatesJSON ); brightness >= 0 )
-    keyboardProfileData << "\"brightness\":" << brightness << ",";
-  keyboardProfileData << "\"states\":" << currentStatesJSON << "}";
+    keyboardProfileData << "\"brightness\":" << brightness;
+  keyboardProfileData << "}";
   m_service->m_activeProfile.keyboard.keyboardProfileData = keyboardProfileData.str();
 
   // Update the D-Bus readable state with the states *array* so
@@ -3423,6 +3423,11 @@ bool UccDBusService::applyProfileJSON( const std::string &profileJSON )
     // Apply cTGP offset from the profile
     applyCTGPFromProfile( profile );
 
+    if ( m_displayWorker )
+    {
+      m_displayWorker->reapplyProfile();
+    }
+
     // Emit ProfileChanged signal for DBus clients
     if ( m_adaptor )
     {
@@ -3516,7 +3521,8 @@ bool UccDBusService::addCustomProfile( const UccProfile &profile )
 
 bool UccDBusService::deleteCustomProfile( const std::string &profileId )
 {
-  std::cout << "[ProfileManager] Deleting profile '" << profileId << "' from memory" << std::endl;
+  std::cout << "[ProfileManager] Deleting profile '" << profileId << "' from memory and settings" << std::endl;
+  bool deleted = false;
 
   // Remove from in-memory profiles
   if ( auto it = std::remove_if( m_customProfiles.begin(), m_customProfiles.end(),
@@ -3524,13 +3530,45 @@ bool UccDBusService::deleteCustomProfile( const std::string &profileId )
        it != m_customProfiles.end() )
   {
     m_customProfiles.erase( it, m_customProfiles.end() );
+    deleted = true;
+  }
+
+  // Remove from settings
+  if ( m_settings.profiles.find( profileId ) != m_settings.profiles.end() )
+  {
+    m_settings.profiles.erase( profileId );
+    deleted = true;
+  }
+
+  if ( deleted )
+  {
+    // Remove references to this profile from the state map
+    bool stateMapChanged = false;
+    for ( auto it = m_settings.stateMap.begin(); it != m_settings.stateMap.end(); )
+    {
+      if ( it->second == profileId )
+      {
+        it = m_settings.stateMap.erase( it );
+        stateMapChanged = true;
+      }
+      else
+      {
+        ++it;
+      }
+    }
+
+    // Write deletion to disk
+    (void)m_settingsManager.writeSettings( m_settings );
 
     // Update DBus data
     updateDBusActiveProfileData();
+    if ( stateMapChanged )
+      updateDBusSettingsData();
+
     // Refresh exposed custom profiles JSON.
     serializeProfilesJSON();
 
-    std::cout << "[ProfileManager] Profile deleted successfully" << std::endl;
+    std::cout << "[ProfileManager] Profile '" << profileId << "' deleted successfully" << std::endl;
     return true;
   }
 

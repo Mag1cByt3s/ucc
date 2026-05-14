@@ -660,3 +660,9 @@ void DisplayWorker::setDisplayMode( int xRes, int yRes, int refRate ) noexcept
     syslog( LOG_WARNING, "DisplayWorker: Failed to set display mode" );
   }
 }
+
+void DisplayWorker::reapplyProfile() noexcept
+{
+  applyBacklightFromProfile();
+}
+
