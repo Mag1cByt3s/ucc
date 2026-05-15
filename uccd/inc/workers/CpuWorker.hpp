@@ -315,6 +315,24 @@ private:
       if ( isEPPAvailable( profile.cpu.energyPerformancePreference ) )
       {
         m_cpuCtrl.setEnergyPerformancePreference( profile.cpu.energyPerformancePreference );
+
+        // Verify EPP write actually took effect — some kernels (e.g. intel_pstate
+        // on Arrow Lake with CachyOS 6.19+) reject sysfs EPP writes with EBUSY
+        // even though the correct value is already set at the MSR level.
+        if ( not m_cpuCtrl.cores.empty() )
+        {
+          auto currentEPP = m_cpuCtrl.cores[ 0 ].energyPerformancePreference.read();
+
+          if ( currentEPP.has_value() and *currentEPP != profile.cpu.energyPerformancePreference )
+          {
+            m_noEPPWriteQuirk = true;
+            logLine( "CpuWorker: EPP write to sysfs was rejected by the kernel "
+                     "(requested '" + profile.cpu.energyPerformancePreference
+                     + "', got '" + *currentEPP + "'). "
+                     "Disabling sysfs EPP management — the hardware EPP may "
+                     "already be correct at the MSR level.", LOG_WARNING );
+          }
+        }
       }
       else if ( m_warnedEPPs.insert( profile.cpu.energyPerformancePreference ).second )
       {
