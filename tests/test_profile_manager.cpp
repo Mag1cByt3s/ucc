@@ -47,7 +47,7 @@ private:
       },
       "odmProfile": { "name": "enthusiast" },
       "odmPowerLimits": { "tdpValues": [45, 80] },
-      "nvidiaPowerCTRLProfile": { "cTGPOffset": 15 },
+      "nvidiaCTGPOffset": 15,
       "keyboard": { "keyboardProfileName": "Rainbow" },
       "selectedKeyboardProfile": "kb-uuid-001",
       "chargingProfile": "balanced",

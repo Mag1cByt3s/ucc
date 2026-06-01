@@ -1,21 +1,23 @@
-{ overlay ? null }:
-{ config, lib, pkgs, ... }:
+{
+  overlay ? null,
+}:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   cfg = config.services.uccd;
-  extraArgsString =
-    lib.concatStringsSep " " (map lib.escapeShellArg cfg.extraArgs);
+  extraArgsString = lib.concatStringsSep " " (map lib.escapeShellArg cfg.extraArgs);
   videoDrivers = config.services.xserver.videoDrivers or [ ];
   nvidiaPackage = lib.attrByPath [ "hardware" "nvidia" "package" ] null config;
   hasNvidia = nvidiaPackage != null && lib.elem "nvidia" videoDrivers;
-  nvidiaBinPath =
-    lib.optionalString hasNvidia
-      ":${lib.makeBinPath [ nvidiaPackage ]}";
+  nvidiaBinPath = lib.optionalString hasNvidia ":${lib.makeBinPath [ nvidiaPackage ]}";
   # libnvidia-ml.so.1 is loaded via dlopen() at runtime; NixOS exposes it under
   # /run/opengl-driver/lib which is always set up when nvidia drivers are enabled.
-  nvidiaLibPath =
-    lib.optionalString hasNvidia
-      "/run/opengl-driver/lib";
+  nvidiaLibPath = lib.optionalString hasNvidia "/run/opengl-driver/lib";
   uccdToolsPath = lib.makeBinPath [
     pkgs.coreutils
     pkgs.gawk
@@ -31,11 +33,7 @@ in
 
     package = lib.mkOption {
       type = lib.types.package;
-      default =
-        if pkgs ? ucc then
-          pkgs.ucc
-        else
-          pkgs.callPackage ../package.nix { src = ../.; };
+      default = pkgs.ucc or (pkgs.callPackage ../package.nix { src = ../.; });
       defaultText = "pkgs.ucc (or callPackage ../package.nix)";
       description = "The `ucc` package providing `uccd`.";
     };
@@ -88,11 +86,11 @@ in
         BusName = "com.uniwill.uccd";
         ExecStartPre = "-${cfg.package}/bin/uccd --stop";
         ExecStart =
-          "${cfg.package}/bin/uccd --start"
-          + lib.optionalString (cfg.extraArgs != [ ]) " ${extraArgsString}";
+          "${cfg.package}/bin/uccd --start" + lib.optionalString (cfg.extraArgs != [ ]) " ${extraArgsString}";
         Environment = [
           "PATH=/run/wrappers/bin:/run/current-system/sw/bin:${uccdToolsPath}${nvidiaBinPath}"
-        ] ++ lib.optionals hasNvidia [
+        ]
+        ++ lib.optionals hasNvidia [
           "LD_LIBRARY_PATH=${nvidiaLibPath}"
         ];
         Restart = "on-failure";
@@ -107,7 +105,10 @@ in
         ProtectSystem = "strict";
         ProtectHome = true;
         NoNewPrivileges = true;
-        ReadWritePaths = [ "/etc/ucc" "/run" ];
+        ReadWritePaths = [
+          "/etc/ucc"
+          "/run"
+        ];
       };
     };
 

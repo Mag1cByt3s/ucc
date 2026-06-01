@@ -1,5 +1,10 @@
 # Bash completion for ucc-cli
 # Installed to /usr/share/bash-completion/completions/ucc-cli
+#
+# shellcheck shell=bash
+# shellcheck disable=SC2207,SC2034
+# SC2207: COMPREPLY=( $(compgen ...) ) is the idiomatic bash-completion pattern.
+# SC2034: completion helpers receive `prev`/`words`/`cword` from the framework.
 
 # Helper: extract IDs from ucc-cli list output (first column, %-36s padded)
 # Format: "  <ID>  <name>" with 2+ spaces separating the columns.

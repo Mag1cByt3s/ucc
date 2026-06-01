@@ -11,3 +11,6 @@ result-*
 *.user
 build-local.sh
 verify-build.sh
+
+# Claude Code session data
+.claude
