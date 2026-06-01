@@ -1,23 +1,24 @@
-{ lib
-, cmake
-, coreutils
-, gawk
-, kdePackages
-, kf6 ? null
-, gnugrep
-, procps
-, util-linux
-, which
-, stdenv
-, nlohmann_json
-, pkg-config
-, libxrandr
-, systemd
-, xorg
-, makeWrapper
-, tuxedo-drivers ? null
-, src ? ./.   # default to the source tree containing this file
-, version ? "0.0.1"
+{
+  lib,
+  cmake,
+  coreutils,
+  gawk,
+  kdePackages,
+  kf6 ? null,
+  gnugrep,
+  procps,
+  util-linux,
+  which,
+  stdenv,
+  nlohmann_json,
+  pkg-config,
+  libxrandr,
+  systemd,
+  xorg,
+  makeWrapper,
+  tuxedo-drivers ? null,
+  src ? ./., # default to the source tree containing this file
+  version ? "0.0.1",
 }:
 
 stdenv.mkDerivation {
@@ -51,7 +52,8 @@ stdenv.mkDerivation {
     libxrandr
     systemd
     xorg.xcbutilcursor
-  ] ++ lib.optionals (tuxedo-drivers != null) [
+  ]
+  ++ lib.optionals (tuxedo-drivers != null) [
     tuxedo-drivers
   ];
 
@@ -66,7 +68,16 @@ stdenv.mkDerivation {
 
   postFixup = ''
     wrapProgram $out/bin/uccd \
-      --prefix PATH : "${lib.makeBinPath [ coreutils gawk gnugrep procps util-linux which ]}"
+      --prefix PATH : "${
+        lib.makeBinPath [
+          coreutils
+          gawk
+          gnugrep
+          procps
+          util-linux
+          which
+        ]
+      }"
 
     # The upstream unit/DBus activation files use /usr/bin paths which do not
     # exist on NixOS. Keep the files installed by CMake, but patch paths to the
