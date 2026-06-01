@@ -1,0 +1,69 @@
+name: Build & Test (Ubuntu)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: cmake (${{ matrix.build_type }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, RelWithDebInfo]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            pkg-config \
+            extra-cmake-modules \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            qt6-connectivity-dev \
+            qt6-tools-dev \
+            libgl1-mesa-dev \
+            nlohmann-json3-dev \
+            libsystemd-dev \
+            libxrandr-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DBUILD_GUI=OFF \
+            -DBUILD_TRAY=OFF \
+            -DBUILD_GNOME=OFF \
+            -DBUILD_CLI=ON \
+            -DBUILD_TESTS=ON \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        working-directory: build
+        run: ctest --output-on-failure --parallel $(nproc)
+
+      - name: Upload compile_commands.json
+        if: matrix.build_type == 'RelWithDebInfo'
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile-commands
+          path: build/compile_commands.json
+          if-no-files-found: warn
+          retention-days: 7
