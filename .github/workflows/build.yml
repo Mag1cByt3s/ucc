@@ -1,4 +1,4 @@
-name: Build & Test (Ubuntu)
+name: Build & Test (KDE Neon)
 
 on:
   push:
@@ -14,21 +14,23 @@ jobs:
   build:
     name: cmake (${{ matrix.build_type }})
     runs-on: ubuntu-24.04
+    container:
+      image: invent-registry.kde.org/neon/docker-images/plasma:unstable
+      options: --user root
     strategy:
       fail-fast: false
       matrix:
         build_type: [Debug, RelWithDebInfo]
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
             cmake \
+            git \
             ninja-build \
             pkg-config \
             extra-cmake-modules \
@@ -36,18 +38,28 @@ jobs:
             qt6-base-dev-tools \
             qt6-connectivity-dev \
             qt6-tools-dev \
+            qt6-declarative-dev \
+            qt6-charts-dev \
+            libkf6config-dev \
+            libkf6coreaddons-dev \
+            libplasma-dev \
             libgl1-mesa-dev \
+            libudev-dev \
             nlohmann-json3-dev \
             libsystemd-dev \
             libxrandr-dev
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DBUILD_GUI=OFF \
-            -DBUILD_TRAY=OFF \
-            -DBUILD_GNOME=OFF \
+            -DBUILD_GUI=ON \
+            -DBUILD_TRAY=ON \
+            -DBUILD_GNOME=ON \
             -DBUILD_CLI=ON \
             -DBUILD_TESTS=ON \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
